@@ -258,7 +258,7 @@ export const useModelStore = create((set, get) => ({
 
   addClass_attribute: (classId, attr) => {
     const attrId = nanoid(8);
-    const full = { id: attrId, name: 'attr', type: 'STRING', visibility: 'PUBLIC', lowerBound: 0, upperBound: 1, ...attr };
+    const full = { id: attrId, name: 'attr', type: 'STRING', visibility: 'PUBLIC', lowerBound: 0, upperBound: 1, defaultValue: '', ...attr };
     // Validate attribute name
     const { metaModel } = get();
     const cls = metaModel.classes.find((c) => c.id === classId);

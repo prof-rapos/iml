@@ -205,6 +205,10 @@ function boundsComment(attr) {
   return `// [${attr.lowerBound}..${upper}] ${attr.type}`;
 }
 
+function hasMetaDefault(attr) {
+  return attr.defaultValue !== undefined && String(attr.defaultValue).trim() !== '';
+}
+
 function generateClassFile(cls, metaModel, pkg) {
   const parent      = getParentClass(cls.id, metaModel);
   const ownAttrs    = cls.attributes;
@@ -241,8 +245,12 @@ function generateClassFile(cls, metaModel, pkg) {
       lines.push(`    ${boundsComment(attr)}`);
       if (attr.upperBound !== 1) {
         lines.push(`    private ArrayList<${boxedType(attr.type)}> ${field} = new ArrayList<>();`);
-      } else {
+      } else if (hasMetaDefault(attr)) {
+        lines.push(`    private ${javaType(attr.type)} ${field} = ${javaLiteral(attr.defaultValue, attr.type)};`);
+      } else if (attr.lowerBound > 0) {
         lines.push(`    private ${javaType(attr.type)} ${field} = ${defaultValue(attr.type)};`);
+      } else {
+        lines.push(`    private ${javaType(attr.type)} ${field};`);
       }
     }
     lines.push('');
@@ -468,12 +476,16 @@ function generateInstanceFile(im, metaModel, pkg) {
       } else {
         const val = slot.value ? String(slot.value).trim() : '';
         if (val) {
+          // Tier 1: instance value
           attrLines.push(`        ${varName}.set${cap}(${javaLiteral(val, attr.type)});`);
+        } else if (hasMetaDefault(attr)) {
+          // Tier 2: metamodel default
+          attrLines.push(`        ${varName}.set${cap}(${javaLiteral(attr.defaultValue, attr.type)});`);
         } else if (attr.lowerBound > 0) {
-          // Required with no value: use type default
+          // Tier 3: type default for required attributes
           attrLines.push(`        ${varName}.set${cap}(${defaultValue(attr.type)});`);
         }
-        // Optional with no value: leave at field initializer default (no setter call)
+        // Optional with no value and no default: leave uninitialized
       }
     }
   }

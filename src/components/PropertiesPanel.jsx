@@ -211,6 +211,32 @@ export default function PropertiesPanel() {
 
 // ── Attribute editor ──────────────────────────────────────────────────────────
 function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
+  const isSingle = attr.upperBound === 1;
+
+  function DefaultInput() {
+    if (attr.type === 'BOOLEAN') {
+      return (
+        <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
+          value={attr.defaultValue ?? ''}
+          onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
+          <option value="">— none —</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      );
+    }
+    return (
+      <input
+        style={{ ...inputStyle, padding: '5px 8px', fontSize: 12 }}
+        type={attr.type === 'INT' || attr.type === 'DOUBLE' ? 'number' : 'text'}
+        step={attr.type === 'DOUBLE' ? 'any' : undefined}
+        value={attr.defaultValue ?? ''}
+        placeholder="none"
+        onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}
+      />
+    );
+  }
+
   return (
     <div style={{ background: CARD_BG, borderRadius: 6, padding: '10px', marginBottom: 8, border: `1px solid ${BORDER}` }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
@@ -223,7 +249,7 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
           {['STRING', 'INT', 'DOUBLE', 'BOOLEAN'].map((t) => <option key={t}>{t}</option>)}
         </select>
       </div>
-      <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: isSingle ? 6 : 0 }}>
         <select style={{ ...selectStyle, flex: 1, padding: '5px 6px', fontSize: 12 }}
           value={attr.visibility}
           onChange={(e) => updateAttribute(classId, attr.id, { visibility: e.target.value })}>
@@ -247,6 +273,12 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
           style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
           title="Delete">×</button>
       </div>
+      {isSingle && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Default</span>
+          <div style={{ flex: 1 }}><DefaultInput /></div>
+        </div>
+      )}
     </div>
   );
 }
