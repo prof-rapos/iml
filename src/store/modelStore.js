@@ -536,10 +536,13 @@ export const useModelStore = create((set, get) => ({
     const obj = {
       id, classId, className: cls.name,
       name: `${cls.name}1`,
-      slots: allAttrs.map((a) => ({
-        attrId: a.id, attrName: a.name,
-        ...(a.upperBound !== 1 ? { values: [] } : { value: '' }),
-      })),
+      slots: allAttrs.map((a) => {
+        const hasDef = a.defaultValue !== undefined && String(a.defaultValue).trim() !== '';
+        return {
+          attrId: a.id, attrName: a.name,
+          ...(a.upperBound !== 1 ? { values: [] } : { value: hasDef ? String(a.defaultValue) : '' }),
+        };
+      }),
     };
     set((s) => ({
       instanceModels: s.instanceModels.map((im, i) =>
