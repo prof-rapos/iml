@@ -178,7 +178,7 @@ export default function LandingPage() {
           overflow: 'hidden', flexShrink: 0,
           boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
         }}>
-          <img src="/logos/logo.png" alt="IML" style={{ width: 64, height: 64, objectFit: 'contain' }} />
+          <img src={`${import.meta.env.BASE_URL}logos/logo.png`} alt="IML" style={{ width: 64, height: 64, objectFit: 'contain' }} />
         </div>
         <div>
           <div style={{ fontSize: 28, fontWeight: 800, color: '#f1f5f9', letterSpacing: '-0.5px', lineHeight: 1.1 }}>

@@ -121,7 +121,7 @@ export default function Topbar() {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           overflow: 'hidden', flexShrink: 0,
         }}>
-          <img src="/logos/logo.png" alt="IML" style={{ width: 50, height: 50, objectFit: 'contain' }} />
+          <img src={`${import.meta.env.BASE_URL}logos/logo.png`} alt="IML" style={{ width: 50, height: 50, objectFit: 'contain' }} />
         </div>
         <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.3px' }}>Instructional Modeling Language</span>
       </div>
