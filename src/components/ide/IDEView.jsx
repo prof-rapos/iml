@@ -3,7 +3,7 @@ import { useIdeStore } from '../../store/ideStore';
 import IDETopbar from './IDETopbar';
 import FileTree from './FileTree';
 import CodeEditor from './CodeEditor';
-import IDEOutputPanel from './IDEOutputPanel';
+import IDETerminal from './IDETerminal';
 import NewFileDialog from './NewFileDialog';
 import NewProjectWizard from './NewProjectWizard';
 
@@ -138,8 +138,8 @@ export default function IDEView() {
               />
             </div>
 
-            {/* Output panel */}
-            <IDEOutputPanel files={files} />
+            {/* Terminal */}
+            <IDETerminal files={files} />
           </div>
         </div>
       )}
