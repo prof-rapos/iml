@@ -27,7 +27,8 @@ export function seedDemoModel() {
             "type": "INT",
             "visibility": "PUBLIC",
             "lowerBound": 0,
-            "upperBound": 1
+            "upperBound": 1,
+            "defaultValue": "0"
           }
         ]
       },
