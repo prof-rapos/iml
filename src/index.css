@@ -1,0 +1,91 @@
+@import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+:root {
+  --iml-primary:          #0077CA;
+  --iml-primary-dark:     #1d4ed8;
+  --iml-secondary:        #003C71;
+  --iml-canvas-bg:        #555555;
+  --iml-grid-color:       #ffffff;
+  --iml-node-bg:          #1e293b;
+  --iml-node-border:      rgba(255,255,255,0.18);
+  --iml-node-header:      #0077CA;
+  --iml-edge-color:       #475569;
+  --iml-sidebar-bg:       #1e293b;
+  --iml-sidebar-text:     #f1f5f9;
+  --iml-panel-bg:         #0f172a;
+  --iml-border:           rgba(255,255,255,0.1);
+  --iml-font-sans:        'Inter', system-ui, sans-serif;
+  --iml-font-mono:        'JetBrains Mono', monospace;
+  --iml-inheritance:      #f87171;
+  --iml-reference:        #4ade80;
+  --iml-composition:      #60a5fa;
+  --iml-instance-header:  #888888;
+}
+
+body {
+  font-family: var(--iml-font-sans);
+  margin: 0;
+  padding: 0;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--iml-canvas-bg);
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  text-align: left;
+}
+
+.react-flow__node {
+  font-family: var(--iml-font-sans);
+}
+
+.react-flow__background {
+  background-color: var(--iml-canvas-bg);
+}
+
+.react-flow__edge-path {
+  stroke: var(--iml-edge-color);
+}
+
+/* ── Dark minimap ─────────────────────────────────────────────────────────── */
+.react-flow__minimap {
+  background: #1e293b !important;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.react-flow__minimap-mask {
+  fill: rgba(0,0,0,0.35) !important;
+}
+.react-flow__minimap-node {
+  fill: #0077CA !important;
+  stroke: none !important;
+}
+
+/* ── Dark controls ────────────────────────────────────────────────────────── */
+.react-flow__controls {
+  background: #1e293b;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+.react-flow__controls-button {
+  background: #1e293b;
+  border-bottom: 1px solid rgba(255,255,255,0.08) !important;
+  fill: #94a3b8;
+  color: #94a3b8;
+}
+.react-flow__controls-button:hover {
+  background: rgba(255,255,255,0.08);
+  fill: #f1f5f9;
+}
+.react-flow__controls-button:last-child {
+  border-bottom: none !important;
+}
