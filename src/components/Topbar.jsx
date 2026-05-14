@@ -4,7 +4,7 @@ import { toJpeg } from 'html-to-image';
 import JSZip from 'jszip';
 import { generateJavaCode } from '../utils/javaCodeGen';
 
-export default function Topbar() {
+export default function Topbar({ onOpenRunner }) {
   const mode = useModelStore((s) => s.mode);
   const metaModel = useModelStore((s) => s.metaModel);
   const instanceModel = useModelStore((s) => s.instanceModels[s.currentIMIndex]);
@@ -178,6 +178,7 @@ export default function Topbar() {
             <MenuDivider />
             <MenuSection label="Generate" />
             <MenuItem onClick={handleGenerateJava}>Generate Java Code</MenuItem>
+            <MenuItem onClick={() => { setMenuOpen(false); onOpenRunner(); }}>Run Java</MenuItem>
           </div>
         )}
       </div>
