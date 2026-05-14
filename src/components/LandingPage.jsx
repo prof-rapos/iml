@@ -13,7 +13,7 @@ const MODULES = [
   {
     id: 'transformations',
     title: 'Model Transformations',
-    description: 'Define and apply model-to-model transformations across modelling layers.',
+    description: 'Define and apply model-to-model transformations between meta-models.',
     color: '#7c3aed',
     available: true,
   },
@@ -26,8 +26,8 @@ const MODULES = [
   },
   {
     id: 'ide',
-    title: 'IML IDE',
-    description: 'Edit, run, and debug generated code in an integrated environment.',
+    title: 'Code Explorer',
+    description: 'Edit, run, and debug generated code in an integrated development environment.',
     color: '#059669',
     available: true,
   },
