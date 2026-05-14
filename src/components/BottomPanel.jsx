@@ -8,9 +8,9 @@ export default function BottomPanel() {
   const coEvoWarnings = instanceModel.objects.flatMap((obj) => {
     const cls = metaModel.classes.find((c) => c.id === obj.classId);
     if (!cls) return [];
-    const orphanSlots = obj.slots.filter((sl) => !cls.attributes.find((a) => a.id === sl.attrId));
-    return orphanSlots.length > 0
-      ? [`Object "${obj.name}" has ${orphanSlots.length} stale slot(s) from deleted attributes.`]
+    const orphanKeys = Object.keys(obj.attributeValues ?? {}).filter((k) => !cls.attributes.find((a) => a.id === k));
+    return orphanKeys.length > 0
+      ? [`Object "${obj.name}" has ${orphanKeys.length} stale attribute(s) from deleted attributes.`]
       : [];
   });
 

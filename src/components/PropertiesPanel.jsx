@@ -32,6 +32,7 @@ const inputStyle = {
 };
 const selectStyle = {
   ...inputStyle, cursor: 'pointer',
+  background: '#1e293b',  // solid so OS dropdown popup renders dark, not white
 };
 
 const labelStyle = {
@@ -168,7 +169,7 @@ export default function PropertiesPanel() {
         <div style={headerStyle}>
           <span style={{ fontSize: 12 }}>
             <span style={{ fontWeight: 700 }}>{obj.name}</span>
-            <span style={{ opacity: 0.6 }}> : {obj.className}</span>
+            <span style={{ opacity: 0.6 }}> : {objCls?.name ?? obj.classId}</span>
           </span>
           <DeleteBtn onClick={() => deleteObject(obj.id)} />
         </div>
@@ -188,15 +189,13 @@ export default function PropertiesPanel() {
           )}
 
           <div style={sectionStyle}>Attribute Values</div>
-          {obj.slots.map((sl) => {
-            const attrDef = allAttrs.find((a) => a.id === sl.attrId);
-            return (
-              <SlotEditor key={sl.attrId} sl={sl} attrDef={attrDef}
-                onChange={(v) => updateSlot(obj.id, sl.attrId, v)}
-                onChangeValues={(vs) => updateSlotValues(obj.id, sl.attrId, vs)} />
-            );
-          })}
-          {obj.slots.length === 0 && (
+          {allAttrs.map((attr) => (
+            <SlotEditor key={attr.id} attr={attr}
+              value={obj.attributeValues?.[attr.id] ?? ''}
+              onChange={(v) => updateSlot(obj.id, attr.id, v)}
+              onChangeValues={(vs) => updateSlotValues(obj.id, attr.id, vs)} />
+          ))}
+          {allAttrs.length === 0 && (
             <div style={{ color: TEXT_MUTED, fontSize: 12, fontStyle: 'italic' }}>
               No attributes in meta-model.
             </div>
@@ -284,13 +283,13 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
 }
 
 // ── Slot editor ───────────────────────────────────────────────────────────────
-function SlotEditor({ sl, attrDef, onChange, onChangeValues }) {
-  const type    = attrDef?.type ?? 'STRING';
-  const isMulti = Array.isArray(sl.values);
+function SlotEditor({ attr, value, onChange, onChangeValues }) {
+  const type    = attr?.type ?? 'STRING';
+  const isMulti = Array.isArray(value);
 
   const label = (
     <label style={labelStyle}>
-      {sl.attrName}
+      {attr?.name}
       <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 400, marginLeft: 4, textTransform: 'none' }}>
         ({type.toLowerCase()}{isMulti ? '[]' : ''})
       </span>
@@ -298,16 +297,16 @@ function SlotEditor({ sl, attrDef, onChange, onChangeValues }) {
   );
 
   if (isMulti) {
-    const set = (i, v) => { const next = [...sl.values]; next[i] = v; onChangeValues(next); };
-    const add = () => onChangeValues([...sl.values, '']);
-    const del = (i) => onChangeValues(sl.values.filter((_, idx) => idx !== i));
+    const setVal = (i, v) => { const next = [...value]; next[i] = v; onChangeValues(next); };
+    const add    = () => onChangeValues([...value, '']);
+    const del    = (i) => onChangeValues(value.filter((_, idx) => idx !== i));
 
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
         {label}
-        {sl.values.map((val, i) => (
+        {value.map((val, i) => (
           <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <ValueInput type={type} value={val} onChange={(v) => set(i, v)} />
+            <ValueInput type={type} value={val} onChange={(v) => setVal(i, v)} />
             <button onClick={() => del(i)}
               style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
           </div>
@@ -326,7 +325,7 @@ function SlotEditor({ sl, attrDef, onChange, onChangeValues }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
       {label}
-      <ValueInput type={type} value={sl.value} onChange={onChange} />
+      <ValueInput type={type} value={value} onChange={onChange} />
     </div>
   );
 }

@@ -434,7 +434,8 @@ function generateInstanceFile(im, metaModel, pkg) {
   const varNames     = new Map();
   const usedVarNames = new Set();
   for (const obj of im.objects) {
-    let base    = safeId(obj.name || obj.className);
+    const objCls = metaModel.classes.find(c => c.id === obj.classId);
+    let base    = safeId(obj.name || objCls?.name);
     let varName = base;
     let counter = 2;
     while (usedVarNames.has(varName)) varName = base + counter++;
@@ -446,7 +447,9 @@ function generateInstanceFile(im, metaModel, pkg) {
   if (im.objects.length > 0) {
     lines.push('        // Instantiate objects');
     for (const obj of im.objects) {
-      lines.push(`        ${obj.className} ${varNames.get(obj.id)} = new ${obj.className}();`);
+      const objCls = metaModel.classes.find(c => c.id === obj.classId);
+      const objClassName = objCls?.name ?? obj.classId;
+      lines.push(`        ${objClassName} ${varNames.get(obj.id)} = new ${objClassName}();`);
     }
     lines.push('');
   }
@@ -458,34 +461,27 @@ function generateInstanceFile(im, metaModel, pkg) {
   for (const obj of im.objects) {
     const allAttrs = getAllAttributes(obj.classId, metaModel);
     const varName  = varNames.get(obj.id);
-    for (const slot of obj.slots) {
-      const attr = allAttrs.find(a => a.id === slot.attrId);
-      if (!attr) continue;
-      const cap = capitalize(safeId(attr.name));
-      if (Array.isArray(slot.values)) {
-        const nonEmpty = slot.values.filter(v => v && String(v).trim());
+    for (const attr of allAttrs) {
+      const rawVal = obj.attributeValues?.[attr.id];
+      const cap    = capitalize(safeId(attr.name));
+      if (Array.isArray(rawVal)) {
+        const nonEmpty = rawVal.filter(v => v && String(v).trim());
         if (nonEmpty.length > 0) {
           for (const val of nonEmpty) {
             attrLines.push(`        ${varName}.add${cap}(${javaLiteral(val, attr.type)});`);
           }
         } else if (attr.lowerBound > 0) {
-          // Required multi-valued: add a type default so the lower bound is met
           attrLines.push(`        ${varName}.add${cap}(${javaLiteral(defaultValue(attr.type).replace(/^"|"$/g, ''), attr.type)});`);
         }
-        // Optional with no values: leave ArrayList empty (already initialized in constructor)
       } else {
-        const val = slot.value ? String(slot.value).trim() : '';
+        const val = rawVal ? String(rawVal).trim() : '';
         if (val) {
-          // Tier 1: instance value
           attrLines.push(`        ${varName}.set${cap}(${javaLiteral(val, attr.type)});`);
         } else if (hasMetaDefault(attr)) {
-          // Tier 2: metamodel default
           attrLines.push(`        ${varName}.set${cap}(${javaLiteral(attr.defaultValue, attr.type)});`);
         } else if (attr.lowerBound > 0) {
-          // Tier 3: type default for required attributes
           attrLines.push(`        ${varName}.set${cap}(${defaultValue(attr.type)});`);
         }
-        // Optional with no value and no default: leave uninitialized
       }
     }
   }

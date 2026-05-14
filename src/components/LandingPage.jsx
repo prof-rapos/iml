@@ -15,7 +15,7 @@ const MODULES = [
     title: 'Model Transformations',
     description: 'Define and apply model-to-model transformations across modelling layers.',
     color: '#7c3aed',
-    available: false,
+    available: true,
   },
   {
     id: 'behavioural',

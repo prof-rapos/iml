@@ -1,5 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
-import { useModelStore } from '../store/modelStore';
+import { useModelStore, getAllAttributes } from '../store/modelStore';
 
 const handleStyle = {
   width: 10, height: 10,
@@ -10,11 +10,14 @@ const handleStyle = {
 
 export default function ObjectNode({ id, selected }) {
   const obj = useModelStore((s) => s.instanceModels[s.currentIMIndex]?.objects.find((o) => o.id === id));
+  const metaModel = useModelStore((s) => s.metaModel);
   const conformanceResults = useModelStore((s) => s.conformanceResults);
   if (!obj) return null;
 
-  const issues = conformanceResults.filter((r) => r.id === id);
-  const isValid = issues.length === 0;
+  const className = metaModel.classes.find((c) => c.id === obj.classId)?.name ?? obj.classId;
+  const allAttrs  = getAllAttributes(obj.classId, metaModel);
+  const issues    = conformanceResults.filter((r) => r.id === id);
+  const isValid   = issues.length === 0;
 
   return (
     <div
@@ -42,7 +45,7 @@ export default function ObjectNode({ id, selected }) {
       }}>
         <div>
           <span style={{  }}>{obj.name}: </span>
-          <span style={{ fontWeight: 400, opacity: 0.8, textDecoration: 'underline'}}>{obj.className}</span>
+          <span style={{ fontWeight: 400, opacity: 0.8, textDecoration: 'underline'}}>{className}</span>
         </div>
         <span style={{
           fontSize: 11,
@@ -56,19 +59,20 @@ export default function ObjectNode({ id, selected }) {
       </div>
 
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--iml-border)' }}>
-        {obj.slots.length === 0 ? (
+        {allAttrs.length === 0 ? (
           <div style={{ padding: '4px 10px', color: 'rgba(255,255,255,0.35)', fontSize: 12, fontStyle: 'italic' }}>
             no attributes
           </div>
         ) : (
-          obj.slots.map((sl) => {
-            const isMulti = Array.isArray(sl.values);
+          allAttrs.map((attr) => {
+            const val     = obj.attributeValues?.[attr.id];
+            const isMulti = Array.isArray(val);
             const display = isMulti
-              ? (sl.values.filter(Boolean).join(', ') || null)
-              : (sl.value || null);
+              ? (val.filter(Boolean).join(', ') || null)
+              : (val || null);
             return (
-              <div key={sl.attrId} style={{ padding: '2px 10px', color: '#e2e8f0', fontSize: 12 }}>
-                {sl.attrName} ={' '}
+              <div key={attr.id} style={{ padding: '2px 10px', color: '#e2e8f0', fontSize: 12 }}>
+                {attr.name} ={' '}
                 <span style={{ color: display ? '#93c5fd' : 'rgba(255,255,255,0.3)' }}>
                   {display ?? '—'}
                 </span>

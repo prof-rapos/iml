@@ -168,106 +168,32 @@ export function seedDemoModel() {
         {
           "id": "mecOp0vA",
           "classId": "cls-owner",
-          "className": "Owner",
           "name": "Bob",
-          "slots": [
-            {
-              "attrId": "a5",
-              "attrName": "fullName",
-              "value": "Bob Smith"
-            },
-            {
-              "attrId": "a6",
-              "attrName": "email",
-              "value": "bob_smith@gmail.com"
-            }
-          ]
+          "attributeValues": { "a5": "Bob Smith", "a6": "bob_smith@gmail.com" }
         },
         {
           "id": "pqelQqxL",
           "classId": "cls-owner",
-          "className": "Owner",
           "name": "Alice",
-          "slots": [
-            {
-              "attrId": "a5",
-              "attrName": "fullName",
-              "value": "Alice Smith"
-            },
-            {
-              "attrId": "a6",
-              "attrName": "email",
-              "value": "a_smith_89@gmail.com"
-            }
-          ]
+          "attributeValues": { "a5": "Alice Smith", "a6": "a_smith_89@gmail.com" }
         },
         {
           "id": "hP7rJ06Z",
           "classId": "cls-owner",
-          "className": "Owner",
           "name": "Catherine",
-          "slots": [
-            {
-              "attrId": "a5",
-              "attrName": "fullName",
-              "value": "Catherine Smith"
-            },
-            {
-              "attrId": "a6",
-              "attrName": "email",
-              "value": "catsmith@gmail.com"
-            }
-          ]
+          "attributeValues": { "a5": "Catherine Smith", "a6": "catsmith@gmail.com" }
         },
         {
           "id": "8oJLsMa2",
           "classId": "cls-dog",
-          "className": "Dog",
           "name": "Spot",
-          "slots": [
-            {
-              "attrId": "a1",
-              "attrName": "name",
-              "value": "Spot"
-            },
-            {
-              "attrId": "a2",
-              "attrName": "age",
-              "value": "8"
-            },
-            {
-              "attrId": "a3",
-              "attrName": "breed",
-              "value": "Black Lab"
-            }
-          ]
+          "attributeValues": { "a1": "Spot", "a2": "8", "a3": "Black Lab" }
         },
         {
           "id": "GTNsjLXL",
           "classId": "aa_mA9El",
-          "className": "Fish",
           "name": "Goldie",
-          "slots": [
-            {
-              "attrId": "a1",
-              "attrName": "name",
-              "value": "Goldie"
-            },
-            {
-              "attrId": "a2",
-              "attrName": "age",
-              "value": "2"
-            },
-            {
-              "attrId": "Har0fs2R",
-              "attrName": "color",
-              "values": [
-                "red",
-                "white",
-                "orange"
-              ]
-            }
-          ]
+          "attributeValues": { "a1": "Goldie", "a2": "2", "Har0fs2R": ["red", "white", "orange"] }
         }
       ],
       "links": [

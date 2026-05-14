@@ -59,6 +59,60 @@ function hasRelationPath(fromId, toId, kind, relations, visited = new Set()) {
   return outgoing.some((r) => hasRelationPath(r.target, toId, kind, relations, visited));
 }
 
+// ── Attribute type-conversion helpers ────────────────────────────────────────
+// fallback: meta-model defaultValue → type default
+function typeDefault(type, metaAttr) {
+  const md = metaAttr?.defaultValue;
+  if (md !== undefined && String(md).trim() !== '') return String(md);
+  switch (type) {
+    case 'INT':     return '0';
+    case 'DOUBLE':  return '0';
+    case 'BOOLEAN': return 'false';
+    default:        return '';
+  }
+}
+
+function convertSingle(val, fromType, toType, metaAttr) {
+  const s = String(val ?? '').trim();
+  if (!s) return '';                          // empty stays empty
+  if (toType === 'STRING') return s;          // anything → string: trivial
+
+  if (fromType === 'BOOLEAN') {
+    const b = s === 'true';
+    if (toType === 'INT')    return b ? '1' : '0';
+    if (toType === 'DOUBLE') return b ? '1' : '0';
+  }
+
+  if (fromType === 'INT' || fromType === 'DOUBLE') {
+    const n = parseFloat(s);
+    if (toType === 'BOOLEAN') return (!isNaN(n) && n !== 0) ? 'true' : 'false';
+    if (toType === 'INT')     return isNaN(n) ? typeDefault('INT',    metaAttr) : String(Math.trunc(n));
+    if (toType === 'DOUBLE')  return isNaN(n) ? typeDefault('DOUBLE', metaAttr) : String(n);
+  }
+
+  // fromType === 'STRING'
+  if (toType === 'INT') {
+    const n = parseInt(s, 10);
+    return isNaN(n) ? typeDefault('INT', metaAttr) : String(n);
+  }
+  if (toType === 'DOUBLE') {
+    const n = parseFloat(s);
+    return isNaN(n) ? typeDefault('DOUBLE', metaAttr) : String(n);
+  }
+  if (toType === 'BOOLEAN') {
+    if (s === 'true'  || s === '1') return 'true';
+    if (s === 'false' || s === '0') return 'false';
+    return typeDefault('BOOLEAN', metaAttr);
+  }
+  return typeDefault(toType, metaAttr);
+}
+
+function convertAttrValue(val, fromType, toType, metaAttr) {
+  if (fromType === toType) return val;
+  if (Array.isArray(val)) return val.map((v) => convertSingle(v, fromType, toType, metaAttr));
+  return convertSingle(val, fromType, toType, metaAttr);
+}
+
 // ── Java keyword / reserved name blacklist ────────────────────────────────────
 const JAVA_KEYWORDS = new Set([
   'abstract','assert','boolean','break','byte','case','catch','char','class',
@@ -282,11 +336,12 @@ export const useModelStore = create((set, get) => ({
         },
         instanceModels: s.instanceModels.map((im) => ({
           ...im,
-          objects: im.objects.map((o) =>
-            affected.has(o.classId)
-              ? { ...o, slots: [...o.slots, { attrId, attrName: full.name, ...(full.upperBound !== 1 ? { values: [] } : { value: '' }) }] }
-              : o
-          ),
+          objects: im.objects.map((o) => {
+            if (!affected.has(o.classId)) return o;
+            const hasDef = full.defaultValue !== undefined && String(full.defaultValue).trim() !== '';
+            const initVal = full.upperBound !== 1 ? [] : (hasDef ? String(full.defaultValue) : '');
+            return { ...o, attributeValues: { ...o.attributeValues, [attrId]: initVal } };
+          }),
         })),
       };
     });
@@ -313,31 +368,30 @@ export const useModelStore = create((set, get) => ({
     const wasMulti   = oldAttr ? oldAttr.upperBound !== 1 : false;
     const isNowMulti = newUpper !== 1;
     const migrate    = wasMulti !== isNowMulti;
+    const oldType    = oldAttr?.type;
+    const newType    = patch.type ?? oldType;
+    const typeChanged = !!oldType && oldType !== newType;
     const affected   = new Set([classId, ...getSubclassIds(classId, s.metaModel)]);
 
-    const instanceModels = (patch.name || migrate)
+    const instanceModels = (migrate || typeChanged)
       ? s.instanceModels.map((im) => ({
           ...im,
           objects: im.objects.map((o) => {
             if (!affected.has(o.classId)) return o;
-            return {
-              ...o,
-              slots: o.slots.map((sl) => {
-                if (sl.attrId !== attrId) return sl;
-                let next = sl;
-                if (migrate) {
-                  if (isNowMulti) {
-                    const { value, ...rest } = next;
-                    next = { ...rest, values: value && value.trim() ? [value] : [] };
-                  } else {
-                    const { values, ...rest } = next;
-                    next = { ...rest, value: values?.[0] ?? '' };
-                  }
-                }
-                if (patch.name) next = { ...next, attrName: patch.name };
-                return next;
-              }),
-            };
+            let av = { ...o.attributeValues };
+
+            if (migrate) {
+              const oldVal = av[attrId];
+              av[attrId] = isNowMulti
+                ? (typeof oldVal === 'string' && oldVal.trim() ? [oldVal] : [])
+                : (Array.isArray(oldVal) ? (oldVal[0] ?? '') : (oldVal ?? ''));
+            }
+
+            if (typeChanged) {
+              av[attrId] = convertAttrValue(av[attrId], oldType, newType, oldAttr);
+            }
+
+            return { ...o, attributeValues: av };
           }),
         }))
       : s.instanceModels;
@@ -368,7 +422,9 @@ export const useModelStore = create((set, get) => ({
       instanceModels: s.instanceModels.map((im) => ({
         ...im,
         objects: im.objects.map((o) =>
-          affected.has(o.classId) ? { ...o, slots: o.slots.filter((sl) => sl.attrId !== attrId) } : o
+          affected.has(o.classId)
+            ? { ...o, attributeValues: Object.fromEntries(Object.entries(o.attributeValues ?? {}).filter(([k]) => k !== attrId)) }
+            : o
         ),
       })),
     };
@@ -533,17 +589,12 @@ export const useModelStore = create((set, get) => ({
     const cls = mm.classes.find((c) => c.id === classId);
     if (!cls) return null;
     const allAttrs = getAllAttributes(classId, mm);
-    const obj = {
-      id, classId, className: cls.name,
-      name: `${cls.name}1`,
-      slots: allAttrs.map((a) => {
-        const hasDef = a.defaultValue !== undefined && String(a.defaultValue).trim() !== '';
-        return {
-          attrId: a.id, attrName: a.name,
-          ...(a.upperBound !== 1 ? { values: [] } : { value: hasDef ? String(a.defaultValue) : '' }),
-        };
-      }),
-    };
+    const attributeValues = {};
+    for (const a of allAttrs) {
+      const hasDef = a.defaultValue !== undefined && String(a.defaultValue).trim() !== '';
+      attributeValues[a.id] = a.upperBound !== 1 ? [] : (hasDef ? String(a.defaultValue) : '');
+    }
+    const obj = { id, classId, name: `${cls.name}1`, attributeValues };
     set((s) => ({
       instanceModels: s.instanceModels.map((im, i) =>
         i === s.currentIMIndex ? { ...im, objects: [...im.objects, obj] } : im
@@ -569,7 +620,7 @@ export const useModelStore = create((set, get) => ({
             ...im,
             objects: im.objects.map((o) =>
               o.id === objId
-                ? { ...o, slots: o.slots.map((sl) => sl.attrId === attrId ? { ...sl, values } : sl) }
+                ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: values } }
                 : o
             ),
           }
@@ -585,7 +636,7 @@ export const useModelStore = create((set, get) => ({
             ...im,
             objects: im.objects.map((o) =>
               o.id === objId
-                ? { ...o, slots: o.slots.map((sl) => sl.attrId === attrId ? { ...sl, value } : sl) }
+                ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: value } }
                 : o
             ),
           }
@@ -681,18 +732,18 @@ export const useModelStore = create((set, get) => ({
         errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}" instantiates abstract class "${cls.name}"` });
       }
       for (const attr of getAllAttributes(obj.classId, metaModel)) {
-        const slot = obj.slots.find((sl) => sl.attrId === attr.id);
-        if (!slot) continue;
-        const isMulti = Array.isArray(slot.values);
+        if (!obj.attributeValues || !(attr.id in obj.attributeValues)) continue;
+        const rawVal  = obj.attributeValues[attr.id];
+        const isMulti = Array.isArray(rawVal);
 
         if (isMulti) {
-          const nonEmpty = slot.values.filter((v) => v.trim() !== '');
+          const nonEmpty = rawVal.filter((v) => String(v).trim() !== '');
           if (attr.lowerBound > 0 && nonEmpty.length < attr.lowerBound)
             errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" needs at least ${attr.lowerBound} value(s) — found ${nonEmpty.length}` });
           if (attr.upperBound !== -1 && nonEmpty.length > attr.upperBound)
             errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" allows at most ${attr.upperBound} value(s) — found ${nonEmpty.length}` });
           for (const val of nonEmpty) {
-            if (attr.type === 'INT'     && !/^-?\d+$/.test(val.trim()))
+            if (attr.type === 'INT'     && !/^-?\d+$/.test(String(val).trim()))
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must contain integers (got "${val}")` });
             if (attr.type === 'DOUBLE'  && isNaN(Number(val)))
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must contain numbers (got "${val}")` });
@@ -700,7 +751,7 @@ export const useModelStore = create((set, get) => ({
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must contain true/false (got "${val}")` });
           }
         } else {
-          const val = slot.value ?? '';
+          const val = rawVal ?? '';
           if (attr.lowerBound > 0 && val === '') {
             errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": required attribute "${attr.name}" is empty` });
             continue;
@@ -727,9 +778,9 @@ export const useModelStore = create((set, get) => ({
       const srcClsName = metaModel.classes.find((c) => c.id === rel.source)?.name ?? '?';
       const tgtClsName = metaModel.classes.find((c) => c.id === rel.target)?.name ?? '?';
       if (srcObj && !isConformantClass(srcObj.classId, rel.source, metaModel.relations))
-        errors.push({ kind: 'link', id: lnk.id, msg: `Relation "${relName}": source "${srcObj.name}" is "${srcObj.className}", expected "${srcClsName}" or a subclass` });
+        errors.push({ kind: 'link', id: lnk.id, msg: `Relation "${relName}": source "${srcObj.name}" is "${metaModel.classes.find((c) => c.id === srcObj.classId)?.name ?? srcObj.classId}", expected "${srcClsName}" or a subclass` });
       if (tgtObj && !isConformantClass(tgtObj.classId, rel.target, metaModel.relations))
-        errors.push({ kind: 'link', id: lnk.id, msg: `Relation "${relName}": target "${tgtObj.name}" is "${tgtObj.className}", expected "${tgtClsName}" or a subclass` });
+        errors.push({ kind: 'link', id: lnk.id, msg: `Relation "${relName}": target "${tgtObj.name}" is "${metaModel.classes.find((c) => c.id === tgtObj.classId)?.name ?? tgtObj.classId}", expected "${tgtClsName}" or a subclass` });
     }
 
     for (const rel of metaModel.relations) {
@@ -774,11 +825,39 @@ export const useModelStore = create((set, get) => ({
   },
 
   loadFromJSON: (data) => {
-    if (data.metaModel)      set({ metaModel: data.metaModel });
-    if (data.instanceModels) set({ instanceModels: data.instanceModels, currentIMIndex: 0 });
-    // Legacy single-IM files
-    else if (data.instanceModel) set({ instanceModels: [data.instanceModel], currentIMIndex: 0 });
-    if (data.layouts)        set({ layouts: data.layouts });
+    if (data.metaModel) set({ metaModel: data.metaModel });
+
+    const normalizeIM = (im) => ({
+      ...im,
+      objects: (im.objects ?? []).map((obj) => {
+        // Legacy format (slots array) → attributeValues map
+        if (Array.isArray(obj.slots) && !obj.attributeValues) {
+          const attributeValues = {};
+          for (const sl of obj.slots) {
+            attributeValues[sl.attrId] = sl.values !== undefined ? sl.values : (sl.value ?? '');
+          }
+          const { slots, className, ...rest } = obj;
+          return { ...rest, attributeValues };
+        }
+        // New format: strip legacy className field if present
+        const { className, ...rest } = obj;
+        return rest;
+      }),
+      // Normalise link endpoints: source/target are the canonical field names.
+      links: (im.links ?? []).map((l) => ({
+        ...l,
+        source: l.source ?? l.sourceId,
+        target: l.target ?? l.targetId,
+      })),
+    });
+
+    if (data.instanceModels) {
+      set({ instanceModels: data.instanceModels.map(normalizeIM), currentIMIndex: 0 });
+    } else if (data.instanceModel) {
+      set({ instanceModels: [normalizeIM(data.instanceModel)], currentIMIndex: 0 });
+    }
+
+    if (data.layouts) set({ layouts: data.layouts });
     set({ nodes: [], edges: [], selectedId: null, conformanceResults: [] });
     get().log('Model loaded.');
     get().rebuildCanvas(get().mode);
@@ -825,7 +904,9 @@ export const useModelStore = create((set, get) => ({
         edges: currIM.links.map((l) => {
           const rel = s.metaModel.relations.find((r) => r.id === l.relationId);
           return {
-            id: l.id, source: l.source, target: l.target,
+            id: l.id,
+            source: l.source ?? l.sourceId,
+            target: l.target ?? l.targetId,
             sourceHandle: l.sourceHandle ?? null,
             targetHandle: l.targetHandle ?? null,
             type: 'linkEdge',

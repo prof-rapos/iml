@@ -34,10 +34,10 @@ export default function Sidebar() {
   const coEvoWarnings = (instanceModel?.objects ?? []).flatMap((obj) => {
     const cls = metaModelForCoEvo.classes.find((c) => c.id === obj.classId);
     if (!cls) return [];
-    const allAttrIds = new Set(getAllAttributes(obj.classId, metaModelForCoEvo).map((a) => a.id));
-    const orphanSlots = obj.slots.filter((sl) => !allAttrIds.has(sl.attrId));
-    return orphanSlots.length > 0
-      ? [`"${obj.name}": ${orphanSlots.length} stale slot(s)`]
+    const allAttrIds  = new Set(getAllAttributes(obj.classId, metaModelForCoEvo).map((a) => a.id));
+    const orphanKeys  = Object.keys(obj.attributeValues ?? {}).filter((k) => !allAttrIds.has(k));
+    return orphanKeys.length > 0
+      ? [`"${obj.name}": ${orphanKeys.length} stale attribute(s)`]
       : [];
   });
 
