@@ -30,6 +30,25 @@ export default function IDEView() {
 
   const showEmptyState = files.length === 0 && !newProjectOpen;
 
+  const handleImportZip = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.zip';
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const JSZip = (await import('jszip')).default;
+      const zip = await JSZip.loadAsync(file);
+      const loaded = [];
+      for (const [path, entry] of Object.entries(zip.files)) {
+        if (!entry.dir && path.endsWith('.java'))
+          loaded.push({ path, content: await entry.async('string') });
+      }
+      if (loaded.length > 0) loadFiles(loaded, loaded[0].path);
+    };
+    input.click();
+  };
+
   const handleNewFile = ({ path, content }) => {
     setNewFileDialogOpen(false);
     addFile(path, content);
@@ -59,7 +78,7 @@ export default function IDEView() {
       <IDETopbar />
 
       {showEmptyState ? (
-        <EmptyState onNew={() => setNewProjectOpen(true)} />
+        <EmptyState onNew={() => setNewProjectOpen(true)} onImportZip={handleImportZip} />
       ) : (
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           {/* File tree */}
@@ -172,7 +191,7 @@ function DeleteConfirmDialog({ filename, onConfirm, onCancel }) {
   );
 }
 
-function EmptyState({ onNew }) {
+function EmptyState({ onNew, onImportZip }) {
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, color: TEXT_DIM }}>
       <svg viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" strokeWidth="1.5" opacity="0.4">
@@ -181,17 +200,29 @@ function EmptyState({ onNew }) {
       </svg>
       <div style={{ fontSize: 15, fontWeight: 600, color: TEXT, textAlign: 'center' }}>No project open</div>
       <div style={{ fontSize: 13, color: TEXT_DIM, textAlign: 'center', maxWidth: 280, lineHeight: 1.6 }}>
-        Start a new project, import files, or generate code from the Structural Modeling module.
+        Start a new project, import an existing one, or generate code from the Structural Modeling module.
       </div>
-      <button
-        onClick={onNew}
-        style={{
-          marginTop: 8, padding: '10px 24px', borderRadius: 8, border: 'none',
-          background: '#2563eb', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-        }}
-      >
-        New Project
-      </button>
+      <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+        <button
+          onClick={onNew}
+          style={{
+            padding: '10px 24px', borderRadius: 8, border: 'none',
+            background: '#2563eb', color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          New Project
+        </button>
+        <button
+          onClick={onImportZip}
+          style={{
+            padding: '10px 24px', borderRadius: 8,
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.07)', color: '#f1f5f9', fontSize: 14, fontWeight: 600, cursor: 'pointer',
+          }}
+        >
+          Import ZIP
+        </button>
+      </div>
     </div>
   );
 }
