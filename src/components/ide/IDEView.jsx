@@ -25,9 +25,9 @@ export default function IDEView() {
   } = useIdeStore();
 
   const [newFileDialogOpen, setNewFileDialogOpen] = useState(false);
-  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen]       = useState(false);
+  const [deleteConfirmPath, setDeleteConfirmPath] = useState(null);
 
-  // Open new project wizard on first load if no files
   const showEmptyState = files.length === 0 && !newProjectOpen;
 
   const handleNewFile = ({ path, content }) => {
@@ -35,9 +35,11 @@ export default function IDEView() {
     addFile(path, content);
   };
 
-  const handleDelete = (path) => {
-    if (!window.confirm(`Delete ${basename(path)}?`)) return;
-    deleteFile(path);
+  const handleDelete = (path) => setDeleteConfirmPath(path);
+
+  const confirmDelete = () => {
+    deleteFile(deleteConfirmPath);
+    setDeleteConfirmPath(null);
   };
 
   const handleRename = (oldPath, newFilename) => {
@@ -54,7 +56,7 @@ export default function IDEView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117', color: TEXT, fontFamily: 'var(--iml-font-sans)' }}>
-      <IDETopbar onNewProject={() => {}} />
+      <IDETopbar />
 
       {showEmptyState ? (
         <EmptyState onNew={() => setNewProjectOpen(true)} />
@@ -140,6 +142,32 @@ export default function IDEView() {
           onCancel={() => setNewProjectOpen(false)}
         />
       )}
+
+      {/* Themed delete confirm */}
+      {deleteConfirmPath && (
+        <DeleteConfirmDialog
+          filename={basename(deleteConfirmPath)}
+          onConfirm={confirmDelete}
+          onCancel={() => setDeleteConfirmPath(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteConfirmDialog({ filename, onConfirm, onCancel }) {
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }} onClick={onCancel}>
+      <div style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '24px 28px 20px', width: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', color: '#e6edf3', fontFamily: 'var(--iml-font-sans)' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Delete file?</div>
+        <div style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.6, marginBottom: 20 }}>
+          <code style={{ fontFamily: 'ui-monospace, monospace', fontSize: 12, color: '#e6edf3' }}>{filename}</code> will be permanently removed from the project.
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <button onClick={onCancel} style={{ padding: '7px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'transparent', color: '#8b949e', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
+          <button onClick={onConfirm} style={{ padding: '7px 16px', borderRadius: 6, border: 'none', background: '#dc2626', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>Delete</button>
+        </div>
+      </div>
     </div>
   );
 }

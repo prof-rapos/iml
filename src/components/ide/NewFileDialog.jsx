@@ -11,21 +11,16 @@ const INPUT_BG = '#0d1117';
 const KINDS = ['Class', 'Abstract Class', 'Interface', 'Enum'];
 
 function buildContent(pkg, name, kind, withMain) {
+  const pkgLine = pkg ? `package ${pkg};\n\n` : '';
+  if (kind === 'Enum') return `${pkgLine}public enum ${name} {\n    ;\n}\n`;
   const decl =
     kind === 'Abstract Class' ? `public abstract class ${name}` :
     kind === 'Interface'      ? `public interface ${name}` :
-    kind === 'Enum'           ? `public enum ${name}` :
     `public class ${name}`;
-
-  if (kind === 'Enum') {
-    return `package ${pkg};\n\npublic enum ${name} {\n    ;\n}\n`;
-  }
-
   const mainBlock = withMain && kind === 'Class'
     ? `\n    public static void main(String[] args) {\n        \n    }\n`
     : '\n    \n';
-
-  return `package ${pkg};\n\n${decl} {${mainBlock}}\n`;
+  return `${pkgLine}${decl} {${mainBlock}}\n`;
 }
 
 export default function NewFileDialog({ projectPackage, existingPaths, onConfirm, onCancel }) {
@@ -34,10 +29,14 @@ export default function NewFileDialog({ projectPackage, existingPaths, onConfirm
   const [withMain, setWithMain] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
+  const filePath = (n) => projectPackage
+    ? `${packageToDir(projectPackage)}/${n}.java`
+    : `${n}.java`;
+
   const nameErr = submitted
     ? !name.trim() ? 'Class name is required'
       : !/^[A-Z][a-zA-Z0-9_]*$/.test(name.trim()) ? 'Must start with an uppercase letter'
-      : existingPaths.includes(`${packageToDir(projectPackage)}/${name.trim()}.java`) ? 'A file with this name already exists'
+      : existingPaths.includes(filePath(name.trim())) ? 'A file with this name already exists'
       : null
     : null;
 
@@ -45,7 +44,7 @@ export default function NewFileDialog({ projectPackage, existingPaths, onConfirm
     setSubmitted(true);
     const trimmed = name.trim();
     if (!trimmed || !/^[A-Z][a-zA-Z0-9_]*$/.test(trimmed)) return;
-    const path = `${packageToDir(projectPackage)}/${trimmed}.java`;
+    const path = filePath(trimmed);
     if (existingPaths.includes(path)) return;
     const content = buildContent(projectPackage, trimmed, kind, withMain);
     onConfirm({ path, content });

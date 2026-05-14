@@ -8,7 +8,7 @@ const TEXT_DIM = '#8b949e';
 const ACCENT = '#2563eb';
 const INPUT_BG = '#0d1117';
 
-function Field({ label, value, onChange, placeholder, error }) {
+function Field({ label, value, onChange, placeholder, error, hint }) {
   return (
     <div style={{ marginBottom: 14 }}>
       <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: TEXT_DIM, marginBottom: 5 }}>
@@ -26,13 +26,15 @@ function Field({ label, value, onChange, placeholder, error }) {
         }}
       />
       {error && <div style={{ fontSize: 11, color: '#f85149', marginTop: 4 }}>{error}</div>}
+      {!error && hint && <div style={{ fontSize: 11, color: TEXT_DIM, marginTop: 4 }}>{hint}</div>}
     </div>
   );
 }
 
 function validatePackage(v) {
-  if (!v.trim()) return 'Package name is required';
-  if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/.test(v.trim())) return 'Use lowercase identifiers separated by dots (e.g. com.example.hello)';
+  if (!v.trim()) return null; // optional
+  if (!/^[a-z][a-z0-9]*(\.[a-z][a-z0-9]*)*$/.test(v.trim()))
+    return 'Use lowercase identifiers separated by dots (e.g. com.example.hello)';
   return null;
 }
 
@@ -43,13 +45,13 @@ function validateClass(v) {
 }
 
 export default function NewProjectWizard({ onConfirm, onCancel }) {
-  const [pkg, setPkg] = useState('');
+  const [pkg, setPkg]           = useState('');
   const [className, setClassName] = useState('Main');
-  const [withMain, setWithMain] = useState(true);
+  const [withMain, setWithMain]   = useState(true);
   const [submitted, setSubmitted] = useState(false);
 
-  const pkgErr  = submitted ? validatePackage(pkg)   : null;
-  const clsErr  = submitted ? validateClass(className) : null;
+  const pkgErr = submitted ? validatePackage(pkg)    : null;
+  const clsErr = submitted ? validateClass(className) : null;
 
   const handleSubmit = () => {
     setSubmitted(true);
@@ -57,14 +59,13 @@ export default function NewProjectWizard({ onConfirm, onCancel }) {
 
     const pkgTrim = pkg.trim();
     const clsTrim = className.trim();
-    const dir     = packageToDir(pkgTrim);
-    const path    = `${dir}/${clsTrim}.java`;
+    const path    = pkgTrim ? `${packageToDir(pkgTrim)}/${clsTrim}.java` : `${clsTrim}.java`;
 
+    const pkgLine  = pkgTrim ? `package ${pkgTrim};\n\n` : '';
     const mainBody = withMain
       ? `\n    public static void main(String[] args) {\n        System.out.println("Hello, World!");\n    }\n`
       : '\n    \n';
-
-    const content = `package ${pkgTrim};\n\npublic class ${clsTrim} {${mainBody}}\n`;
+    const content = `${pkgLine}public class ${clsTrim} {${mainBody}}\n`;
 
     onConfirm({ packageName: pkgTrim, files: [{ path, content }], activePath: path });
   };
@@ -81,7 +82,14 @@ export default function NewProjectWizard({ onConfirm, onCancel }) {
         <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>New Project</div>
         <div style={{ fontSize: 12, color: TEXT_DIM, marginBottom: 20 }}>Configure your Java project</div>
 
-        <Field label="Package name" value={pkg} onChange={setPkg} placeholder="com.example.hello" error={pkgErr} />
+        <Field
+          label="Package name (optional)"
+          value={pkg}
+          onChange={setPkg}
+          placeholder="com.example.hello"
+          error={pkgErr}
+          hint="Leave blank to place files in the default package"
+        />
         <Field label="Main class name" value={className} onChange={setClassName} placeholder="Main" error={clsErr} />
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 22 }}>

@@ -1,15 +1,8 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useModelStore } from '../../store/modelStore';
 import { useIdeStore } from '../../store/ideStore';
 import JSZip from 'jszip';
 import NewProjectWizard from './NewProjectWizard';
-
-const TEXT = '#f1f5f9';
-const TEXT_DIM = '#94a3b8';
-const BORDER = 'rgba(255,255,255,0.15)';
-const BTN = 'rgba(255,255,255,0.07)';
-const BTN_HOVER = 'rgba(255,255,255,0.14)';
-const ACCENT = '#2563eb';
 
 async function exportZip(files, name = 'project') {
   const zip = new JSZip();
@@ -23,57 +16,49 @@ async function exportZip(files, name = 'project') {
   URL.revokeObjectURL(url);
 }
 
-function TopBtn({ children, onClick, title, active, accent, disabled }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 6,
-        padding: '0 12px', height: 32, borderRadius: 6, cursor: disabled ? 'default' : 'pointer',
-        border: `1px solid ${active || accent ? ACCENT : BORDER}`,
-        background: accent ? ACCENT : active ? 'rgba(37,99,235,0.2)' : hover && !disabled ? BTN_HOVER : BTN,
-        color: disabled ? TEXT_DIM : TEXT, fontSize: 13, fontWeight: 500,
-        opacity: disabled ? 0.5 : 1,
-      }}
-    >{children}</button>
-  );
-}
-
-export default function IDETopbar({ onNewProject }) {
-  const setAppView     = useModelStore((s) => s.setAppView);
+export default function IDETopbar() {
+  const setAppView = useModelStore((s) => s.setAppView);
   const { files, clearProject, loadFiles, setProjectPackage } = useIdeStore();
 
-  const [importMenuOpen, setImportMenuOpen]   = useState(false);
+  const [menuOpen, setMenuOpen]               = useState(false);
   const [confirmNew, setConfirmNew]           = useState(false);
   const [newProjectWizard, setNewProjectWizard] = useState(false);
+  const menuRef = useRef(null);
 
   const hasFiles = files.length > 0;
 
+  // Close menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [menuOpen]);
+
+  const close = () => setMenuOpen(false);
+
   const handleExportZip = async () => {
+    close();
     if (!hasFiles) return;
     await exportZip(files, 'iml-project');
   };
 
   const handleImportZip = () => {
-    setImportMenuOpen(false);
+    close();
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.zip';
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const JSZip = (await import('jszip')).default;
-      const zip = await JSZip.loadAsync(file);
+      const JSZipMod = (await import('jszip')).default;
+      const zip = await JSZipMod.loadAsync(file);
       const loaded = [];
       for (const [path, entry] of Object.entries(zip.files)) {
-        if (!entry.dir && path.endsWith('.java')) {
+        if (!entry.dir && path.endsWith('.java'))
           loaded.push({ path, content: await entry.async('string') });
-        }
       }
       if (loaded.length > 0) loadFiles(loaded, loaded[0].path);
     };
@@ -81,28 +66,24 @@ export default function IDETopbar({ onNewProject }) {
   };
 
   const handleImportJava = () => {
-    setImportMenuOpen(false);
+    close();
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.java';
     input.multiple = true;
     input.onchange = async (e) => {
-      const fileList = Array.from(e.target.files);
-      const loaded = await Promise.all(fileList.map(async (f) => ({
-        path: f.name,
-        content: await f.text(),
-      })));
+      const loaded = await Promise.all(
+        Array.from(e.target.files).map(async (f) => ({ path: f.name, content: await f.text() }))
+      );
       if (loaded.length > 0) loadFiles(loaded, loaded[0].path);
     };
     input.click();
   };
 
   const handleNewProject = () => {
-    if (hasFiles) {
-      setConfirmNew(true);
-    } else {
-      setNewProjectWizard(true);
-    }
+    close();
+    if (hasFiles) setConfirmNew(true);
+    else setNewProjectWizard(true);
   };
 
   const confirmAndNew = async (doExport) => {
@@ -116,100 +97,95 @@ export default function IDETopbar({ onNewProject }) {
     setNewProjectWizard(false);
     setProjectPackage(packageName);
     loadFiles(newFiles, activePath);
-    if (onNewProject) onNewProject();
   };
 
   return (
     <>
       <div style={{
-        height: 52, background: '#0f172a', color: TEXT,
-        display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px',
+        height: 52, background: '#0f172a', color: '#f1f5f9',
+        display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
         borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
       }}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginRight: 4 }}>
+        {/* Logo + title */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{ width: 60, height: 36, background: '#fff', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
             <img src={`${import.meta.env.BASE_URL}logos/logo.png`} alt="IML" style={{ width: 50, height: 50, objectFit: 'contain' }} />
           </div>
-          <span style={{ fontWeight: 700, fontSize: 14, letterSpacing: '-0.3px' }}>IML IDE</span>
+          <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.3px' }}>Instructional Modeling Language</span>
         </div>
-
-        <div style={{ width: 1, height: 24, background: 'rgba(255,255,255,0.12)', margin: '0 2px' }} />
-
-        {/* Back */}
-        <TopBtn onClick={() => setAppView('structural')} title="Back to Structural Modeling">
-          ← Structural
-        </TopBtn>
-
-        {/* New Project */}
-        <TopBtn onClick={handleNewProject} title="Start a new project">
-          New Project
-        </TopBtn>
-
-        {/* Import dropdown */}
-        <div style={{ position: 'relative' }}>
-          <TopBtn onClick={() => setImportMenuOpen((o) => !o)} title="Import files">
-            Import ▾
-          </TopBtn>
-          {importMenuOpen && (
-            <div
-              style={{
-                position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 200,
-                background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
-                borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
-                minWidth: 160, overflow: 'hidden',
-              }}
-              onMouseLeave={() => setImportMenuOpen(false)}
-            >
-              <DropItem onClick={handleImportZip}>From ZIP</DropItem>
-              <DropItem onClick={handleImportJava}>Java file(s)</DropItem>
-            </div>
-          )}
-        </div>
-
-        {/* Export ZIP */}
-        <TopBtn onClick={handleExportZip} disabled={!hasFiles} title="Export project as ZIP">
-          Export ZIP
-        </TopBtn>
 
         <div style={{ flex: 1 }} />
 
-        {/* Home */}
-        <TopBtn onClick={() => setAppView('home')} title="Home">
-          <svg viewBox="0 0 20 20" width="15" height="15" fill="currentColor">
+        {/* Home button */}
+        <button
+          onClick={() => setAppView('home')}
+          title="Home"
+          style={{
+            width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.07)', color: '#f1f5f9',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
             <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 003 11h1v6a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6h1a1 1 0 00.707-1.707l-7-7z" />
           </svg>
-        </TopBtn>
+        </button>
+
+        {/* Hamburger menu */}
+        <div ref={menuRef} style={{ position: 'relative' }}>
+          <button
+            onClick={() => setMenuOpen((o) => !o)}
+            title="Menu"
+            style={{
+              width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: menuOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)',
+              color: '#f1f5f9',
+              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
+            }}
+          >
+            <span style={{ display: 'block', width: 16, height: 1.5, background: '#f1f5f9', borderRadius: 1 }} />
+            <span style={{ display: 'block', width: 16, height: 1.5, background: '#f1f5f9', borderRadius: 1 }} />
+            <span style={{ display: 'block', width: 16, height: 1.5, background: '#f1f5f9', borderRadius: 1 }} />
+          </button>
+
+          {menuOpen && (
+            <div style={{
+              position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 200,
+              background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
+              borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+              minWidth: 180, overflow: 'hidden',
+            }}>
+              <MenuSection label="Project" />
+              <MenuItem onClick={handleNewProject}>New Project</MenuItem>
+              <MenuDivider />
+              <MenuSection label="Import" />
+              <MenuItem onClick={handleImportZip}>From ZIP</MenuItem>
+              <MenuItem onClick={handleImportJava}>Java file(s)</MenuItem>
+              <MenuDivider />
+              <MenuSection label="Export" />
+              <MenuItem onClick={handleExportZip} disabled={!hasFiles}>Export as ZIP</MenuItem>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Confirm new project */}
       {confirmNew && (
-        <div
-          style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}
-          onClick={() => setConfirmNew(false)}
-        >
-          <div
-            style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '28px 28px 22px', width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', color: TEXT, fontFamily: 'var(--iml-font-sans)' }}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }} onClick={() => setConfirmNew(false)}>
+          <div style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '28px 28px 22px', width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', color: '#f1f5f9', fontFamily: 'var(--iml-font-sans)' }} onClick={(e) => e.stopPropagation()}>
             <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>Start a new project?</div>
-            <div style={{ fontSize: 13, color: TEXT_DIM, lineHeight: 1.6, marginBottom: 24 }}>The current project will be cleared. Save your work first?</div>
+            <div style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, marginBottom: 24 }}>The current project will be cleared. Save your work first?</div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <button onClick={() => confirmAndNew(true)} style={{ padding: '9px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: TEXT, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                Export current project as ZIP, then start new
-              </button>
-              <button onClick={() => confirmAndNew(false)} style={{ padding: '9px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: TEXT, fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                Start new without saving
-              </button>
-              <button onClick={() => setConfirmNew(false)} style={{ padding: '9px 16px', borderRadius: 6, border: `1px solid ${ACCENT}`, background: ACCENT, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>
-                Cancel
-              </button>
+              <button onClick={() => confirmAndNew(true)} style={{ padding: '9px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#f1f5f9', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>Export current project as ZIP, then start new</button>
+              <button onClick={() => confirmAndNew(false)} style={{ padding: '9px 16px', borderRadius: 6, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.06)', color: '#f1f5f9', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>Start new without saving</button>
+              <button onClick={() => setConfirmNew(false)} style={{ padding: '9px 16px', borderRadius: 6, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', textAlign: 'left' }}>Cancel</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* New project wizard */}
       {newProjectWizard && (
         <NewProjectWizard onConfirm={handleWizardConfirm} onCancel={() => setNewProjectWizard(false)} />
       )}
@@ -217,18 +193,27 @@ export default function IDETopbar({ onNewProject }) {
   );
 }
 
-function DropItem({ children, onClick }) {
+function MenuSection({ label }) {
+  return <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{label}</div>;
+}
+
+function MenuDivider() {
+  return <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />;
+}
+
+function MenuItem({ children, onClick, disabled }) {
   const [hover, setHover] = useState(false);
   return (
     <button
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{
         display: 'block', width: '100%', textAlign: 'left',
         padding: '9px 14px', fontSize: 13, fontWeight: 500,
-        background: hover ? 'rgba(255,255,255,0.08)' : 'transparent',
-        color: '#f1f5f9', border: 'none', cursor: 'pointer',
+        background: hover && !disabled ? 'rgba(255,255,255,0.08)' : 'transparent',
+        color: disabled ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
+        border: 'none', cursor: disabled ? 'default' : 'pointer',
       }}
     >{children}</button>
   );
