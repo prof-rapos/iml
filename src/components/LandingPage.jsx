@@ -29,7 +29,7 @@ const MODULES = [
     title: 'IML IDE',
     description: 'Edit, run, and debug generated code in an integrated environment.',
     color: '#059669',
-    available: false,
+    available: true,
   },
   {
     id: 'testing',
@@ -200,7 +200,7 @@ export default function LandingPage() {
           <ModuleCard
             key={mod.id}
             mod={mod}
-            onSelect={() => setAppView('structural')}
+            onSelect={(id) => setAppView(id)}
             onComingSoon={setComingSoon}
           />
         ))}

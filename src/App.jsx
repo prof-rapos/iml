@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
@@ -6,7 +6,7 @@ import ModelCanvas from './components/ModelCanvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import LandingPage from './components/LandingPage';
 import Notification from './components/Notification';
-import JavaRunnerPanel from './components/JavaRunnerPanel';
+import IDEView from './components/ide/IDEView';
 import { useModelStore } from './store/modelStore';
 import { seedDemoModel } from './utils/seedModel';
 
@@ -65,30 +65,27 @@ function SvgDefs() {
 export default function App() {
   const rebuildCanvas = useModelStore((s) => s.rebuildCanvas);
   const appView       = useModelStore((s) => s.appView);
-  const [runnerOpen, setRunnerOpen] = useState(false);
 
   useEffect(() => {
     seedDemoModel();
     setTimeout(() => rebuildCanvas('metamodel'), 50);
   }, []);
 
-  if (appView === 'home') {
-    return <LandingPage />;
-  }
+  if (appView === 'home') return <LandingPage />;
+  if (appView === 'ide')  return <IDEView />;
 
   return (
     <ReactFlowProvider>
       <SvgDefs />
       <Notification />
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <Topbar onOpenRunner={() => setRunnerOpen(true)} />
+        <Topbar />
         <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
           <Sidebar />
           <ModelCanvas />
           <PropertiesPanel />
         </div>
       </div>
-      {runnerOpen && <JavaRunnerPanel onClose={() => setRunnerOpen(false)} />}
     </ReactFlowProvider>
   );
 }

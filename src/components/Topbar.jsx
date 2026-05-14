@@ -1,19 +1,25 @@
 import { useModelStore } from '../store/modelStore';
+import { useIdeStore } from '../store/ideStore';
 import { useRef, useState, useEffect } from 'react';
 import { toJpeg } from 'html-to-image';
 import JSZip from 'jszip';
 import { generateJavaCode } from '../utils/javaCodeGen';
+import OverwriteConfirmDialog from './ide/OverwriteConfirmDialog';
 
-export default function Topbar({ onOpenRunner }) {
+export default function Topbar() {
   const mode = useModelStore((s) => s.mode);
   const metaModel = useModelStore((s) => s.metaModel);
   const instanceModel = useModelStore((s) => s.instanceModels[s.currentIMIndex]);
+  const currentIMIndex = useModelStore((s) => s.currentIMIndex);
   const getFullJSON = useModelStore((s) => s.getFullJSON);
   const loadFromJSON = useModelStore((s) => s.loadFromJSON);
   const instanceModels = useModelStore((s) => s.instanceModels);
   const setAppView = useModelStore((s) => s.setAppView);
   const conformanceResults = useModelStore((s) => s.conformanceResults);
   const notify = useModelStore((s) => s.notify);
+
+  const { files: ideFiles, loadFiles: ideLoadFiles } = useIdeStore();
+  const [overwriteDialog, setOverwriteDialog] = useState(null); // null | { generatedFiles, activePath }
 
   const fileRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -56,17 +62,20 @@ export default function Topbar({ onOpenRunner }) {
     e.target.value = '';
   };
 
-  const handleGenerateJava = async () => {
-    setMenuOpen(false);
+  const getGeneratedFiles = () => {
     if (conformanceResults.length > 0) {
       notify(`Cannot generate code: ${conformanceResults.length} conformance issue${conformanceResults.length > 1 ? 's' : ''} must be resolved first.`);
-      return;
+      return null;
     }
-    const files = generateJavaCode(metaModel, instanceModels);
+    return generateJavaCode(metaModel, instanceModels);
+  };
+
+  const handleExportZip = async () => {
+    setMenuOpen(false);
+    const files = getGeneratedFiles();
+    if (!files) return;
     const zip = new JSZip();
-    for (const { path, content } of files) {
-      zip.file(path, content);
-    }
+    for (const { path, content } of files) zip.file(path, content);
     const blob = await zip.generateAsync({ type: 'blob' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -74,6 +83,44 @@ export default function Topbar({ onOpenRunner }) {
     a.download = `${metaModel.name || 'model'}-java.zip`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleOpenInIDE = () => {
+    setMenuOpen(false);
+    const files = getGeneratedFiles();
+    if (!files) return;
+
+    // Determine active file: the currently selected instance model's file
+    const im = instanceModels[currentIMIndex];
+    const toClassName = (name) =>
+      (name || 'Class').replace(/[^a-zA-Z0-9_$\s]/g, '').trim().split(/\s+/).filter(Boolean)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('') || 'GeneratedClass';
+    const toPackageName = (name) =>
+      (name || 'model').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'model';
+    const pkgDir = `iml/${toPackageName(metaModel.name)}`;
+    const activePath = im ? `${pkgDir}/${toClassName(im.name)}.java` : files[0]?.path;
+
+    if (ideFiles.length > 0) {
+      setOverwriteDialog({ generatedFiles: files, activePath });
+    } else {
+      ideLoadFiles(files, activePath);
+      setAppView('ide');
+    }
+  };
+
+  const doLoadAndOpenIDE = async (doExport, generatedFiles, activePath) => {
+    if (doExport) {
+      const zip = new JSZip();
+      for (const f of ideFiles) zip.file(f.path, f.content);
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'iml-project.zip'; a.click();
+      URL.revokeObjectURL(url);
+    }
+    ideLoadFiles(generatedFiles, activePath);
+    setOverwriteDialog(null);
+    setAppView('ide');
   };
 
   const handleExportJpeg = async () => {
@@ -101,6 +148,7 @@ export default function Topbar({ onOpenRunner }) {
   };
 
   return (
+    <>
     <div style={{
       height: 52,
       background: '#0f172a',
@@ -177,14 +225,23 @@ export default function Topbar({ onOpenRunner }) {
             <MenuItem onClick={handleExportJpeg}>Export JPG</MenuItem>
             <MenuDivider />
             <MenuSection label="Generate" />
-            <MenuItem onClick={handleGenerateJava}>Generate Java Code</MenuItem>
-            <MenuItem onClick={() => { setMenuOpen(false); onOpenRunner(); }}>Run Java</MenuItem>
+            <MenuItem onClick={handleOpenInIDE}>Open in IDE</MenuItem>
+            <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
           </div>
         )}
       </div>
 
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoad} />
     </div>
+
+    {overwriteDialog && (
+      <OverwriteConfirmDialog
+        onExportAndProceed={() => doLoadAndOpenIDE(true, overwriteDialog.generatedFiles, overwriteDialog.activePath)}
+        onProceed={() => doLoadAndOpenIDE(false, overwriteDialog.generatedFiles, overwriteDialog.activePath)}
+        onCancel={() => setOverwriteDialog(null)}
+      />
+    )}
+    </>
   );
 }
 
