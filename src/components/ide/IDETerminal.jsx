@@ -123,10 +123,11 @@ export default function IDETerminal({ files }) {
     wsRef.current?.close();
 
     term.reset();
-    term.writeln(`\x1b[2m▶  ${selectedMain}\x1b[0m\r\n`);
+    term.writeln(`\x1b[2m▶  ${selectedMain}\x1b[0m`);
     setCollapsed(false);
     setRunning(true);
     setStatus('compiling');
+    term.focus();
 
     const { cols, rows } = term;
     const ws = new WebSocket(`${WS_URL}/terminal`);
@@ -150,8 +151,12 @@ export default function IDETerminal({ files }) {
           break;
         case 'status':
           setStatus(msg.phase);
-          if (msg.phase === 'compiling')
-            term.writeln('\x1b[2mCompiling…\x1b[0m');
+          if (msg.phase === 'compiling') {
+            term.write('\x1b[2mCompiling…\x1b[0m');
+          } else if (msg.phase === 'running') {
+            // Overwrite the "Compiling…" line with a success tick, then blank line
+            term.write('\x1b[2K\r\x1b[32m✓ Compiled\x1b[0m\r\n\n');
+          }
           break;
         case 'error':
           term.write(`\x1b[31m${msg.data}\x1b[0m`);
