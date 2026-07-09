@@ -217,7 +217,7 @@ export default function Sidebar() {
         <>
           <PaletteBtn label="Class"          color="var(--iml-primary)" onClick={() => handleAddClass(false)} />
           <PaletteBtn label="Abstract Class" color="var(--iml-secondary)" italic onClick={() => handleAddClass(true)} />
-          <PaletteBtn label="Enumeration"    color="#7e22ce" onClick={handleAddEnum} />
+          <PaletteBtn label="Enumeration"    color="var(--iml-tertiary)" onClick={handleAddEnum} />
 
           <SectionLabel>Relation Type</SectionLabel>
           {EDGE_TYPES.map((et) => (

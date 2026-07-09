@@ -10,7 +10,7 @@ export default function EnumNode({ id, selected }) {
     <div
       style={{
         background: 'var(--iml-node-bg)',
-        border: `2px solid ${selected ? 'var(--iml-primary)' : '#a855f7'}`,
+        border: `2px solid ${selected ? 'var(--iml-primary)' : 'var(--iml-tertiary)'}`,
         borderRadius: 6,
         minWidth: 150,
         fontFamily: 'var(--iml-font-sans)',
@@ -22,7 +22,7 @@ export default function EnumNode({ id, selected }) {
     >
       {/* Header with «enumeration» stereotype */}
       <div style={{
-        background: '#7e22ce',
+        background: 'var(--iml-tertiary)',
         color: '#fff',
         padding: '5px 10px',
         fontWeight: 600,
@@ -42,7 +42,7 @@ export default function EnumNode({ id, selected }) {
           </div>
         ) : (
           en.literals.map((lit, i) => (
-            <div key={i} style={{ padding: '2px 10px', color: '#e9d5ff', fontSize: 12 }}>
+            <div key={i} style={{ padding: '2px 10px', color: '#fed7aa', fontSize: 12 }}>
               {lit}
             </div>
           ))

@@ -423,8 +423,8 @@ function EnumEditor({ en, updateEnumeration, deleteEnumeration, addEnumLiteral, 
 
   return (
     <div style={panelStyle}>
-      <div style={{ ...headerStyle, background: '#4c1d95' }}>
-        <span><span style={{ opacity: 0.7, fontStyle: 'italic' }}>«enum» </span>{en.name}</span>
+      <div style={{ ...headerStyle, background: 'var(--iml-tertiary)' }}>
+        <span><span style={{ opacity: 0.8, fontStyle: 'italic' }}>«enum» </span>{en.name}</span>
         <DeleteBtn onClick={() => deleteEnumeration(en.id)} />
       </div>
       <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
@@ -452,7 +452,7 @@ function EnumEditor({ en, updateEnumeration, deleteEnumeration, addEnumLiteral, 
         <button onClick={addLit} style={{
           marginTop: 4, width: '100%', padding: '7px', borderRadius: 5,
           border: `1px dashed ${INPUT_BORDER}`, background: 'transparent',
-          color: '#c084fc', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+          color: 'var(--iml-tertiary)', cursor: 'pointer', fontSize: 12, fontWeight: 600,
         }}>
           + Add Literal
         </button>
