@@ -939,12 +939,18 @@ export const useModelStore = create((set, get) => ({
       saved[id] ?? { x: 80 + (idx % 4) * 240, y: 80 + Math.floor(idx / 4) * 200 };
 
     if (mode === 'metamodel') {
+      const classNodes = s.metaModel.classes.map((cls, i) => ({
+        id: cls.id, type: 'classNode',
+        position: getPos(cls.id, i),
+        data: { classId: cls.id },
+      }));
+      const enumNodes = (s.metaModel.enumerations ?? []).map((en, i) => ({
+        id: en.id, type: 'enumNode',
+        position: getPos(en.id, s.metaModel.classes.length + i),
+        data: { enumId: en.id },
+      }));
       set({
-        nodes: s.metaModel.classes.map((cls, i) => ({
-          id: cls.id, type: 'classNode',
-          position: getPos(cls.id, i),
-          data: { classId: cls.id },
-        })),
+        nodes: [...classNodes, ...enumNodes],
         edges: s.metaModel.relations.map((r) => ({
           id: r.id, source: r.source, target: r.target,
           sourceHandle: r.sourceHandle ?? null,

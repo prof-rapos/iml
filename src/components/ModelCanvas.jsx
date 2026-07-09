@@ -7,10 +7,11 @@ import {
 import { useModelStore } from '../store/modelStore';
 import ClassNode from '../nodes/ClassNode';
 import ObjectNode from '../nodes/ObjectNode';
+import EnumNode from '../nodes/EnumNode';
 import RelationEdge from '../edges/RelationEdge';
 import LinkEdge from '../edges/LinkEdge';
 
-const nodeTypes = { classNode: ClassNode, objectNode: ObjectNode };
+const nodeTypes = { classNode: ClassNode, objectNode: ObjectNode, enumNode: EnumNode };
 const edgeTypes = { relationEdge: RelationEdge, linkEdge: LinkEdge };
 
 const EDGE_COLORS = { INHERITANCE: '#cc001b', REFERENCE: '#015e1a', COMPOSITION: '#263cff' };

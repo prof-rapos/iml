@@ -12,8 +12,13 @@ const handleStyle = {
 
 export default function ClassNode({ id, selected }) {
   const cls = useModelStore((s) => s.metaModel.classes.find((c) => c.id === id));
+  const enumerations = useModelStore((s) => s.metaModel.enumerations);
 
   if (!cls) return null;
+
+  const typeLabel = (a) => a.type === 'ENUM'
+    ? (enumerations?.find((e) => e.id === a.enumId)?.name ?? 'ENUM')
+    : a.type;
 
   return (
     <div
@@ -53,7 +58,7 @@ export default function ClassNode({ id, selected }) {
         ) : (
           cls.attributes.map((a) => (
             <div key={a.id} style={{ padding: '2px 10px', color: '#e2e8f0', fontSize: 12 }}>
-              {VISIBILITY[a.visibility] || '+'} {a.name} : {a.type}
+              {VISIBILITY[a.visibility] || '+'} {a.name} : {typeLabel(a)}
               <span style={{ color: 'rgb(147, 197, 253)' }}>
                 {' '}[{a.lowerBound}..{a.upperBound === -1 ? '*' : a.upperBound}]
               </span>

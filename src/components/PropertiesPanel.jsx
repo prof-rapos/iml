@@ -85,16 +85,23 @@ export default function PropertiesPanel() {
   const updateSlot         = useModelStore((s) => s.updateSlot);
   const updateSlotValues   = useModelStore((s) => s.updateSlotValues);
   const deleteObject       = useModelStore((s) => s.deleteObject);
+  const updateEnumeration  = useModelStore((s) => s.updateEnumeration);
+  const deleteEnumeration  = useModelStore((s) => s.deleteEnumeration);
+  const addEnumLiteral     = useModelStore((s) => s.addEnumLiteral);
+  const updateEnumLiteral  = useModelStore((s) => s.updateEnumLiteral);
+  const deleteEnumLiteral  = useModelStore((s) => s.deleteEnumLiteral);
 
   const cls = (mode === 'metamodel' && selectedType === 'node')
     ? metaModel.classes.find((c) => c.id === selectedId) : null;
+  const en = (mode === 'metamodel' && selectedType === 'node')
+    ? metaModel.enumerations?.find((e) => e.id === selectedId) : null;
   const rel = (mode === 'metamodel' && selectedType === 'edge')
     ? metaModel.relations.find((r) => r.id === selectedId) : null;
   const obj = (mode === 'instance' && selectedType === 'node')
     ? instanceModel?.objects.find((o) => o.id === selectedId) : null;
 
   // ── Empty state ──────────────────────────────────────────────────────
-  if (!selectedId || (!cls && !rel && !obj)) {
+  if (!selectedId || (!cls && !rel && !obj && !en)) {
     return (
       <div style={panelStyle}>
         <div style={headerStyle}>Properties</div>
@@ -116,6 +123,21 @@ export default function PropertiesPanel() {
         key={rel.id}
         rel={rel} metaModel={metaModel}
         updateRelation={updateRelation} deleteRelation={deleteRelation}
+      />
+    );
+  }
+
+  // ── Enumeration node ─────────────────────────────────────────────────
+  if (en) {
+    return (
+      <EnumEditor
+        key={en.id}
+        en={en}
+        updateEnumeration={updateEnumeration}
+        deleteEnumeration={deleteEnumeration}
+        addEnumLiteral={addEnumLiteral}
+        updateEnumLiteral={updateEnumLiteral}
+        deleteEnumLiteral={deleteEnumLiteral}
       />
     );
   }
@@ -144,6 +166,7 @@ export default function PropertiesPanel() {
           <div style={sectionStyle}>Attributes</div>
           {cls.attributes.map((attr) => (
             <AttrEditor key={attr.id} classId={cls.id} attr={attr}
+              enumerations={metaModel.enumerations ?? []}
               updateAttribute={updateAttribute} deleteAttribute={deleteAttribute} />
           ))}
           <button onClick={() => addClass_attribute(cls.id, {})} style={{
@@ -191,6 +214,9 @@ export default function PropertiesPanel() {
           <div style={sectionStyle}>Attribute Values</div>
           {allAttrs.map((attr) => (
             <SlotEditor key={attr.id} attr={attr}
+              enumLiterals={attr.type === 'ENUM'
+                ? (metaModel.enumerations?.find((e) => e.id === attr.enumId)?.literals ?? [])
+                : null}
               value={obj.attributeValues?.[attr.id] ?? ''}
               onChange={(v) => updateSlot(obj.id, attr.id, v)}
               onChangeValues={(vs) => updateSlotValues(obj.id, attr.id, vs)} />
@@ -209,8 +235,19 @@ export default function PropertiesPanel() {
 }
 
 // ── Attribute editor ──────────────────────────────────────────────────────────
-function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
+function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteAttribute }) {
   const isSingle = attr.upperBound === 1;
+  const enumDef  = attr.type === 'ENUM' ? enumerations.find((e) => e.id === attr.enumId) : null;
+
+  // Selecting a primitive sets { type }; selecting an enum sets { type:'ENUM', enumId }.
+  const onTypeChange = (raw) => {
+    if (raw.startsWith('enum:')) {
+      updateAttribute(classId, attr.id, { type: 'ENUM', enumId: raw.slice(5) });
+    } else {
+      updateAttribute(classId, attr.id, { type: raw, enumId: undefined });
+    }
+  };
+  const typeValue = attr.type === 'ENUM' ? `enum:${attr.enumId}` : attr.type;
 
   function DefaultInput() {
     if (attr.type === 'BOOLEAN') {
@@ -221,6 +258,16 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
           <option value="">— none —</option>
           <option value="true">true</option>
           <option value="false">false</option>
+        </select>
+      );
+    }
+    if (attr.type === 'ENUM') {
+      return (
+        <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
+          value={attr.defaultValue ?? ''}
+          onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
+          <option value="">— none —</option>
+          {(enumDef?.literals ?? []).map((lit) => <option key={lit} value={lit}>{lit}</option>)}
         </select>
       );
     }
@@ -243,9 +290,14 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
           value={attr.name} placeholder="name"
           onChange={(e) => updateAttribute(classId, attr.id, { name: e.target.value })} />
         <select style={{ ...selectStyle, flex: 1.5, padding: '5px 6px', fontSize: 12 }}
-          value={attr.type}
-          onChange={(e) => updateAttribute(classId, attr.id, { type: e.target.value })}>
-          {['STRING', 'INT', 'DOUBLE', 'BOOLEAN'].map((t) => <option key={t}>{t}</option>)}
+          value={typeValue}
+          onChange={(e) => onTypeChange(e.target.value)}>
+          {['STRING', 'INT', 'DOUBLE', 'BOOLEAN'].map((t) => <option key={t} value={t}>{t}</option>)}
+          {enumerations.length > 0 && (
+            <optgroup label="Enumerations">
+              {enumerations.map((e) => <option key={e.id} value={`enum:${e.id}`}>{e.name}</option>)}
+            </optgroup>
+          )}
         </select>
       </div>
       <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: isSingle ? 6 : 0 }}>
@@ -283,7 +335,7 @@ function AttrEditor({ classId, attr, updateAttribute, deleteAttribute }) {
 }
 
 // ── Slot editor ───────────────────────────────────────────────────────────────
-function SlotEditor({ attr, value, onChange, onChangeValues }) {
+function SlotEditor({ attr, value, onChange, onChangeValues, enumLiterals = null }) {
   const type    = attr?.type ?? 'STRING';
   const isMulti = Array.isArray(value);
 
@@ -306,7 +358,7 @@ function SlotEditor({ attr, value, onChange, onChangeValues }) {
         {label}
         {value.map((val, i) => (
           <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-            <ValueInput type={type} value={val} onChange={(v) => setVal(i, v)} />
+            <ValueInput type={type} enumLiterals={enumLiterals} value={val} onChange={(v) => setVal(i, v)} />
             <button onClick={() => del(i)}
               style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 4px', flexShrink: 0 }}>×</button>
           </div>
@@ -325,12 +377,20 @@ function SlotEditor({ attr, value, onChange, onChangeValues }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 10 }}>
       {label}
-      <ValueInput type={type} value={value} onChange={onChange} />
+      <ValueInput type={type} enumLiterals={enumLiterals} value={value} onChange={onChange} />
     </div>
   );
 }
 
-function ValueInput({ type, value, onChange }) {
+function ValueInput({ type, value, onChange, enumLiterals = null }) {
+  if (enumLiterals) {
+    return (
+      <select style={selectStyle} value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">— select —</option>
+        {enumLiterals.map((lit) => <option key={lit} value={lit}>{lit}</option>)}
+      </select>
+    );
+  }
   if (type === 'BOOLEAN') {
     return (
       <select style={selectStyle} value={value} onChange={(e) => onChange(e.target.value)}>
@@ -350,6 +410,55 @@ function ValueInput({ type, value, onChange }) {
   }
   return <input style={inputStyle} placeholder="(empty)"
     value={value} onChange={(e) => onChange(e.target.value)} />;
+}
+
+// ── Enumeration editor ────────────────────────────────────────────────────────
+function EnumEditor({ en, updateEnumeration, deleteEnumeration, addEnumLiteral, updateEnumLiteral, deleteEnumLiteral }) {
+  const addLit = () => {
+    let name = 'LITERAL';
+    let n = 1;
+    while (en.literals.includes(name)) name = `LITERAL${++n}`;
+    addEnumLiteral(en.id, name);
+  };
+
+  return (
+    <div style={panelStyle}>
+      <div style={{ ...headerStyle, background: '#4c1d95' }}>
+        <span><span style={{ opacity: 0.7, fontStyle: 'italic' }}>«enum» </span>{en.name}</span>
+        <DeleteBtn onClick={() => deleteEnumeration(en.id)} />
+      </div>
+      <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
+        <Field label="Name">
+          <input style={inputStyle} value={en.name}
+            onChange={(e) => updateEnumeration(en.id, { name: e.target.value })} />
+        </Field>
+
+        <div style={sectionStyle}>Literals</div>
+        {en.literals.length === 0 && (
+          <div style={{ color: TEXT_MUTED, fontSize: 12, fontStyle: 'italic', marginBottom: 8 }}>
+            No literals yet.
+          </div>
+        )}
+        {en.literals.map((lit, i) => (
+          <div key={i} style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 6 }}>
+            <input style={{ ...inputStyle, padding: '5px 8px', fontSize: 12 }}
+              value={lit}
+              onChange={(e) => updateEnumLiteral(en.id, i, e.target.value)} />
+            <button onClick={() => deleteEnumLiteral(en.id, i)}
+              style={{ background: 'none', border: 'none', color: '#f87171', cursor: 'pointer', fontSize: 18, lineHeight: 1, padding: '0 2px', flexShrink: 0 }}
+              title="Delete literal">×</button>
+          </div>
+        ))}
+        <button onClick={addLit} style={{
+          marginTop: 4, width: '100%', padding: '7px', borderRadius: 5,
+          border: `1px dashed ${INPUT_BORDER}`, background: 'transparent',
+          color: '#c084fc', cursor: 'pointer', fontSize: 12, fontWeight: 600,
+        }}>
+          + Add Literal
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ── Relation editor ───────────────────────────────────────────────────────────

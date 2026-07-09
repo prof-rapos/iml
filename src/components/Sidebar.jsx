@@ -11,6 +11,7 @@ export default function Sidebar() {
   const mode              = useModelStore((s) => s.mode);
   const setMode           = useModelStore((s) => s.setMode);
   const addClass          = useModelStore((s) => s.addClass);
+  const addEnumeration    = useModelStore((s) => s.addEnumeration);
   const addObject         = useModelStore((s) => s.addObject);
   const metaModel         = useModelStore((s) => s.metaModel);
   const nodes             = useModelStore((s) => s.nodes);
@@ -64,6 +65,18 @@ export default function Sidebar() {
         id, type: 'classNode',
         position: spawnPosition(existing.length),
         data: { classId: id },
+      }],
+    }));
+  };
+
+  const handleAddEnum = () => {
+    const id = addEnumeration();
+    const existing = nodes.filter((n) => n.type === 'enumNode');
+    useModelStore.setState((s) => ({
+      nodes: [...s.nodes, {
+        id, type: 'enumNode',
+        position: spawnPosition(existing.length),
+        data: { enumId: id },
       }],
     }));
   };
@@ -204,6 +217,7 @@ export default function Sidebar() {
         <>
           <PaletteBtn label="Class"          color="var(--iml-primary)" onClick={() => handleAddClass(false)} />
           <PaletteBtn label="Abstract Class" color="var(--iml-secondary)" italic onClick={() => handleAddClass(true)} />
+          <PaletteBtn label="Enumeration"    color="#7e22ce" onClick={handleAddEnum} />
 
           <SectionLabel>Relation Type</SectionLabel>
           {EDGE_TYPES.map((et) => (
