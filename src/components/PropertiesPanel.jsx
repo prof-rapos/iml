@@ -424,7 +424,7 @@ function EnumEditor({ en, updateEnumeration, deleteEnumeration, addEnumLiteral, 
   return (
     <div style={panelStyle}>
       <div style={{ ...headerStyle, background: 'var(--iml-tertiary)' }}>
-        <span><span style={{ opacity: 0.8, fontStyle: 'italic' }}>«enum» </span>{en.name}</span>
+        <span><span style={{ opacity: 0.8, fontStyle: 'italic' }}>«enumeration» </span>{en.name}</span>
         <DeleteBtn onClick={() => deleteEnumeration(en.id)} />
       </div>
       <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
