@@ -74,3 +74,48 @@ describe('generateJavaCode', () => {
     expect(animal).toContain('public void setName(String name)');
   });
 });
+
+describe('generateJavaCode — enumerations', () => {
+  const metaWithEnum = {
+    kind: 'metamodel',
+    name: 'Pets',
+    enumerations: [
+      { id: 'e1', name: 'Size', literals: ['SMALL', 'MEDIUM', 'LARGE'] },
+    ],
+    classes: [
+      {
+        id: 'Dog', name: 'Dog', isAbstract: false,
+        attributes: [
+          { id: 'a1', name: 'size', type: 'ENUM', enumId: 'e1', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 },
+        ],
+      },
+    ],
+    relations: [],
+  };
+
+  const im = {
+    id: 'im1', kind: 'instancemodel', name: 'Pack',
+    objects: [{ id: 'o1', classId: 'Dog', name: 'Rex', attributeValues: { a1: 'LARGE' } }],
+    links: [],
+  };
+
+  const files = generateJavaCode(metaWithEnum, [im]);
+
+  it('emits a Java enum file with the literals', () => {
+    const size = fileFor(files, 'Size.java');
+    expect(size).toContain('public enum Size {');
+    expect(size).toContain('SMALL, MEDIUM, LARGE');
+  });
+
+  it('types an enum-valued field with the enum class name', () => {
+    const dog = fileFor(files, 'Dog.java');
+    expect(dog).toContain('private Size size');
+    expect(dog).toContain('public Size getSize()');
+    expect(dog).toContain('public void setSize(Size size)');
+  });
+
+  it('references an enum literal as EnumName.LITERAL in the instance file', () => {
+    const pack = fileFor(files, 'Pack.java');
+    expect(pack).toContain('.setSize(Size.LARGE);');
+  });
+});

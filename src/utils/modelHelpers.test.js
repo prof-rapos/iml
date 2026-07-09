@@ -4,6 +4,8 @@ import {
   typeDefault,
   convertSingle,
   convertAttrValue,
+  getEnum,
+  isEnumValueValid,
 } from './modelHelpers.js';
 
 // A tiny meta-model: Dog extends Animal.
@@ -132,6 +134,35 @@ describe('convertSingle', () => {
     expect(convertSingle('false', 'STRING', 'BOOLEAN')).toBe('false');
     expect(convertSingle('0',     'STRING', 'BOOLEAN')).toBe('false');
     expect(convertSingle('maybe', 'STRING', 'BOOLEAN')).toBe('false'); // type default
+  });
+});
+
+describe('getEnum / isEnumValueValid', () => {
+  const mmEnum = {
+    classes: [],
+    relations: [],
+    enumerations: [{ id: 'e1', name: 'Color', literals: ['RED', 'GREEN', 'BLUE'] }],
+  };
+
+  it('resolves an enum by id', () => {
+    expect(getEnum('e1', mmEnum).name).toBe('Color');
+  });
+
+  it('returns null for an unknown enum id (or a model with no enums)', () => {
+    expect(getEnum('nope', mmEnum)).toBeNull();
+    expect(getEnum('e1', { classes: [], relations: [] })).toBeNull();
+  });
+
+  it('accepts a value that is one of the literals', () => {
+    expect(isEnumValueValid('GREEN', getEnum('e1', mmEnum))).toBe(true);
+  });
+
+  it('rejects a value that is not a literal', () => {
+    expect(isEnumValueValid('PURPLE', getEnum('e1', mmEnum))).toBe(false);
+  });
+
+  it('treats a missing enum definition as invalid', () => {
+    expect(isEnumValueValid('RED', null)).toBe(false);
   });
 });
 

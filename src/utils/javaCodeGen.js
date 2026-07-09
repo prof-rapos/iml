@@ -76,6 +76,51 @@ function javaLiteral(value, type) {
   }
 }
 
+// ── Enum helpers ──────────────────────────────────────────────────────────────
+// An attribute with type 'ENUM' points at a meta-model enumeration via enumId.
+// These wrappers resolve the enum so the primitive type helpers stay untouched.
+function enumOf(attr, metaModel) {
+  if (attr.type !== 'ENUM') return null;
+  return (metaModel.enumerations ?? []).find((e) => e.id === attr.enumId) ?? null;
+}
+
+// Sanitise a literal into a valid Java identifier, preserving its case.
+function safeEnumConst(name) {
+  const s = String(name ?? '').replace(/[^a-zA-Z0-9_$]/g, '_').replace(/^(?=\d)/, '_');
+  return s || '_LITERAL';
+}
+
+function javaTypeForAttr(attr, metaModel) {
+  const e = enumOf(attr, metaModel);
+  return e ? toClassName(e.name) : javaType(attr.type);
+}
+
+function boxedTypeForAttr(attr, metaModel) {
+  const e = enumOf(attr, metaModel);
+  return e ? toClassName(e.name) : boxedType(attr.type);
+}
+
+function defaultValueForAttr(attr, metaModel) {
+  const e = enumOf(attr, metaModel);
+  return e ? 'null' : defaultValue(attr.type);
+}
+
+function javaLiteralForAttr(value, attr, metaModel) {
+  const e = enumOf(attr, metaModel);
+  return e ? `${toClassName(e.name)}.${safeEnumConst(value)}` : javaLiteral(value, attr.type);
+}
+
+function generateEnumFile(en, pkg) {
+  const consts = (en.literals ?? []).map(safeEnumConst);
+  return [
+    `package ${pkg};`,
+    '',
+    `public enum ${toClassName(en.name)} {`,
+    consts.length ? `    ${consts.join(', ')}` : '    // no literals defined',
+    '}',
+  ].join('\n');
+}
+
 // ── Inheritance helpers ───────────────────────────────────────────────────────
 
 function getParentClass(classId, metaModel) {
@@ -237,13 +282,13 @@ function generateClassFile(cls, metaModel, pkg) {
       const field = safeId(attr.name);
       lines.push(`    ${boundsComment(attr)}`);
       if (attr.upperBound !== 1) {
-        lines.push(`    private ArrayList<${boxedType(attr.type)}> ${field} = new ArrayList<>();`);
+        lines.push(`    private ArrayList<${boxedTypeForAttr(attr, metaModel)}> ${field} = new ArrayList<>();`);
       } else if (hasMetaDefault(attr)) {
-        lines.push(`    private ${javaType(attr.type)} ${field} = ${javaLiteral(attr.defaultValue, attr.type)};`);
+        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field} = ${javaLiteralForAttr(attr.defaultValue, attr, metaModel)};`);
       } else if (attr.lowerBound > 0) {
-        lines.push(`    private ${javaType(attr.type)} ${field} = ${defaultValue(attr.type)};`);
+        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field} = ${defaultValueForAttr(attr, metaModel)};`);
       } else {
-        lines.push(`    private ${javaType(attr.type)} ${field};`);
+        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field};`);
       }
     }
     lines.push('');
@@ -276,8 +321,8 @@ function generateClassFile(cls, metaModel, pkg) {
   if (allAttrs.length > 0) {
     lines.push('    // Parameterized constructor');
     const params = allAttrs.map(a => {
-      if (a.upperBound !== 1) return `ArrayList<${boxedType(a.type)}> ${safeId(a.name)}`;
-      return `${javaType(a.type)} ${safeId(a.name)}`;
+      if (a.upperBound !== 1) return `ArrayList<${boxedTypeForAttr(a, metaModel)}> ${safeId(a.name)}`;
+      return `${javaTypeForAttr(a, metaModel)} ${safeId(a.name)}`;
     }).join(', ');
     lines.push(`    public ${cls.name}(${params}) {`);
     if (parent && parentAttrs.length > 0) {
@@ -299,7 +344,7 @@ function generateClassFile(cls, metaModel, pkg) {
       const field = safeId(attr.name);
       const cap   = capitalize(field);
       if (attr.upperBound !== 1) {
-        const bType = boxedType(attr.type);
+        const bType = boxedTypeForAttr(attr, metaModel);
         lines.push(`    /** Returns the ${field} list. */`);
         lines.push(`    public ArrayList<${bType}> get${cap}() { return ${field}; }`);
         lines.push(`    /** Sets the ${field} list. */`);
@@ -307,7 +352,7 @@ function generateClassFile(cls, metaModel, pkg) {
         lines.push(`    /** Adds a value to the ${field} list. */`);
         lines.push(`    public void add${cap}(${bType} value) { this.${field}.add(value); }`);
       } else {
-        const jType = javaType(attr.type);
+        const jType = javaTypeForAttr(attr, metaModel);
         lines.push(`    /** Returns the value of ${field}. */`);
         lines.push(`    public ${jType} get${cap}() { return ${field}; }`);
         lines.push(`    /** Sets the value of ${field}. */`);
@@ -461,19 +506,19 @@ function generateInstanceFile(im, metaModel, pkg) {
         const nonEmpty = rawVal.filter(v => v && String(v).trim());
         if (nonEmpty.length > 0) {
           for (const val of nonEmpty) {
-            attrLines.push(`        ${varName}.add${cap}(${javaLiteral(val, attr.type)});`);
+            attrLines.push(`        ${varName}.add${cap}(${javaLiteralForAttr(val, attr, metaModel)});`);
           }
         } else if (attr.lowerBound > 0) {
-          attrLines.push(`        ${varName}.add${cap}(${javaLiteral(defaultValue(attr.type).replace(/^"|"$/g, ''), attr.type)});`);
+          attrLines.push(`        ${varName}.add${cap}(${defaultValueForAttr(attr, metaModel)});`);
         }
       } else {
         const val = rawVal ? String(rawVal).trim() : '';
         if (val) {
-          attrLines.push(`        ${varName}.set${cap}(${javaLiteral(val, attr.type)});`);
+          attrLines.push(`        ${varName}.set${cap}(${javaLiteralForAttr(val, attr, metaModel)});`);
         } else if (hasMetaDefault(attr)) {
-          attrLines.push(`        ${varName}.set${cap}(${javaLiteral(attr.defaultValue, attr.type)});`);
+          attrLines.push(`        ${varName}.set${cap}(${javaLiteralForAttr(attr.defaultValue, attr, metaModel)});`);
         } else if (attr.lowerBound > 0) {
-          attrLines.push(`        ${varName}.set${cap}(${defaultValue(attr.type)});`);
+          attrLines.push(`        ${varName}.set${cap}(${defaultValueForAttr(attr, metaModel)});`);
         }
       }
     }
@@ -546,6 +591,13 @@ export function generateJavaCode(metaModel, instanceModels) {
   const pkgDir  = `iml/${toPackageName(metaModel.name)}`;
 
   const files = [];
+
+  for (const en of metaModel.enumerations ?? []) {
+    files.push({
+      path:    `${pkgDir}/${toClassName(en.name)}.java`,
+      content: generateEnumFile(en, pkgName),
+    });
+  }
 
   for (const cls of metaModel.classes) {
     files.push({

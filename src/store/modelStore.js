@@ -6,6 +6,8 @@ import {
   typeDefault,
   convertSingle,
   convertAttrValue,
+  getEnum,
+  isEnumValueValid,
 } from '../utils/modelHelpers.js';
 
 const mkIM = (name = 'NewInstanceModel') => ({
@@ -16,7 +18,7 @@ const mkIM = (name = 'NewInstanceModel') => ({
   links: [],
 });
 
-const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [] };
+const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [] };
 
 // ── Inheritance-aware class conformance ──────────────────────────────────────
 // Returns true if classId equals expectedId or is a (transitive) subclass of it.
@@ -394,6 +396,107 @@ export const useModelStore = create((set, get) => ({
     get().log(`Deleted class ${id}`);
   },
 
+  // ── Enumeration operations ────────────────────────────────────────
+  addEnumeration: () => {
+    const id = nanoid(8);
+    const existing = new Set(get().metaModel.enumerations?.map((e) => e.name) ?? []);
+    let name = 'Enum';
+    let n = 1;
+    while (existing.has(name)) name = `Enum${++n}`;
+    const en = { id, name, literals: [] };
+    set((s) => ({
+      metaModel: { ...s.metaModel, enumerations: [...(s.metaModel.enumerations ?? []), en] },
+    }));
+    get().log(`Added enumeration "${name}"`);
+    return id;
+  },
+
+  updateEnumeration: (id, patch) => {
+    if (patch.name !== undefined) {
+      const { metaModel } = get();
+      if (isJavaKeyword(patch.name)) {
+        get().notify(`"${patch.name}" is a reserved Java keyword and cannot be used as an enum name.`);
+        return;
+      }
+      // Enums and classes share Java's type namespace — names must not collide.
+      const clash = (metaModel.enumerations ?? []).some((e) => e.id !== id && e.name === patch.name)
+        || metaModel.classes.some((c) => c.name === patch.name);
+      if (clash) {
+        get().notify(`A class or enumeration named "${patch.name}" already exists. Names must be unique.`);
+        return;
+      }
+    }
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        enumerations: (s.metaModel.enumerations ?? []).map((e) => e.id === id ? { ...e, ...patch } : e),
+      },
+    }));
+  },
+
+  deleteEnumeration: (id) => {
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        enumerations: (s.metaModel.enumerations ?? []).filter((e) => e.id !== id),
+        // Revert any attribute that referenced this enum back to STRING.
+        classes: s.metaModel.classes.map((c) => ({
+          ...c,
+          attributes: c.attributes.map((a) =>
+            a.type === 'ENUM' && a.enumId === id ? { ...a, type: 'STRING', enumId: undefined } : a
+          ),
+        })),
+      },
+      nodes:        s.nodes.filter((n) => n.id !== id),
+      selectedId:   s.selectedId === id ? null : s.selectedId,
+      selectedType: s.selectedId === id ? null : s.selectedType,
+    }));
+    get().log(`Deleted enumeration ${id}`);
+  },
+
+  addEnumLiteral: (enumId, literal) => {
+    const val = String(literal ?? '').trim();
+    if (!val) return;
+    const en = (get().metaModel.enumerations ?? []).find((e) => e.id === enumId);
+    if (en && en.literals.includes(val)) {
+      get().notify(`Literal "${val}" already exists in "${en.name}".`);
+      return;
+    }
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        enumerations: (s.metaModel.enumerations ?? []).map((e) =>
+          e.id === enumId ? { ...e, literals: [...e.literals, val] } : e
+        ),
+      },
+    }));
+  },
+
+  // Renaming a literal does not rewrite existing instance values; conformance
+  // will flag any object still referencing the old literal.
+  updateEnumLiteral: (enumId, index, newVal) => {
+    const val = String(newVal ?? '').trim();
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        enumerations: (s.metaModel.enumerations ?? []).map((e) =>
+          e.id === enumId ? { ...e, literals: e.literals.map((l, i) => i === index ? val : l) } : e
+        ),
+      },
+      conformanceStale: true,
+    }));
+  },
+
+  deleteEnumLiteral: (enumId, index) => set((s) => ({
+    metaModel: {
+      ...s.metaModel,
+      enumerations: (s.metaModel.enumerations ?? []).map((e) =>
+        e.id === enumId ? { ...e, literals: e.literals.filter((_, i) => i !== index) } : e
+      ),
+    },
+    conformanceStale: true,
+  })),
+
   addRelation: (kind, source, target, sourceHandle, targetHandle) => {
     const { metaModel } = get();
     const srcCls = metaModel.classes.find((c) => c.id === source);
@@ -694,6 +797,13 @@ export const useModelStore = create((set, get) => ({
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must contain numbers (got "${val}")` });
             if (attr.type === 'BOOLEAN' && val !== 'true' && val !== 'false')
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must contain true/false (got "${val}")` });
+            if (attr.type === 'ENUM') {
+              const en = getEnum(attr.enumId, metaModel);
+              if (!en)
+                errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" references an undefined enumeration` });
+              else if (!isEnumValueValid(val, en))
+                errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must be one of ${en.name} {${en.literals.join(', ')}} (got "${val}")` });
+            }
           }
         } else {
           const val = rawVal ?? '';
@@ -708,6 +818,13 @@ export const useModelStore = create((set, get) => ({
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must be a number (got "${val}")` });
             if (attr.type === 'BOOLEAN' && val !== 'true' && val !== 'false')
               errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must be true or false (got "${val}")` });
+            if (attr.type === 'ENUM') {
+              const en = getEnum(attr.enumId, metaModel);
+              if (!en)
+                errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" references an undefined enumeration` });
+              else if (!isEnumValueValid(val, en))
+                errors.push({ kind: 'object', id: obj.id, msg: `"${obj.name}": "${attr.name}" must be one of ${en.name} {${en.literals.join(', ')}} (got "${val}")` });
+            }
           }
         }
       }
@@ -770,7 +887,8 @@ export const useModelStore = create((set, get) => ({
   },
 
   loadFromJSON: (data) => {
-    if (data.metaModel) set({ metaModel: data.metaModel });
+    // Ensure the enumerations array exists (backward-compat with pre-enum models).
+    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [] } });
 
     const normalizeIM = (im) => ({
       ...im,

@@ -11,6 +11,18 @@ export function getAllAttributes(classId, metaModel) {
   return [...parentAttrs.filter((a) => !ownIds.has(a.id)), ...cls.attributes];
 }
 
+// ── Enumerations ──────────────────────────────────────────────────────────────
+// An attribute with type 'ENUM' references a meta-model enumeration via enumId.
+export function getEnum(enumId, metaModel) {
+  return (metaModel.enumerations ?? []).find((e) => e.id === enumId) ?? null;
+}
+
+// True when value is one of the enumeration's literals. A missing enum is invalid.
+export function isEnumValueValid(value, enumDef) {
+  if (!enumDef) return false;
+  return (enumDef.literals ?? []).includes(String(value));
+}
+
 // ── Attribute type conversion ─────────────────────────────────────────────────
 // Fallback default: use metaAttr.defaultValue if set, otherwise the type's zero-value.
 export function typeDefault(type, metaAttr) {
