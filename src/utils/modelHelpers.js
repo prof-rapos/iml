@@ -41,7 +41,9 @@ export function typeDefault(type, metaAttr) {
 export function convertSingle(val, fromType, toType, metaAttr) {
   const s = String(val ?? '').trim();
   if (!s || fromType === toType) return s;
-  if (toType === 'STRING') return s;
+  // Enum values are stored as their literal name (a string), so converting to a
+  // STRING or an ENUM keeps the value as-is (conformance flags invalid literals).
+  if (toType === 'STRING' || toType === 'ENUM') return s;
 
   if (fromType === 'BOOLEAN') {
     const b = s === 'true';

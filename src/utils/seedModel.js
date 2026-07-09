@@ -7,6 +7,7 @@ export function seedDemoModel() {
   "metaModel": {
     "kind": "metamodel",
     "name": "Pets",
+    "enumerations": [],
     "classes": [
       {
         "id": "cls-animal",

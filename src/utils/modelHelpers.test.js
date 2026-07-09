@@ -128,6 +128,13 @@ describe('convertSingle', () => {
     expect(convertSingle('nope', 'STRING', 'DOUBLE')).toBe('0');
   });
 
+  it('converting to ENUM keeps the value (a literal name is just a string)', () => {
+    // Regression: changing an attribute to an enum type must not wipe existing
+    // values — "red" may already be a valid literal.
+    expect(convertSingle('red', 'STRING', 'ENUM')).toBe('red');
+    expect(convertSingle('1',   'INT',    'ENUM')).toBe('1');
+  });
+
   it('STRING -> BOOLEAN accepts true/false/1/0, else default', () => {
     expect(convertSingle('true',  'STRING', 'BOOLEAN')).toBe('true');
     expect(convertSingle('1',     'STRING', 'BOOLEAN')).toBe('true');
