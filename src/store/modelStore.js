@@ -399,7 +399,7 @@ export const useModelStore = create((set, get) => ({
     const srcCls = metaModel.classes.find((c) => c.id === source);
     const tgtCls = metaModel.classes.find((c) => c.id === target);
 
-    if (source === target) {
+    if (source === target && (kind === 'INHERITANCE' || kind === 'COMPOSITION')) {
       get().notify(`A class cannot have a ${kind.toLowerCase()} relation to itself.`);
       return null;
     }
