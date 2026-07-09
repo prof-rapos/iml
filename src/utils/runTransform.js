@@ -1,5 +1,6 @@
 import { nanoid } from 'nanoid';
 import { getAllAttributes, convertSingle } from './modelHelpers.js';
+import { evalExpression, isNumericValue } from './transformExpression.js';
 
 // Coerce a source value to the target attribute's type and multiplicity.
 // multi→single: convert each item, take the first.
@@ -80,6 +81,17 @@ export function runTransform(source, target, rules) {
           const tgtAttr  = tgtAttrs.find((a) => a.id === m.targetAttrId);
           const tgtMulti = tgtAttr ? tgtAttr.upperBound !== 1 : false;
           attributeValues[m.targetAttrId] = tgtMulti ? [m.value ?? ''] : (m.value ?? '');
+        } else if (m.type === 'expression') {
+          const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+          // Scope: source attribute name → value (so expressions read {attrName}).
+          const scope = {};
+          for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
+          let raw = '';
+          try { raw = evalExpression(m.expression ?? '', scope); } catch { raw = ''; }
+          // Treat a numeric result as DOUBLE so the target type coercion (e.g.
+          // truncation to INT) applies; otherwise treat it as a plain string.
+          const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
+          attributeValues[m.targetAttrId] = coerceValue(raw, { type: fromType, upperBound: 1 }, tgtAttr);
         }
       }
 

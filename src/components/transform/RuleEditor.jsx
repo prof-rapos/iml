@@ -92,7 +92,12 @@ function RuleCard({ rule, source, target }) {
   const srcRels  = source.metaModel.relations.filter((r) => r.source === rule.sourceClassId && r.kind !== 'INHERITANCE');
 
   const handleTypeChange = (targetAttrId, newType) => {
-    updateAttrMapping(rule.id, targetAttrId, { type: newType, sourceAttrId: null, value: null });
+    updateAttrMapping(rule.id, targetAttrId, {
+      type: newType,
+      sourceAttrId: null,
+      value: null,
+      expression: newType === 'expression' ? '' : null,
+    });
   };
 
   return (
@@ -134,6 +139,7 @@ function RuleCard({ rule, source, target }) {
                     <option value="omit">Omit</option>
                     <option value="direct">Direct</option>
                     <option value="constant">Constant</option>
+                    <option value="expression">Expression</option>
                   </select>
 
                   {m.type === 'direct' && (
@@ -156,6 +162,21 @@ function RuleCard({ rule, source, target }) {
                       placeholder="constant value"
                       style={{ ...INPUT_STYLE, flex: 1, minWidth: 80 }}
                     />
+                  )}
+
+                  {m.type === 'expression' && (
+                    <>
+                      <input
+                        value={m.expression ?? ''}
+                        onChange={(e) => updateAttrMapping(rule.id, ta.id, { expression: e.target.value })}
+                        placeholder={'{first} + " " + {last}'}
+                        style={{ ...INPUT_STYLE, flex: 1, minWidth: 120 }}
+                      />
+                      <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
+                        refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
+                        {'  ·  '}use <code>+ - * /</code> and <code>"text"</code>
+                      </div>
+                    </>
                   )}
                 </div>
               );

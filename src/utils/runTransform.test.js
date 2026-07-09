@@ -75,6 +75,79 @@ describe('runTransform — type + multiplicity coercion', () => {
     expect(result.instanceModels[0].objects[0].attributeValues.nums).toEqual(['1', '0', '1']);
   });
 
+  it('evaluates an expression mapping over source attributes (string concat)', () => {
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'f', name: 'first', type: 'STRING', lowerBound: 0, upperBound: 1 },
+          { id: 'l', name: 'last',  type: 'STRING', lowerBound: 0, upperBound: 1 },
+        ] }],
+        relations: [],
+      },
+      instanceModels: [{
+        id: 'im1', kind: 'instancemodel', name: 'M',
+        objects: [{ id: 'o1', classId: 'S', name: 'obj1', attributeValues: { f: 'Ada', l: 'Lovelace' } }],
+        links: [],
+      }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'full', name: 'full', type: 'STRING', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S',
+      targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'full', expression: '{first} + " " + {last}' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.full).toBe('Ada Lovelace');
+  });
+
+  it('coerces a numeric expression result to the target INT type (truncates)', () => {
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'p', name: 'price', type: 'DOUBLE', lowerBound: 0, upperBound: 1 },
+        ] }],
+        relations: [],
+      },
+      instanceModels: [{
+        id: 'im1', kind: 'instancemodel', name: 'M',
+        objects: [{ id: 'o1', classId: 'S', name: 'obj1', attributeValues: { p: '10' } }],
+        links: [],
+      }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'n', name: 'n', type: 'INT', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S',
+      targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'n', expression: '{price} * 1.15' }],
+      relationMappings: [],
+    }];
+
+    // 10 * 1.15 = 11.5 → INT truncates to "11"
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.n).toBe('11');
+  });
+
+  it('falls back to an empty value for a malformed expression', () => {
+    const source = srcModel({
+      attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
+      value: 'v',
+    });
+    const target = tgtModel({ id: 'r', name: 'r', type: 'STRING', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S',
+      targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'r', expression: '{x' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.r).toBe('');
+  });
+
   it('respects target multiplicity for constant mappings', () => {
     const source = srcModel({
       attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
