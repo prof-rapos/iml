@@ -13,16 +13,17 @@ export default function ObjectNode({ id, selected }) {
   const obj = useModelStore((s) => s.instanceModels[s.currentIMIndex]?.objects.find((o) => o.id === id));
   const metaModel = useModelStore((s) => s.metaModel);
   const conformanceResults = useModelStore((s) => s.conformanceResults);
-  if (!obj) return null;
-
+  const classId   = obj?.classId ?? '';
   const className = useMemo(
-    () => metaModel.classes.find((c) => c.id === obj.classId)?.name ?? obj.classId,
-    [obj.classId, metaModel.classes],
+    () => metaModel.classes.find((c) => c.id === classId)?.name ?? classId,
+    [classId, metaModel.classes],
   );
   const allAttrs = useMemo(
-    () => getAllAttributes(obj.classId, metaModel),
-    [obj.classId, metaModel],
+    () => classId ? getAllAttributes(classId, metaModel) : [],
+    [classId, metaModel],
   );
+
+  if (!obj) return null;
   const issues    = conformanceResults.filter((r) => r.id === id);
   const isValid   = issues.length === 0;
 
