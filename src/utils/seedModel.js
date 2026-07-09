@@ -7,7 +7,13 @@ export function seedDemoModel() {
   "metaModel": {
     "kind": "metamodel",
     "name": "Pets",
-    "enumerations": [],
+    "enumerations": [
+      {
+        "id": "enum-size",
+        "name": "Size",
+        "literals": ["SMALL", "MEDIUM", "LARGE"]
+      }
+    ],
     "classes": [
       {
         "id": "cls-animal",
@@ -42,6 +48,15 @@ export function seedDemoModel() {
             "id": "a3",
             "name": "breed",
             "type": "STRING",
+            "visibility": "PUBLIC",
+            "lowerBound": 1,
+            "upperBound": 1
+          },
+          {
+            "id": "a-size",
+            "name": "size",
+            "type": "ENUM",
+            "enumId": "enum-size",
             "visibility": "PUBLIC",
             "lowerBound": 1,
             "upperBound": 1
@@ -188,7 +203,7 @@ export function seedDemoModel() {
           "id": "8oJLsMa2",
           "classId": "cls-dog",
           "name": "Spot",
-          "attributeValues": { "a1": "Spot", "a2": "8", "a3": "Black Lab" }
+          "attributeValues": { "a1": "Spot", "a2": "8", "a3": "Black Lab", "a-size": "MEDIUM" }
         },
         {
           "id": "GTNsjLXL",
@@ -278,6 +293,10 @@ export function seedDemoModel() {
       "aa_mA9El": {
         "x": 63.96363636363637,
         "y": 120.63863636363637
+      },
+      "enum-size": {
+        "x": 255,
+        "y": 360
       }
     },
     "im-0y5jUBwl": {
