@@ -19,6 +19,7 @@ export default function Sidebar() {
   const pendingRelationId   = useModelStore((s) => s.pendingRelationId);
   const setPendingRelationId = useModelStore((s) => s.setPendingRelationId);
   const rebuildCanvas     = useModelStore((s) => s.rebuildCanvas);
+  const viewports         = useModelStore((s) => s.viewports);
   const instanceModels    = useModelStore((s) => s.instanceModels);
   const currentIMIndex    = useModelStore((s) => s.currentIMIndex);
   const addInstanceModel    = useModelStore((s) => s.addInstanceModel);
@@ -41,15 +42,27 @@ export default function Sidebar() {
       : [];
   });
 
+  const currentIMId = instanceModels[currentIMIndex]?.id;
+  const layoutKey   = mode === 'metamodel' ? 'mm' : `im-${currentIMId}`;
+
+  const spawnPosition = (existingCount) => {
+    const vp = viewports[layoutKey] ?? { x: 0, y: 0, zoom: 1 };
+    const el = document.querySelector('.react-flow');
+    const cw = el ? el.clientWidth  : window.innerWidth  - 260;
+    const ch = el ? el.clientHeight : window.innerHeight - 50;
+    const cx = (cw / 2 - vp.x) / vp.zoom;
+    const cy = (ch / 2 - vp.y) / vp.zoom;
+    const step = (existingCount % 8) * 30;
+    return { x: cx - 100 + step, y: cy - 60 + step };
+  };
+
   const handleAddClass = (isAbstract) => {
     const id = addClass(isAbstract);
     const existing = nodes.filter((n) => n.type === 'classNode');
-    const col = existing.length % 4;
-    const row = Math.floor(existing.length / 4);
     useModelStore.setState((s) => ({
       nodes: [...s.nodes, {
         id, type: 'classNode',
-        position: { x: 80 + col * 240, y: 80 + row * 200 },
+        position: spawnPosition(existing.length),
         data: { classId: id },
       }],
     }));
@@ -59,12 +72,10 @@ export default function Sidebar() {
     const id = addObject(classId);
     if (!id) return;
     const existing = nodes.filter((n) => n.type === 'objectNode');
-    const col = existing.length % 4;
-    const row = Math.floor(existing.length / 4);
     useModelStore.setState((s) => ({
       nodes: [...s.nodes, {
         id, type: 'objectNode',
-        position: { x: 80 + col * 240, y: 80 + row * 200 },
+        position: spawnPosition(existing.length),
         data: { objectId: id },
       }],
     }));
