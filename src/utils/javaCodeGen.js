@@ -1,3 +1,5 @@
+import { getAllAttributes } from './modelHelpers.js';
+
 // ── String / naming helpers ───────────────────────────────────────────────────
 
 function capitalize(s) {
@@ -79,15 +81,6 @@ function javaLiteral(value, type) {
 function getParentClass(classId, metaModel) {
   const rel = metaModel.relations.find(r => r.kind === 'INHERITANCE' && r.source === classId);
   return rel ? (metaModel.classes.find(c => c.id === rel.target) ?? null) : null;
-}
-
-function getAllAttributes(classId, metaModel) {
-  const cls = metaModel.classes.find(c => c.id === classId);
-  if (!cls) return [];
-  const parentRel = metaModel.relations.find(r => r.kind === 'INHERITANCE' && r.source === classId);
-  const parentAttrs = parentRel ? getAllAttributes(parentRel.target, metaModel) : [];
-  const ownIds = new Set(cls.attributes.map(a => a.id));
-  return [...parentAttrs.filter(a => !ownIds.has(a.id)), ...cls.attributes];
 }
 
 // ── Relation helpers ──────────────────────────────────────────────────────────

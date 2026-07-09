@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { nanoid } from 'nanoid';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import {
+  getAllAttributes as _getAllAttributes,
+  typeDefault,
+  convertSingle,
+  convertAttrValue,
+} from '../utils/modelHelpers.js';
 
 const mkIM = (name = 'NewInstanceModel') => ({
   id: nanoid(8),
@@ -22,15 +28,8 @@ function isConformantClass(classId, expectedId, relations) {
   return isConformantClass(parentRel.target, expectedId, relations);
 }
 
-// Returns all attributes visible on classId, including inherited ones (parent first).
-export function getAllAttributes(classId, metaModel) {
-  const cls = metaModel.classes.find((c) => c.id === classId);
-  if (!cls) return [];
-  const parentRel = metaModel.relations.find((r) => r.kind === 'INHERITANCE' && r.source === classId);
-  const parentAttrs = parentRel ? getAllAttributes(parentRel.target, metaModel) : [];
-  const ownIds = new Set(cls.attributes.map((a) => a.id));
-  return [...parentAttrs.filter((a) => !ownIds.has(a.id)), ...cls.attributes];
-}
+// Re-export so existing importers (ObjectNode, etc.) don't need changing.
+export const getAllAttributes = _getAllAttributes;
 
 // Returns all transitive subclass IDs of classId (not including classId itself).
 function getSubclassIds(classId, metaModel) {
@@ -57,60 +56,6 @@ function hasRelationPath(fromId, toId, kind, relations, visited = new Set()) {
   visited.add(fromId);
   const outgoing = relations.filter((r) => r.kind === kind && r.source === fromId);
   return outgoing.some((r) => hasRelationPath(r.target, toId, kind, relations, visited));
-}
-
-// ── Attribute type-conversion helpers ────────────────────────────────────────
-// fallback: meta-model defaultValue → type default
-function typeDefault(type, metaAttr) {
-  const md = metaAttr?.defaultValue;
-  if (md !== undefined && String(md).trim() !== '') return String(md);
-  switch (type) {
-    case 'INT':     return '0';
-    case 'DOUBLE':  return '0';
-    case 'BOOLEAN': return 'false';
-    default:        return '';
-  }
-}
-
-function convertSingle(val, fromType, toType, metaAttr) {
-  const s = String(val ?? '').trim();
-  if (!s) return '';                          // empty stays empty
-  if (toType === 'STRING') return s;          // anything → string: trivial
-
-  if (fromType === 'BOOLEAN') {
-    const b = s === 'true';
-    if (toType === 'INT')    return b ? '1' : '0';
-    if (toType === 'DOUBLE') return b ? '1' : '0';
-  }
-
-  if (fromType === 'INT' || fromType === 'DOUBLE') {
-    const n = parseFloat(s);
-    if (toType === 'BOOLEAN') return (!isNaN(n) && n !== 0) ? 'true' : 'false';
-    if (toType === 'INT')     return isNaN(n) ? typeDefault('INT',    metaAttr) : String(Math.trunc(n));
-    if (toType === 'DOUBLE')  return isNaN(n) ? typeDefault('DOUBLE', metaAttr) : String(n);
-  }
-
-  // fromType === 'STRING'
-  if (toType === 'INT') {
-    const n = parseInt(s, 10);
-    return isNaN(n) ? typeDefault('INT', metaAttr) : String(n);
-  }
-  if (toType === 'DOUBLE') {
-    const n = parseFloat(s);
-    return isNaN(n) ? typeDefault('DOUBLE', metaAttr) : String(n);
-  }
-  if (toType === 'BOOLEAN') {
-    if (s === 'true'  || s === '1') return 'true';
-    if (s === 'false' || s === '0') return 'false';
-    return typeDefault('BOOLEAN', metaAttr);
-  }
-  return typeDefault(toType, metaAttr);
-}
-
-function convertAttrValue(val, fromType, toType, metaAttr) {
-  if (fromType === toType) return val;
-  if (Array.isArray(val)) return val.map((v) => convertSingle(v, fromType, toType, metaAttr));
-  return convertSingle(val, fromType, toType, metaAttr);
 }
 
 // ── Java keyword / reserved name blacklist ────────────────────────────────────

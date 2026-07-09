@@ -1,54 +1,5 @@
 import { nanoid } from 'nanoid';
-
-// ── Attribute lookup (inheritance-aware) ──────────────────────────────────────
-function getAllAttributes(classId, metaModel) {
-  const cls = metaModel.classes.find((c) => c.id === classId);
-  if (!cls) return [];
-  const parentRel = metaModel.relations.find((r) => r.kind === 'INHERITANCE' && r.source === classId);
-  const parentAttrs = parentRel ? getAllAttributes(parentRel.target, metaModel) : [];
-  const ownIds = new Set(cls.attributes.map((a) => a.id));
-  return [...parentAttrs.filter((a) => !ownIds.has(a.id)), ...cls.attributes];
-}
-
-// ── Type conversion ───────────────────────────────────────────────────────────
-function typeDefault(type) {
-  switch (type) {
-    case 'INT':     return '0';
-    case 'DOUBLE':  return '0';
-    case 'BOOLEAN': return 'false';
-    default:        return '';
-  }
-}
-
-function convertSingle(val, fromType, toType) {
-  const s = String(val ?? '').trim();
-  if (!s) return '';
-  if (fromType === toType) return s;
-  if (toType === 'STRING') return s;
-
-  if (fromType === 'BOOLEAN') {
-    const b = s === 'true';
-    if (toType === 'INT')    return b ? '1' : '0';
-    if (toType === 'DOUBLE') return b ? '1' : '0';
-  }
-
-  if (fromType === 'INT' || fromType === 'DOUBLE') {
-    const n = parseFloat(s);
-    if (toType === 'BOOLEAN') return (!isNaN(n) && n !== 0) ? 'true' : 'false';
-    if (toType === 'INT')     return isNaN(n) ? typeDefault('INT')    : String(Math.trunc(n));
-    if (toType === 'DOUBLE')  return isNaN(n) ? typeDefault('DOUBLE') : String(n);
-  }
-
-  // fromType === 'STRING'
-  if (toType === 'INT')  { const n = parseInt(s, 10);  return isNaN(n) ? typeDefault('INT')    : String(n); }
-  if (toType === 'DOUBLE') { const n = parseFloat(s);  return isNaN(n) ? typeDefault('DOUBLE') : String(n); }
-  if (toType === 'BOOLEAN') {
-    if (s === 'true'  || s === '1') return 'true';
-    if (s === 'false' || s === '0') return 'false';
-    return typeDefault('BOOLEAN');
-  }
-  return typeDefault(toType);
-}
+import { getAllAttributes, convertSingle } from './modelHelpers.js';
 
 // Coerce a source value to the target attribute's type and multiplicity.
 // multi→single: convert each item, take the first.

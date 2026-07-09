@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
 
@@ -14,8 +15,14 @@ export default function ObjectNode({ id, selected }) {
   const conformanceResults = useModelStore((s) => s.conformanceResults);
   if (!obj) return null;
 
-  const className = metaModel.classes.find((c) => c.id === obj.classId)?.name ?? obj.classId;
-  const allAttrs  = getAllAttributes(obj.classId, metaModel);
+  const className = useMemo(
+    () => metaModel.classes.find((c) => c.id === obj.classId)?.name ?? obj.classId,
+    [obj.classId, metaModel.classes],
+  );
+  const allAttrs = useMemo(
+    () => getAllAttributes(obj.classId, metaModel),
+    [obj.classId, metaModel],
+  );
   const issues    = conformanceResults.filter((r) => r.id === id);
   const isValid   = issues.length === 0;
 
