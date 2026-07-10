@@ -1,0 +1,115 @@
+import { create } from 'zustand';
+import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
+import { useModelStore } from './modelStore';
+
+// Builds the transition label: trigger [guard] / effect (any part optional).
+export function transitionLabel(t) {
+  let s = t.trigger || '';
+  if (t.guard)  s += ` [${t.guard}]`;
+  if (t.effect) s += ` / ${t.effect}`;
+  return s.trim();
+}
+
+// View-level state for the behavioural (state-machine) editor. The persistent
+// model (states/transitions) lives in modelStore.metaModel.behaviours; this
+// store holds the currently-edited capsule, selection, and the React Flow graph.
+export const useBehaviourStore = create((set, get) => ({
+  capsuleId:   null,   // class id whose state machine is being edited
+  selectedId:  null,
+  selectedType: null,  // 'node' | 'edge'
+  nodes: [],
+  edges: [],
+
+  setCapsule: (classId) => {
+    set({ capsuleId: classId, selectedId: null, selectedType: null });
+    get().rebuild();
+  },
+
+  setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
+
+  rebuild: () => {
+    const { capsuleId } = get();
+    const sm = useModelStore.getState().getBehaviour(capsuleId);
+    if (!capsuleId || !sm) { set({ nodes: [], edges: [] }); return; }
+
+    const saved = useModelStore.getState().layouts[`sm-${capsuleId}`] ?? {};
+    const pos = (id, i) => saved[id] ?? { x: 120 + (i % 4) * 200, y: 100 + Math.floor(i / 4) * 150 };
+
+    set({
+      nodes: sm.states.map((st, i) => ({
+        id: st.id,
+        type: st.kind === 'initial' ? 'initialNode' : 'stateNode',
+        position: pos(st.id, i),
+        data: { capsuleId },
+      })),
+      edges: sm.transitions.map((t) => ({
+        id: t.id,
+        source: t.source, target: t.target,
+        sourceHandle: t.sourceHandle ?? null,
+        targetHandle: t.targetHandle ?? null,
+        type: 'transitionEdge',
+        data: { capsuleId },
+        markerEnd: { type: 'arrowclosed', width: 16, height: 16 },
+      })),
+    });
+  },
+
+  onNodesChange: (changes) => {
+    set((s) => {
+      const nodes = applyNodeChanges(changes, s.nodes);
+      const patch = { nodes };
+
+      // Persist positions only when a drag finishes (avoid a write per frame).
+      const done = changes.filter((c) => c.type === 'position' && c.position && c.dragging === false);
+      if (done.length) {
+        const posMap = {};
+        for (const c of done) posMap[c.id] = c.position;
+        useModelStore.getState().setStatePositions(s.capsuleId, posMap);
+      }
+
+      const sel = changes.find((c) => c.type === 'select');
+      if (sel) {
+        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'node'; }
+        else if (s.selectedType === 'node' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
+      }
+      return patch;
+    });
+  },
+
+  onEdgesChange: (changes) => {
+    set((s) => {
+      const patch = { edges: applyEdgeChanges(changes, s.edges) };
+      const sel = changes.find((c) => c.type === 'select');
+      if (sel) {
+        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'edge'; }
+        else if (s.selectedType === 'edge' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
+      }
+      return patch;
+    });
+  },
+
+  // ── Actions that delegate to modelStore then rebuild the graph ──────
+  addState: (kind) => {
+    const { capsuleId } = get();
+    const id = useModelStore.getState().addState(capsuleId, kind);
+    get().rebuild();
+    return id;
+  },
+
+  addTransition: (source, target, sourceHandle, targetHandle) => {
+    const { capsuleId } = get();
+    const id = useModelStore.getState().addTransition(capsuleId, source, target, sourceHandle, targetHandle);
+    get().rebuild();
+    return id;
+  },
+
+  deleteSelected: () => {
+    const { capsuleId, selectedId, selectedType } = get();
+    if (!selectedId) return;
+    const ms = useModelStore.getState();
+    if (selectedType === 'node') ms.deleteState(capsuleId, selectedId);
+    else ms.deleteTransition(capsuleId, selectedId);
+    set({ selectedId: null, selectedType: null });
+    get().rebuild();
+  },
+}));

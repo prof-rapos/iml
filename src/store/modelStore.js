@@ -15,7 +15,15 @@ const mkIM = (name = 'NewInstanceModel') => ({
   links: [],
 });
 
-const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [] };
+const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [], behaviours: {} };
+
+// Immutably update the state machine attached to a class (creating an empty one
+// on first use). fn receives { states, transitions } and returns the next value.
+function withMachine(metaModel, classId, fn) {
+  const behaviours = metaModel.behaviours ?? {};
+  const machine = behaviours[classId] ?? { states: [], transitions: [] };
+  return { ...metaModel, behaviours: { ...behaviours, [classId]: fn(machine) } };
+}
 
 // Re-export so existing importers (ObjectNode, etc.) don't need changing.
 export const getAllAttributes = _getAllAttributes;
@@ -341,21 +349,27 @@ export const useModelStore = create((set, get) => ({
   }),
 
   deleteClass: (id) => {
-    set((s) => ({
-      metaModel: {
-        ...s.metaModel,
-        classes:   s.metaModel.classes.filter((c) => c.id !== id),
-        relations: s.metaModel.relations.filter((r) => r.source !== id && r.target !== id),
-      },
-      instanceModels: s.instanceModels.map((im) => ({
-        ...im,
-        objects: im.objects.filter((o) => o.classId !== id),
-      })),
-      nodes:       s.nodes.filter((n) => n.id !== id),
-      edges:       s.edges.filter((e) => e.source !== id && e.target !== id),
-      selectedId:  s.selectedId === id ? null : s.selectedId,
-      selectedType: s.selectedId === id ? null : s.selectedType,
-    }));
+    set((s) => {
+      const { [id]: _dropped, ...behaviours } = s.metaModel.behaviours ?? {};
+      const { [`sm-${id}`]: _droppedLayout, ...layouts } = s.layouts;
+      return {
+        metaModel: {
+          ...s.metaModel,
+          classes:   s.metaModel.classes.filter((c) => c.id !== id),
+          relations: s.metaModel.relations.filter((r) => r.source !== id && r.target !== id),
+          behaviours,
+        },
+        instanceModels: s.instanceModels.map((im) => ({
+          ...im,
+          objects: im.objects.filter((o) => o.classId !== id),
+        })),
+        layouts,
+        nodes:       s.nodes.filter((n) => n.id !== id),
+        edges:       s.edges.filter((e) => e.source !== id && e.target !== id),
+        selectedId:  s.selectedId === id ? null : s.selectedId,
+        selectedType: s.selectedId === id ? null : s.selectedType,
+      };
+    });
     get().log(`Deleted class ${id}`);
   },
 
@@ -708,6 +722,69 @@ export const useModelStore = create((set, get) => ({
   },
 
   // ══════════════════════════════════════════════════════════════════
+  // BEHAVIOUR — per-class state machines (metaModel.behaviours[classId])
+  // State positions live in layouts['sm-<classId>'] (kept out of the model,
+  // mirroring how structural node positions are stored).
+  // ══════════════════════════════════════════════════════════════════
+  getBehaviour: (classId) => get().metaModel.behaviours?.[classId] ?? null,
+
+  addState: (classId, kind = 'simple') => {
+    const machine = get().metaModel.behaviours?.[classId] ?? { states: [], transitions: [] };
+    if (kind === 'initial' && machine.states.some((s) => s.kind === 'initial')) {
+      get().notify('A state machine can have only one initial state.');
+      return null;
+    }
+    const id = nanoid(8);
+    const n  = machine.states.filter((s) => s.kind === 'simple').length + 1;
+    const state = { id, kind, name: kind === 'initial' ? '' : `State${n}`, entry: '', exit: '' };
+    set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({ ...m, states: [...m.states, state] })) }));
+    return id;
+  },
+
+  updateState: (classId, stateId, patch) =>
+    set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
+      ...m, states: m.states.map((st) => st.id === stateId ? { ...st, ...patch } : st),
+    })) })),
+
+  deleteState: (classId, stateId) =>
+    set((s) => {
+      const smKey  = `sm-${classId}`;
+      const layout = { ...(s.layouts[smKey] ?? {}) };
+      delete layout[stateId];
+      return {
+        metaModel: withMachine(s.metaModel, classId, (m) => ({
+          states:      m.states.filter((st) => st.id !== stateId),
+          transitions: m.transitions.filter((t) => t.source !== stateId && t.target !== stateId),
+        })),
+        layouts: { ...s.layouts, [smKey]: layout },
+      };
+    }),
+
+  addTransition: (classId, source, target, sourceHandle, targetHandle) => {
+    const id = nanoid(8);
+    const transition = { id, source, target, trigger: '', guard: '', effect: '', sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null };
+    set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({ ...m, transitions: [...m.transitions, transition] })) }));
+    return id;
+  },
+
+  updateTransition: (classId, transId, patch) =>
+    set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
+      ...m, transitions: m.transitions.map((t) => t.id === transId ? { ...t, ...patch } : t),
+    })) })),
+
+  deleteTransition: (classId, transId) =>
+    set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
+      ...m, transitions: m.transitions.filter((t) => t.id !== transId),
+    })) })),
+
+  // Persist state-machine node positions into layouts['sm-<classId>'].
+  setStatePositions: (classId, posMap) =>
+    set((s) => {
+      const smKey = `sm-${classId}`;
+      return { layouts: { ...s.layouts, [smKey]: { ...(s.layouts[smKey] ?? {}), ...posMap } } };
+    }),
+
+  // ══════════════════════════════════════════════════════════════════
   // CONFORMANCE VALIDATION
   // ══════════════════════════════════════════════════════════════════
   _runValidate: () => {
@@ -725,8 +802,8 @@ export const useModelStore = create((set, get) => ({
   },
 
   loadFromJSON: (data) => {
-    // Ensure the enumerations array exists (backward-compat with pre-enum models).
-    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [] } });
+    // Backfill enumerations / behaviours for models saved before those features.
+    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {} } });
 
     const normalizeIM = (im) => ({
       ...im,

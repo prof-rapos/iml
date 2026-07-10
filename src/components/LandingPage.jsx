@@ -22,7 +22,7 @@ const MODULES = [
     title: 'Behavioural Modeling',
     description: 'Model capsules, protocols, and state machines in UML-RT style.',
     color: '#d97706',
-    available: false,
+    available: true,
   },
   {
     id: 'ide',
