@@ -4,7 +4,6 @@ import { useBehaviourStore } from '../../store/behaviourStore';
 const TEXT     = '#e6edf3';
 const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
-const ACCENT   = '#d97706';
 
 export default function BehaviourTopbar() {
   const classes    = useModelStore((s) => s.metaModel.classes);
@@ -53,7 +52,6 @@ export default function BehaviourTopbar() {
           <path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4.5a.5.5 0 0 0 .5-.5v-4h2v4a.5.5 0 0 0 .5.5H14a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146z"/>
         </svg>
       </button>
-      <span style={{ color: ACCENT, fontSize: 11, fontWeight: 700 }}>●</span>
     </div>
   );
 }

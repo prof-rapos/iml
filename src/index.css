@@ -54,6 +54,22 @@ body {
   stroke: var(--iml-edge-color);
 }
 
+/* ── Connection handles ───────────────────────────────────────────────────────
+   Hidden at rest so they don't cover edge arrowheads (which terminate at the
+   same point) — revealed on node hover or while drawing a connection. Applies
+   to both the structural and behavioural editors. */
+.react-flow__handle {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.react-flow__node:hover .react-flow__handle,
+.react-flow__handle.connectingfrom,
+.react-flow__handle.connectingto,
+.react-flow__handle-connecting,
+.react-flow__handle-valid {
+  opacity: 1;
+}
+
 /* ── Dark minimap ─────────────────────────────────────────────────────────── */
 .react-flow__minimap {
   background: #1e293b !important;

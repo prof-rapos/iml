@@ -22,6 +22,25 @@ const inputStyle = {
   fontSize: 13, color: TEXT, background: INPUT_BG, outline: 'none',
   width: '100%', boxSizing: 'border-box', fontFamily: 'var(--iml-font-sans)',
 };
+const codeStyle = {
+  ...inputStyle,
+  fontFamily: 'var(--iml-font-mono)', fontSize: 12, lineHeight: 1.5,
+  minHeight: 58, resize: 'vertical', whiteSpace: 'pre', tabSize: 2,
+};
+
+// Multi-line code field — states/transitions carry real (if small) snippets.
+function CodeArea({ value, placeholder, onChange }) {
+  return (
+    <textarea
+      style={codeStyle}
+      rows={3}
+      spellCheck={false}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
+}
 const labelStyle = {
   fontSize: 11, color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase',
 };
@@ -95,12 +114,12 @@ export default function BehaviourProperties() {
               onChange={(e) => updateState(capsuleId, state.id, { name: e.target.value })} />
           </Field>
           <Field label="Entry action">
-            <input style={inputStyle} value={state.entry} placeholder="e.g. lightOn()"
-              onChange={(e) => updateState(capsuleId, state.id, { entry: e.target.value })} />
+            <CodeArea value={state.entry} placeholder={'on entry…\ncount = count + 1;'}
+              onChange={(v) => updateState(capsuleId, state.id, { entry: v })} />
           </Field>
           <Field label="Exit action">
-            <input style={inputStyle} value={state.exit} placeholder="e.g. lightOff()"
-              onChange={(e) => updateState(capsuleId, state.id, { exit: e.target.value })} />
+            <CodeArea value={state.exit} placeholder="on exit…"
+              onChange={(v) => updateState(capsuleId, state.id, { exit: v })} />
           </Field>
         </div>
       </div>
@@ -124,8 +143,8 @@ export default function BehaviourProperties() {
               onChange={(e) => updateTransition(capsuleId, trans.id, { guard: e.target.value })} />
           </Field>
           <Field label="Effect">
-            <input style={inputStyle} value={trans.effect} placeholder="e.g. dispense()"
-              onChange={(e) => updateTransition(capsuleId, trans.id, { effect: e.target.value })} />
+            <CodeArea value={trans.effect} placeholder={'dispense();\nbalance = 0;'}
+              onChange={(v) => updateTransition(capsuleId, trans.id, { effect: v })} />
           </Field>
           <div style={{ fontSize: 11, color: TEXT_MUTED, lineHeight: 1.6 }}>
             Shown on the arrow as <code>trigger [guard] / effect</code>.
