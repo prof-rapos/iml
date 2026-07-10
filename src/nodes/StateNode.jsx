@@ -1,4 +1,5 @@
 import { Handle, Position } from '@xyflow/react';
+import { Code2 } from 'lucide-react';
 import { useModelStore } from '../store/modelStore';
 
 const ACCENT_NORMAL   = 'var(--iml-primary)'; // blue  — normal
@@ -10,6 +11,21 @@ const handleStyle = {
   border: '2px solid #fff',
   borderRadius: '50%',
 };
+
+// One-line preview of an action; a code icon signals more lines exist.
+function ActionLine({ label, code }) {
+  const lines = code.split('\n').filter((l) => l.trim() !== '');
+  const first = lines[0] ?? '';
+  const shown = first.length > 24 ? `${first.slice(0, 24)}…` : first;
+  const multi = lines.length > 1;
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ opacity: 0.55 }}>{label} /</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{shown}</span>
+      {multi && <Code2 size={12} style={{ opacity: 0.7, flexShrink: 0 }} aria-label="multiple lines" />}
+    </div>
+  );
+}
 
 export default function StateNode({ id, data, selected }) {
   const state = useModelStore((s) => s.metaModel.behaviours?.[data.capsuleId]?.states.find((st) => st.id === id));
@@ -41,16 +57,16 @@ export default function StateNode({ id, data, selected }) {
       </div>
 
       {hasActions && (
-        <div style={{ padding: '4px 12px', fontSize: 11, color: '#cbd5e1', whiteSpace: 'pre-wrap', fontFamily: 'var(--iml-font-mono)' }}>
-          {state.entry && <div>entry / {state.entry}</div>}
-          {state.exit  && <div>exit / {state.exit}</div>}
+        <div style={{ padding: '4px 12px', fontSize: 11, color: '#cbd5e1', fontFamily: 'var(--iml-font-mono)', maxWidth: 220, display: 'flex', flexDirection: 'column', gap: 2 }}>
+          {state.entry && <ActionLine label="entry" code={state.entry} />}
+          {state.exit  && <ActionLine label="exit"  code={state.exit} />}
         </div>
       )}
 
-      <Handle id="right"  type="source" position={Position.Right}  style={{ ...handleStyle, right:  -5 }} />
-      <Handle id="left"   type="source" position={Position.Left}   style={{ ...handleStyle, left:   -5 }} />
-      <Handle id="top"    type="source" position={Position.Top}    style={{ ...handleStyle, top:    -5 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ ...handleStyle, bottom: -5 }} />
+      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
+      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
+      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
     </div>
   );
 }

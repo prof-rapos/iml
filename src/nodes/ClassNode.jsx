@@ -68,10 +68,10 @@ export default function ClassNode({ id, selected }) {
       </div>
 
       {/* Handles on all 4 sides — each side has both source+target so direction is determined by drag order */}
-      <Handle id="right"  type="source" position={Position.Right}  style={{ ...handleStyle, right:  -6 }} />
-      <Handle id="left"   type="source" position={Position.Left}   style={{ ...handleStyle, left:   -6 }} />
-      <Handle id="top"    type="source" position={Position.Top}    style={{ ...handleStyle, top:    -6 }} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={{ ...handleStyle, bottom: -6 }} />
+      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
+      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
+      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
+      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
     </div>
   );
 }
