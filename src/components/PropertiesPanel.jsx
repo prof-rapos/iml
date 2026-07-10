@@ -212,15 +212,19 @@ export default function PropertiesPanel() {
           )}
 
           <div style={sectionStyle}>Attribute Values</div>
-          {allAttrs.map((attr) => (
-            <SlotEditor key={attr.id} attr={attr}
-              enumLiterals={attr.type === 'ENUM'
-                ? (metaModel.enumerations?.find((e) => e.id === attr.enumId)?.literals ?? [])
-                : null}
-              value={obj.attributeValues?.[attr.id] ?? ''}
-              onChange={(v) => updateSlot(obj.id, attr.id, v)}
-              onChangeValues={(vs) => updateSlotValues(obj.id, attr.id, vs)} />
-          ))}
+          {allAttrs.map((attr) => {
+            const enumDef = attr.type === 'ENUM'
+              ? (metaModel.enumerations?.find((e) => e.id === attr.enumId) ?? null)
+              : null;
+            return (
+              <SlotEditor key={attr.id} attr={attr}
+                enumLiterals={enumDef ? enumDef.literals : null}
+                enumName={enumDef ? enumDef.name : null}
+                value={obj.attributeValues?.[attr.id] ?? ''}
+                onChange={(v) => updateSlot(obj.id, attr.id, v)}
+                onChangeValues={(vs) => updateSlotValues(obj.id, attr.id, vs)} />
+            );
+          })}
           {allAttrs.length === 0 && (
             <div style={{ color: TEXT_MUTED, fontSize: 12, fontStyle: 'italic' }}>
               No attributes in meta-model.
@@ -335,15 +339,16 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
 }
 
 // ── Slot editor ───────────────────────────────────────────────────────────────
-function SlotEditor({ attr, value, onChange, onChangeValues, enumLiterals = null }) {
+function SlotEditor({ attr, value, onChange, onChangeValues, enumLiterals = null, enumName = null }) {
   const type    = attr?.type ?? 'STRING';
   const isMulti = Array.isArray(value);
+  const typeText = enumName ?? type.toLowerCase();
 
   const label = (
     <label style={labelStyle}>
       {attr?.name}
       <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 400, marginLeft: 4, textTransform: 'none' }}>
-        ({type.toLowerCase()}{isMulti ? '[]' : ''})
+        ({typeText}{isMulti ? '[]' : ''})
       </span>
     </label>
   );

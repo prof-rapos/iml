@@ -18,8 +18,26 @@ export const useTransformStore = create((set, get) => ({
     const srcAttrs = getAllAttributes(sourceClassId, source.metaModel);
     const tgtAttrs = getAllAttributes(targetClassId, target.metaModel);
 
+    // Two attributes auto-map when name + type match. For enums we additionally
+    // require the referenced enumerations to correspond (same name + literals),
+    // since a direct copy across unrelated enums would produce invalid literals.
+    const enumById = (mm, id) => (mm.enumerations ?? []).find((e) => e.id === id);
+    const sameLiterals = (a = [], b = []) => {
+      if (a.length !== b.length) return false;
+      const A = [...a].sort();
+      const B = [...b].sort();
+      return A.every((x, i) => x === B[i]);
+    };
+    const attrsCompatible = (sa, ta) => {
+      if (sa.name !== ta.name || sa.type !== ta.type) return false;
+      if (ta.type !== 'ENUM') return true;
+      const se = enumById(source.metaModel, sa.enumId);
+      const te = enumById(target.metaModel, ta.enumId);
+      return !!se && !!te && se.name === te.name && sameLiterals(se.literals, te.literals);
+    };
+
     const attributeMappings = tgtAttrs.map((ta) => {
-      const match = srcAttrs.find((sa) => sa.name === ta.name && sa.type === ta.type);
+      const match = srcAttrs.find((sa) => attrsCompatible(sa, ta));
       return match
         ? { targetAttrId: ta.id, type: 'direct', sourceAttrId: match.id, value: null }
         : { targetAttrId: ta.id, type: 'omit', sourceAttrId: null, value: null };

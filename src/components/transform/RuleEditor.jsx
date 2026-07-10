@@ -9,6 +9,11 @@ const ACCENT   = '#7c3aed';
 const HEADER_BG = '#161b22';
 const CARD_BG   = '#1c2128';
 
+// Display label for an attribute's type — resolves an enum id to its name.
+const typeLabel = (attr, metaModel) => attr.type === 'ENUM'
+  ? ((metaModel.enumerations ?? []).find((e) => e.id === attr.enumId)?.name ?? 'ENUM')
+  : attr.type;
+
 const SELECT_STYLE = {
   background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT,
   borderRadius: 4, padding: '2px 4px', fontSize: 11, cursor: 'pointer',
@@ -128,7 +133,7 @@ function RuleCard({ rule, source, target }) {
                 <div key={ta.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, color: TEXT, minWidth: 130, flexShrink: 0 }}>
                     {ta.name}:{' '}
-                    <span style={{ color: '#e3b341' }}>{ta.type}</span>
+                    <span style={{ color: '#e3b341' }}>{typeLabel(ta, target.metaModel)}</span>
                   </span>
 
                   <select
@@ -150,7 +155,7 @@ function RuleCard({ rule, source, target }) {
                     >
                       <option value="">— choose source attr —</option>
                       {srcAttrs.map((sa) => (
-                        <option key={sa.id} value={sa.id}>{sa.name} ({sa.type})</option>
+                        <option key={sa.id} value={sa.id}>{sa.name} ({typeLabel(sa, source.metaModel)})</option>
                       ))}
                     </select>
                   )}
