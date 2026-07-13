@@ -87,15 +87,18 @@ export default function BehaviourProperties() {
     );
   }
 
-  if (state && state.kind === 'initial') {
+  if (state && state.kind !== 'simple') {
+    const isInitial = state.kind === 'initial';
     return (
       <div style={panelStyle}>
         <div style={headerStyle}>
-          <span>Initial state</span>
+          <span>{isInitial ? 'Initial state' : 'Final state'}</span>
           <DeleteBtn onClick={deleteSelected} />
         </div>
         <div style={{ padding: 16, color: TEXT_MUTED, fontSize: 13, lineHeight: 1.7 }}>
-          The initial pseudostate marks where the machine starts. Draw a transition from it to the first real state.
+          {isInitial
+            ? 'The initial pseudostate marks where the machine starts. Draw a transition from it to the first real state.'
+            : 'The final state marks completion of the machine. Draw transitions into it for graceful exit.'}
         </div>
       </div>
     );

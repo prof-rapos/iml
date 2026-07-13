@@ -29,10 +29,26 @@ function PaletteBtn({ label, glyph, onClick, disabled }) {
 export default function BehaviourSidebar() {
   const capsuleId = useBehaviourStore((s) => s.capsuleId);
   const addState  = useBehaviourStore((s) => s.addState);
+  const viewport  = useBehaviourStore((s) => s.viewport);
   const sm        = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
 
   const hasInitial = !!sm?.states.some((st) => st.kind === 'initial');
   const disabled   = !capsuleId;
+
+  // Spawn new states at the centre of the current viewport (mirrors the
+  // structural editor) so they don't land off-screen when panned/zoomed.
+  const spawnPosition = () => {
+    const count = sm?.states.length ?? 0;
+    const el = document.querySelector('.react-flow');
+    const cw = el ? el.clientWidth  : 600;
+    const ch = el ? el.clientHeight : 500;
+    const cx = (cw / 2 - viewport.x) / viewport.zoom;
+    const cy = (ch / 2 - viewport.y) / viewport.zoom;
+    const step = (count % 8) * 28;
+    return { x: cx - 60 + step, y: cy - 30 + step };
+  };
+
+  const add = (kind) => addState(kind, spawnPosition());
 
   return (
     <div style={{
@@ -46,14 +62,20 @@ export default function BehaviourSidebar() {
       <PaletteBtn
         label="State"
         glyph={<span style={{ width: 14, height: 11, borderRadius: 3, border: `2px solid ${ACCENT}`, flexShrink: 0 }} />}
-        onClick={() => addState('simple')}
+        onClick={() => add('simple')}
         disabled={disabled}
       />
       <PaletteBtn
         label={hasInitial ? 'Initial (added)' : 'Initial State'}
         glyph={<span style={{ width: 12, height: 12, borderRadius: '50%', background: '#e2e8f0', flexShrink: 0 }} />}
-        onClick={() => addState('initial')}
+        onClick={() => add('initial')}
         disabled={disabled || hasInitial}
+      />
+      <PaletteBtn
+        label="Final State"
+        glyph={<span style={{ width: 12, height: 12, borderRadius: '50%', border: '2px solid #e2e8f0', boxShadow: 'inset 0 0 0 2px #1e293b, inset 0 0 0 3px #e2e8f0', flexShrink: 0 }} />}
+        onClick={() => add('final')}
+        disabled={disabled}
       />
 
       <div style={{ margin: '10px 12px', fontSize: 11, color: TEXT_DIM, lineHeight: 1.6 }}>

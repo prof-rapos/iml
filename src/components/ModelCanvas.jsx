@@ -10,6 +10,7 @@ import ObjectNode from '../nodes/ObjectNode';
 import EnumNode from '../nodes/EnumNode';
 import RelationEdge from '../edges/RelationEdge';
 import LinkEdge from '../edges/LinkEdge';
+import SvgMarkers from './SvgMarkers';
 
 const nodeTypes = { classNode: ClassNode, objectNode: ObjectNode, enumNode: EnumNode };
 const edgeTypes = { relationEdge: RelationEdge, linkEdge: LinkEdge };
@@ -186,6 +187,7 @@ export default function ModelCanvas() {
         edgesReconnectable
         defaultEdgeOptions={{ type: 'relationEdge' }}
       >
+        <SvgMarkers />
         <Background color="var(--iml-grid-color)" gap={20} />
         <Controls />
         <MiniMap

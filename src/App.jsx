@@ -11,7 +11,6 @@ import TransformView from './components/transform/TransformView';
 import BehaviouralView from './components/behaviour/BehaviouralView';
 import { useModelStore } from './store/modelStore';
 import { seedDemoModel } from './utils/seedModel';
-import SvgMarkers from './components/SvgMarkers';
 
 export default function App() {
   const rebuildCanvas = useModelStore((s) => s.rebuildCanvas);
@@ -29,7 +28,6 @@ export default function App() {
 
   return (
     <ReactFlowProvider>
-      <SvgMarkers />
       <Notification />
       <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
         <Topbar />

@@ -736,7 +736,8 @@ export const useModelStore = create((set, get) => ({
     }
     const id = nanoid(8);
     const n  = machine.states.filter((s) => s.kind === 'simple').length + 1;
-    const state = { id, kind, name: kind === 'initial' ? '' : `State${n}`, entry: '', exit: '' };
+    // Initial and final are symbol-only pseudostates (no name).
+    const state = { id, kind, name: kind === 'simple' ? `State${n}` : '', entry: '', exit: '' };
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({ ...m, states: [...m.states, state] })) }));
     return id;
   },

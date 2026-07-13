@@ -13,12 +13,15 @@ export function transitionLabel(t) {
 // View-level state for the behavioural (state-machine) editor. The persistent
 // model (states/transitions) lives in modelStore.metaModel.behaviours; this
 // store holds the currently-edited capsule, selection, and the React Flow graph.
+const NODE_TYPE = { initial: 'initialNode', final: 'finalNode' };
+
 export const useBehaviourStore = create((set, get) => ({
   capsuleId:   null,   // class id whose state machine is being edited
   selectedId:  null,
   selectedType: null,  // 'node' | 'edge'
   nodes: [],
   edges: [],
+  viewport: { x: 0, y: 0, zoom: 1 },  // kept current so new states spawn in view
 
   setCapsule: (classId) => {
     set({ capsuleId: classId, selectedId: null, selectedType: null });
@@ -26,6 +29,7 @@ export const useBehaviourStore = create((set, get) => ({
   },
 
   setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
+  setViewport: (viewport) => set({ viewport }),
 
   rebuild: () => {
     const { capsuleId } = get();
@@ -38,7 +42,7 @@ export const useBehaviourStore = create((set, get) => ({
     set({
       nodes: sm.states.map((st, i) => ({
         id: st.id,
-        type: st.kind === 'initial' ? 'initialNode' : 'stateNode',
+        type: NODE_TYPE[st.kind] ?? 'stateNode',
         position: pos(st.id, i),
         data: { capsuleId },
       })),
@@ -89,9 +93,11 @@ export const useBehaviourStore = create((set, get) => ({
   },
 
   // ── Actions that delegate to modelStore then rebuild the graph ──────
-  addState: (kind) => {
+  addState: (kind, position) => {
     const { capsuleId } = get();
-    const id = useModelStore.getState().addState(capsuleId, kind);
+    const ms = useModelStore.getState();
+    const id = ms.addState(capsuleId, kind);
+    if (id && position) ms.setStatePositions(capsuleId, { [id]: position });
     get().rebuild();
     return id;
   },
@@ -101,6 +107,16 @@ export const useBehaviourStore = create((set, get) => ({
     const id = useModelStore.getState().addTransition(capsuleId, source, target, sourceHandle, targetHandle);
     get().rebuild();
     return id;
+  },
+
+  // Move an existing transition's endpoint (to a different state or handle).
+  reconnectTransition: (oldEdge, conn) => {
+    const { capsuleId } = get();
+    useModelStore.getState().updateTransition(capsuleId, oldEdge.id, {
+      source: conn.source, target: conn.target,
+      sourceHandle: conn.sourceHandle, targetHandle: conn.targetHandle,
+    });
+    get().rebuild();
   },
 
   deleteSelected: () => {
