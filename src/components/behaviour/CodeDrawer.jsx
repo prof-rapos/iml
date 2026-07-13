@@ -1,3 +1,4 @@
+import { useRef, useEffect } from 'react';
 import MonacoEditor from '@monaco-editor/react';
 import { useModelStore } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
@@ -15,6 +16,15 @@ export default function CodeDrawer() {
   const updateTransition = useModelStore((s) => s.updateTransition);
   const sm               = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
 
+  const ref = useRef(null);
+  // Close when focus/click moves outside the drawer.
+  useEffect(() => {
+    if (!drawer) return;
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) close(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [drawer, close]);
+
   if (!drawer) return null;
 
   const el = drawer.scope === 'state'
@@ -30,12 +40,16 @@ export default function CodeDrawer() {
   };
 
   return (
-    <div style={{
-      position: 'absolute', left: 0, right: 0, bottom: 0, height: '42%',
-      background: '#0d1117', borderTop: `1px solid ${BORDER}`,
-      boxShadow: '0 -8px 24px rgba(0,0,0,0.45)', zIndex: 50,
-      display: 'flex', flexDirection: 'column', fontFamily: 'var(--iml-font-sans)',
-    }}>
+    <div
+      ref={ref}
+      onKeyDown={(e) => e.stopPropagation()}  // keep keys (Space, Delete…) out of React Flow
+      style={{
+        position: 'absolute', left: 0, right: 0, bottom: 0, height: '42%',
+        background: '#0d1117', borderTop: `1px solid ${BORDER}`,
+        boxShadow: '0 -8px 24px rgba(0,0,0,0.45)', zIndex: 50,
+        display: 'flex', flexDirection: 'column', fontFamily: 'var(--iml-font-sans)',
+      }}
+    >
       <div style={{
         height: 38, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
         padding: '0 12px', background: '#161b22', borderBottom: `1px solid ${BORDER}`,

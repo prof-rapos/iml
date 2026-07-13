@@ -56,6 +56,7 @@ export default function StateMachineCanvas() {
         connectionLineType={ConnectionLineType.SmoothStep}
         connectionLineStyle={{ stroke: '#d97706', strokeWidth: 2, strokeDasharray: '6,3' }}
         deleteKeyCode={null}
+        panActivationKeyCode={null}
         edgesReconnectable
         fitView
       >
