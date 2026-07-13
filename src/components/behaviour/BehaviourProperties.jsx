@@ -1,3 +1,4 @@
+import { Maximize2 } from 'lucide-react';
 import { useModelStore } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 
@@ -28,17 +29,30 @@ const codeStyle = {
   minHeight: 58, resize: 'vertical', whiteSpace: 'pre', tabSize: 2,
 };
 
-// Multi-line code field — states/transitions carry real (if small) snippets.
-function CodeArea({ value, placeholder, onChange }) {
+// Multi-line code field with an "expand" affordance that opens the full editor.
+function CodeArea({ value, placeholder, onChange, onExpand }) {
   return (
-    <textarea
-      style={codeStyle}
-      rows={3}
-      spellCheck={false}
-      value={value}
-      placeholder={placeholder}
-      onChange={(e) => onChange(e.target.value)}
-    />
+    <div style={{ position: 'relative' }}>
+      <textarea
+        style={codeStyle}
+        rows={3}
+        spellCheck={false}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+      <button
+        onClick={onExpand}
+        title="Open in code editor"
+        style={{
+          position: 'absolute', top: 4, right: 4, padding: 3, lineHeight: 0,
+          border: `1px solid ${BORDER}`, borderRadius: 4, cursor: 'pointer',
+          background: 'rgba(15,23,42,0.85)', color: TEXT_MUTED,
+        }}
+      >
+        <Maximize2 size={13} />
+      </button>
+    </div>
   );
 }
 const labelStyle = {
@@ -68,6 +82,7 @@ export default function BehaviourProperties() {
   const selectedId   = useBehaviourStore((s) => s.selectedId);
   const selectedType = useBehaviourStore((s) => s.selectedType);
   const deleteSelected = useBehaviourStore((s) => s.deleteSelected);
+  const openCodeDrawer = useBehaviourStore((s) => s.openCodeDrawer);
   const sm = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
 
   const updateState      = useModelStore((s) => s.updateState);
@@ -118,11 +133,13 @@ export default function BehaviourProperties() {
           </Field>
           <Field label="Entry action">
             <CodeArea value={state.entry} placeholder={'on entry…\ncount = count + 1;'}
-              onChange={(v) => updateState(capsuleId, state.id, { entry: v })} />
+              onChange={(v) => updateState(capsuleId, state.id, { entry: v })}
+              onExpand={() => openCodeDrawer({ scope: 'state', id: state.id, field: 'entry', title: `${state.name || 'state'} — entry` })} />
           </Field>
           <Field label="Exit action">
             <CodeArea value={state.exit} placeholder="on exit…"
-              onChange={(v) => updateState(capsuleId, state.id, { exit: v })} />
+              onChange={(v) => updateState(capsuleId, state.id, { exit: v })}
+              onExpand={() => openCodeDrawer({ scope: 'state', id: state.id, field: 'exit', title: `${state.name || 'state'} — exit` })} />
           </Field>
         </div>
       </div>
@@ -147,7 +164,8 @@ export default function BehaviourProperties() {
           </Field>
           <Field label="Effect">
             <CodeArea value={trans.effect} placeholder={'dispense();\nbalance = 0;'}
-              onChange={(v) => updateTransition(capsuleId, trans.id, { effect: v })} />
+              onChange={(v) => updateTransition(capsuleId, trans.id, { effect: v })}
+              onExpand={() => openCodeDrawer({ scope: 'transition', id: trans.id, field: 'effect', title: `${trans.trigger || 'transition'} — effect` })} />
           </Field>
           <div style={{ fontSize: 11, color: TEXT_MUTED, lineHeight: 1.6 }}>
             Shown on the arrow as <code>trigger [guard] / effect</code>.

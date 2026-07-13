@@ -22,14 +22,17 @@ export const useBehaviourStore = create((set, get) => ({
   nodes: [],
   edges: [],
   viewport: { x: 0, y: 0, zoom: 1 },  // kept current so new states spawn in view
+  codeDrawer: null,                   // { scope:'state'|'transition', id, field, title } or null
 
   setCapsule: (classId) => {
-    set({ capsuleId: classId, selectedId: null, selectedType: null });
+    set({ capsuleId: classId, selectedId: null, selectedType: null, codeDrawer: null });
     get().rebuild();
   },
 
   setSelected: (id, type) => set({ selectedId: id, selectedType: type }),
   setViewport: (viewport) => set({ viewport }),
+  openCodeDrawer: (target) => set({ codeDrawer: target }),
+  closeCodeDrawer: () => set({ codeDrawer: null }),
 
   rebuild: () => {
     const { capsuleId } = get();

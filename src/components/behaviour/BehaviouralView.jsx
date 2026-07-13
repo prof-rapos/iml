@@ -5,6 +5,7 @@ import BehaviourTopbar from './BehaviourTopbar';
 import BehaviourSidebar from './BehaviourSidebar';
 import StateMachineCanvas from './StateMachineCanvas';
 import BehaviourProperties from './BehaviourProperties';
+import CodeDrawer from './CodeDrawer';
 
 export default function BehaviouralView() {
   const capsuleId = useBehaviourStore((s) => s.capsuleId);
@@ -13,7 +14,7 @@ export default function BehaviouralView() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'var(--iml-font-sans)' }}>
       <BehaviourTopbar />
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
         <BehaviourSidebar />
         <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
           <ReactFlowProvider>
@@ -33,6 +34,7 @@ export default function BehaviouralView() {
           )}
         </div>
         <BehaviourProperties />
+        <CodeDrawer />
       </div>
     </div>
   );

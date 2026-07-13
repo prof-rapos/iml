@@ -9,17 +9,17 @@ const handleStyle = {
 };
 
 export default function InitialNode({ selected }) {
+  const fill = selected ? '#d97706' : '#e2e8f0';
   return (
     <div
       style={{
-        width: 24, height: 24, borderRadius: '50%',
-        background: '#0f172a',
-        border: `3px solid ${selected ? '#d97706' : '#e2e8f0'}`,
+        width: 22, height: 22, borderRadius: '50%',
+        background: fill,                          // solid filled disc
+        border: `2px solid ${selected ? '#d97706' : '#94a3b8'}`,
         boxShadow: selected ? '0 0 0 3px rgba(217,119,6,0.25)' : '0 2px 6px rgba(0,0,0,0.3)',
         cursor: 'pointer',
       }}
     >
-      <div style={{ position: 'absolute', inset: 4, borderRadius: '50%', background: selected ? '#d97706' : '#e2e8f0' }} />
       <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
       <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
       <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
