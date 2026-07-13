@@ -1,9 +1,38 @@
 import { useRef, useEffect } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-import { useModelStore } from '../../store/modelStore';
+import { useModelStore, capsuleCompletions } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 
 const BORDER = 'rgba(255,255,255,0.12)';
+
+const KIND = { method: 'Function', field: 'Field', variable: 'Variable' };
+
+// Registers a completion provider that offers the capsule's ports, their
+// signals (after `port.`), and its attributes. Reads live store state so it
+// always reflects the current capsule. Returns a disposer.
+function registerCompletions(monaco) {
+  return monaco.languages.registerCompletionItemProvider('java', {
+    triggerCharacters: ['.'],
+    provideCompletionItems(model, position) {
+      const capsuleId = useBehaviourStore.getState().capsuleId;
+      const metaModel = useModelStore.getState().metaModel;
+      const line = model.getValueInRange({
+        startLineNumber: position.lineNumber, startColumn: 1,
+        endLineNumber: position.lineNumber, endColumn: position.column,
+      });
+      const word = model.getWordUntilPosition(position);
+      const range = { startLineNumber: position.lineNumber, endLineNumber: position.lineNumber, startColumn: word.startColumn, endColumn: word.endColumn };
+      const suggestions = capsuleCompletions(capsuleId, metaModel, line).map((c) => ({
+        label: c.label,
+        kind: monaco.languages.CompletionItemKind[KIND[c.kind] ?? 'Text'],
+        insertText: c.insert,
+        detail: c.detail,
+        range,
+      }));
+      return { suggestions };
+    },
+  });
+}
 
 // Bottom drawer giving a full Monaco editor for a state/transition code field.
 // Opened from the properties panel's expand affordance; edits bind straight to
@@ -14,9 +43,11 @@ export default function CodeDrawer() {
   const close            = useBehaviourStore((s) => s.closeCodeDrawer);
   const updateState      = useModelStore((s) => s.updateState);
   const updateTransition = useModelStore((s) => s.updateTransition);
-  const sm               = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
+  const metaModel        = useModelStore((s) => s.metaModel);
+  const sm               = metaModel.behaviours?.[capsuleId];
 
   const ref = useRef(null);
+  const providerRef = useRef(null);
   // Close when focus/click moves outside the drawer. Capture phase is required
   // because React Flow stops mousedown propagation on the canvas, so a bubble
   // listener would never see clicks on the diagram itself.
@@ -26,6 +57,13 @@ export default function CodeDrawer() {
     document.addEventListener('mousedown', handler, true);
     return () => document.removeEventListener('mousedown', handler, true);
   }, [drawer, close]);
+  // Dispose the completion provider when the drawer unmounts.
+  useEffect(() => () => { providerRef.current?.dispose(); providerRef.current = null; }, []);
+
+  const handleMount = (editor, monaco) => {
+    providerRef.current?.dispose();
+    providerRef.current = registerCompletions(monaco);
+  };
 
   if (!drawer) return null;
 
@@ -40,6 +78,8 @@ export default function CodeDrawer() {
     if (drawer.scope === 'state') updateState(capsuleId, drawer.id, patch);
     else updateTransition(capsuleId, drawer.id, patch);
   };
+
+  const ports = metaModel.classes.find((c) => c.id === capsuleId)?.ports ?? [];
 
   return (
     <div
@@ -74,6 +114,20 @@ export default function CodeDrawer() {
         </button>
       </div>
 
+      {/* Capsule interface reference — students write sends as port.signal(...) */}
+      <div style={{
+        flexShrink: 0, padding: '5px 12px', background: '#0d1117', borderBottom: `1px solid ${BORDER}`,
+        fontSize: 11, color: '#6e7681', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+      }}>
+        <span style={{ fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>ports</span>
+        {ports.length === 0
+          ? <span style={{ fontStyle: 'italic' }}>none — add ports in the sidebar</span>
+          : ports.map((p) => (
+              <span key={p.id} style={{ color: '#9cd1ff', background: 'rgba(121,192,255,0.1)', borderRadius: 3, padding: '1px 6px', fontFamily: 'var(--iml-font-mono)' }}>{p.name}</span>
+            ))}
+        <span style={{ marginLeft: 'auto', fontStyle: 'italic' }}>Ctrl+Space for completions</span>
+      </div>
+
       <div style={{ flex: 1, minHeight: 0 }}>
         <MonacoEditor
           key={`${drawer.scope}:${drawer.id}:${drawer.field}`}
@@ -81,6 +135,7 @@ export default function CodeDrawer() {
           defaultLanguage="java"
           theme="vs-dark"
           value={value}
+          onMount={handleMount}
           onChange={onChange}
           options={{
             fontSize: 13, tabSize: 2, insertSpaces: true,

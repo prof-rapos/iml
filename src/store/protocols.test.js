@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useModelStore, capsuleMessages, allProtocols, SYSTEM_PROTOCOLS } from './modelStore.js';
+import { useModelStore, capsuleMessages, capsuleCompletions, allProtocols, SYSTEM_PROTOCOLS } from './modelStore.js';
 
 function seed() {
   useModelStore.setState({
@@ -56,5 +56,36 @@ describe('protocols & ports', () => {
     useModelStore.getState().updatePort('C', pid, { protocolId: prid });
     useModelStore.getState().deleteProtocol(prid);
     expect(mm().classes[0].ports.some((p) => p.id === pid)).toBe(false);
+  });
+});
+
+describe('capsuleCompletions', () => {
+  beforeEach(() => {
+    useModelStore.setState({
+      metaModel: {
+        kind: 'metamodel', name: 'M',
+        classes: [{ id: 'C', name: 'C',
+          attributes: [{ id: 'a', name: 'balance', type: 'INT', lowerBound: 0, upperBound: 1 }],
+          ports: [{ id: 'p', name: 'log', protocolId: 'sys-log', conjugated: false }] }],
+        relations: [], enumerations: [], behaviours: {}, protocols: [],
+      },
+      layouts: {},
+    });
+  });
+
+  it('offers ports and capsule attributes at the start of an expression', () => {
+    const labels = capsuleCompletions('C', mm(), 'x = ').map((c) => c.label);
+    expect(labels).toEqual(expect.arrayContaining(['log', 'balance']));
+  });
+
+  it('offers a port\'s signals as method sends after a dot', () => {
+    const comps = capsuleCompletions('C', mm(), 'log.');
+    expect(comps.map((c) => c.label)).toContain('log');
+    expect(comps.find((c) => c.label === 'log').insert).toBe('log()');
+    expect(comps.find((c) => c.label === 'log').kind).toBe('method');
+  });
+
+  it('returns nothing after a dot on an unknown port', () => {
+    expect(capsuleCompletions('C', mm(), 'nope.')).toEqual([]);
   });
 });

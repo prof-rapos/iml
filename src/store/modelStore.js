@@ -49,6 +49,26 @@ export function capsuleMessages(classId, metaModel) {
   return out;
 }
 
+// Code-editor completions for a capsule's action code. After a `port.` the
+// port's signals are offered (as sends); otherwise the capsule's ports and
+// attributes (the cross-state variables). Pure so it can be unit-tested.
+export function capsuleCompletions(classId, metaModel, lineBeforeCursor = '') {
+  const cls = metaModel.classes.find((c) => c.id === classId);
+  if (!cls) return [];
+  const dot = lineBeforeCursor.match(/([A-Za-z_$][\w$]*)\.[\w$]*$/);
+  if (dot) {
+    const port = (cls.ports ?? []).find((p) => p.name === dot[1]);
+    if (!port) return [];
+    const proto = getProtocolById(port.protocolId, metaModel);
+    return (proto?.signals ?? []).map((sig) => ({
+      label: sig.name, kind: 'method', insert: `${sig.name}()`, detail: `${proto.name} · ${sig.direction}`,
+    }));
+  }
+  const ports = (cls.ports ?? []).map((p) => ({ label: p.name, kind: 'field', insert: p.name, detail: 'port' }));
+  const attrs = _getAllAttributes(cls.id, metaModel).map((a) => ({ label: a.name, kind: 'variable', insert: a.name, detail: `${a.type} · capsule attr` }));
+  return [...ports, ...attrs];
+}
+
 // Immutably update the state machine attached to a class (creating an empty one
 // on first use). fn receives { states, transitions } and returns the next value.
 function withMachine(metaModel, classId, fn) {
