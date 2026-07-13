@@ -17,12 +17,14 @@ export default function CodeDrawer() {
   const sm               = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
 
   const ref = useRef(null);
-  // Close when focus/click moves outside the drawer.
+  // Close when focus/click moves outside the drawer. Capture phase is required
+  // because React Flow stops mousedown propagation on the canvas, so a bubble
+  // listener would never see clicks on the diagram itself.
   useEffect(() => {
     if (!drawer) return;
     const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) close(); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    document.addEventListener('mousedown', handler, true);
+    return () => document.removeEventListener('mousedown', handler, true);
   }, [drawer, close]);
 
   if (!drawer) return null;
