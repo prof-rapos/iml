@@ -1,5 +1,5 @@
 import { Maximize2 } from 'lucide-react';
-import { useModelStore } from '../../store/modelStore';
+import { useModelStore, capsuleMessages } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 
 const PANEL_BG   = '#0f172a';
@@ -83,10 +83,13 @@ export default function BehaviourProperties() {
   const selectedType = useBehaviourStore((s) => s.selectedType);
   const deleteSelected = useBehaviourStore((s) => s.deleteSelected);
   const openCodeDrawer = useBehaviourStore((s) => s.openCodeDrawer);
-  const sm = useModelStore((s) => s.metaModel.behaviours?.[capsuleId]);
+  const metaModel = useModelStore((s) => s.metaModel);
+  const sm = metaModel.behaviours?.[capsuleId];
 
   const updateState      = useModelStore((s) => s.updateState);
   const updateTransition = useModelStore((s) => s.updateTransition);
+
+  const messages = capsuleId ? capsuleMessages(capsuleId, metaModel) : [];
 
   const state = selectedType === 'node' ? sm?.states.find((st) => st.id === selectedId) : null;
   const trans = selectedType === 'edge' ? sm?.transitions.find((t) => t.id === selectedId) : null;
@@ -155,7 +158,18 @@ export default function BehaviourProperties() {
         </div>
         <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
           <Field label="Trigger">
-            <input style={inputStyle} value={trans.trigger} placeholder="e.g. coinInserted"
+            {messages.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => { if (e.target.value) updateTransition(capsuleId, trans.id, { trigger: e.target.value }); }}
+                style={{ ...inputStyle, cursor: 'pointer', marginBottom: 5, background: '#1e293b' }}
+              >
+                <option value="">insert a message…</option>
+                {messages.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
+              </select>
+            )}
+            <input style={inputStyle} value={trans.trigger}
+              placeholder={messages.length ? 'trigger (or pick above)' : 'e.g. timer.timeout — add ports below'}
               onChange={(e) => updateTransition(capsuleId, trans.id, { trigger: e.target.value })} />
           </Field>
           <Field label="Guard">

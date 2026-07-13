@@ -15,7 +15,39 @@ const mkIM = (name = 'NewInstanceModel') => ({
   links: [],
 });
 
-const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [], behaviours: {} };
+const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [], behaviours: {}, protocols: [] };
+
+// ── UML-RT protocols & ports ──────────────────────────────────────────────────
+// Built-in system protocols, always available (not user-editable). Timing gives
+// a receivable `timeout`; Log is a send-only service used in effects.
+export const SYSTEM_PROTOCOLS = [
+  { id: 'sys-timing', name: 'Timing', system: true, signals: [{ id: 'timeout', name: 'timeout', direction: 'in' }] },
+  { id: 'sys-log',    name: 'Log',    system: true, signals: [{ id: 'log',     name: 'log',     direction: 'out' }] },
+];
+
+export function allProtocols(metaModel) {
+  return [...SYSTEM_PROTOCOLS, ...(metaModel.protocols ?? [])];
+}
+export function getProtocolById(id, metaModel) {
+  return allProtocols(metaModel).find((p) => p.id === id) ?? null;
+}
+
+// Messages a capsule can be *triggered* by: for each port, the signals it can
+// receive — in-signals of a regular port, out-signals of a conjugated one.
+export function capsuleMessages(classId, metaModel) {
+  const cls = metaModel.classes.find((c) => c.id === classId);
+  if (!cls) return [];
+  const out = [];
+  for (const port of cls.ports ?? []) {
+    const proto = getProtocolById(port.protocolId, metaModel);
+    if (!proto) continue;
+    const wanted = port.conjugated ? 'out' : 'in';
+    for (const sig of proto.signals) {
+      if (sig.direction === wanted) out.push({ value: `${port.name}.${sig.name}`, label: `${port.name}.${sig.name}` });
+    }
+  }
+  return out;
+}
 
 // Immutably update the state machine attached to a class (creating an empty one
 // on first use). fn receives { states, transitions } and returns the next value.
@@ -786,6 +818,68 @@ export const useModelStore = create((set, get) => ({
     }),
 
   // ══════════════════════════════════════════════════════════════════
+  // PROTOCOLS & PORTS (UML-RT messaging interface)
+  // ══════════════════════════════════════════════════════════════════
+  addProtocol: () => {
+    const id = nanoid(8);
+    const existing = new Set(allProtocols(get().metaModel).map((p) => p.name));
+    let name = 'Protocol';
+    let n = 1;
+    while (existing.has(name)) name = `Protocol${++n}`;
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: [...(s.metaModel.protocols ?? []), { id, name, signals: [] }] } }));
+    return id;
+  },
+
+  updateProtocol: (id, patch) =>
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => p.id === id ? { ...p, ...patch } : p) } })),
+
+  deleteProtocol: (id) =>
+    set((s) => ({ metaModel: {
+      ...s.metaModel,
+      protocols: (s.metaModel.protocols ?? []).filter((p) => p.id !== id),
+      // Drop any ports that referenced the removed protocol.
+      classes: s.metaModel.classes.map((c) => ({ ...c, ports: (c.ports ?? []).filter((pt) => pt.protocolId !== id) })),
+    } })),
+
+  addSignal: (protocolId, direction = 'in') => {
+    const id = nanoid(8);
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
+      if (p.id !== protocolId) return p;
+      return { ...p, signals: [...p.signals, { id, name: `signal${p.signals.length + 1}`, direction }] };
+    }) } }));
+    return id;
+  },
+
+  updateSignal: (protocolId, signalId, patch) =>
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
+      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId ? { ...sg, ...patch } : sg) } : p) } })),
+
+  deleteSignal: (protocolId, signalId) =>
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
+      p.id === protocolId ? { ...p, signals: p.signals.filter((sg) => sg.id !== signalId) } : p) } })),
+
+  addPort: (classId) => {
+    const id = nanoid(8);
+    const cls = get().metaModel.classes.find((c) => c.id === classId);
+    const existing = new Set((cls?.ports ?? []).map((p) => p.name));
+    let name = 'port';
+    let n = 1;
+    while (existing.has(name)) name = `port${++n}`;
+    const port = { id, name, protocolId: SYSTEM_PROTOCOLS[0].id, conjugated: false };
+    set((s) => ({ metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+      c.id === classId ? { ...c, ports: [...(c.ports ?? []), port] } : c) } }));
+    return id;
+  },
+
+  updatePort: (classId, portId, patch) =>
+    set((s) => ({ metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+      c.id === classId ? { ...c, ports: (c.ports ?? []).map((p) => p.id === portId ? { ...p, ...patch } : p) } : c) } })),
+
+  deletePort: (classId, portId) =>
+    set((s) => ({ metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+      c.id === classId ? { ...c, ports: (c.ports ?? []).filter((p) => p.id !== portId) } : c) } })),
+
+  // ══════════════════════════════════════════════════════════════════
   // CONFORMANCE VALIDATION
   // ══════════════════════════════════════════════════════════════════
   _runValidate: () => {
@@ -803,8 +897,8 @@ export const useModelStore = create((set, get) => ({
   },
 
   loadFromJSON: (data) => {
-    // Backfill enumerations / behaviours for models saved before those features.
-    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {} } });
+    // Backfill enumerations / behaviours / protocols for older models.
+    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {}, protocols: data.metaModel.protocols ?? [] } });
 
     const normalizeIM = (im) => ({
       ...im,
