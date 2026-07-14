@@ -24,6 +24,11 @@ export const useBehaviourStore = create((set, get) => ({
   viewport: { x: 0, y: 0, zoom: 1 },  // kept current so new states spawn in view
   codeDrawer: null,                   // { scope:'state'|'transition', id, field, title } or null
 
+  // Which sub-editor of the Behavioural module is showing: the per-capsule
+  // state machine, or the capsule structure (parts + connectors) diagram.
+  subView: 'statemachine',
+  setSubView: (v) => set({ subView: v }),
+
   setCapsule: (classId) => {
     set({ capsuleId: classId, selectedId: null, selectedType: null, codeDrawer: null });
     get().rebuild();

@@ -2,19 +2,38 @@ import { useRef, useState, useEffect } from 'react';
 import { toJpeg } from 'html-to-image';
 import { useModelStore } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
+import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
 
 const TEXT     = '#e6edf3';
 const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
 
 export default function BehaviourTopbar() {
-  const classes      = useModelStore((s) => s.metaModel.classes);
-  const metaModel     = useModelStore((s) => s.metaModel);
-  const setAppView    = useModelStore((s) => s.setAppView);
-  const getFullJSON   = useModelStore((s) => s.getFullJSON);
-  const loadFromJSON  = useModelStore((s) => s.loadFromJSON);
+  const classes         = useModelStore((s) => s.metaModel.classes);
+  const metaModel        = useModelStore((s) => s.metaModel);
+  const setAppView       = useModelStore((s) => s.setAppView);
+  const getFullJSON      = useModelStore((s) => s.getFullJSON);
+  const loadFromJSON     = useModelStore((s) => s.loadFromJSON);
+  const instanceModels   = useModelStore((s) => s.instanceModels);
+  const currentIMIndex   = useModelStore((s) => s.currentIMIndex);
+  const switchInstanceModel = useModelStore((s) => s.switchInstanceModel);
   const capsuleId     = useBehaviourStore((s) => s.capsuleId);
   const setCapsule    = useBehaviourStore((s) => s.setCapsule);
+  const subView       = useBehaviourStore((s) => s.subView);
+  const setSubView    = useBehaviourStore((s) => s.setSubView);
+  const rebuildStructure = useCapsuleStructureStore((s) => s.rebuild);
+
+  const currentIM = instanceModels[currentIMIndex];
+
+  const handleSubViewChange = (v) => {
+    setSubView(v);
+    if (v === 'structure') rebuildStructure();
+  };
+
+  const handleInstanceModelChange = (idx) => {
+    switchInstanceModel(idx);
+    rebuildStructure();
+  };
 
   const fileRef = useRef(null);
   const menuRef = useRef(null);
@@ -46,6 +65,7 @@ export default function BehaviourTopbar() {
       try {
         loadFromJSON(JSON.parse(ev.target.result));
         setCapsule(null); // model changed — clear the (possibly stale) capsule
+        rebuildStructure();
       } catch { alert('Invalid JSON file.'); }
     };
     reader.readAsText(file);
@@ -62,9 +82,10 @@ export default function BehaviourTopbar() {
         filter: (el) => !el.classList?.contains('react-flow__controls'),
       });
       const cls = classes.find((c) => c.id === capsuleId);
+      const label = subView === 'structure' ? (currentIM?.name || 'structure') : (cls?.name || 'statemachine');
       const a = document.createElement('a');
       a.href = dataUrl;
-      a.download = `${cls?.name || 'statemachine'}-behaviour.jpg`;
+      a.download = `${label}-behaviour.jpg`;
       a.click();
     } catch (err) {
       alert('Export failed: ' + err.message);
@@ -86,17 +107,52 @@ export default function BehaviourTopbar() {
 
       <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
 
-      <span style={{ fontSize: 12, color: TEXT_DIM }}>Capsule</span>
-      <select
-        value={capsuleId ?? ''}
-        onChange={(e) => setCapsule(e.target.value || null)}
-        style={{ background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', minWidth: 160 }}
-      >
-        <option value="">— select a class —</option>
-        {classes.map((c) => (
-          <option key={c.id} value={c.id}>{c.name}{c.isAbstract ? ' «abstract»' : ''}</option>
+      <div style={{ display: 'flex', background: '#0d1117', border: `1px solid ${BORDER}`, borderRadius: 6, padding: 2 }}>
+        {[['statemachine', 'State Machine'], ['structure', 'Structure']].map(([v, label]) => (
+          <button
+            key={v}
+            onClick={() => handleSubViewChange(v)}
+            style={{
+              padding: '4px 10px', fontSize: 12, fontWeight: 600, borderRadius: 4, border: 'none', cursor: 'pointer',
+              background: subView === v ? '#7c3aed' : 'transparent',
+              color: subView === v ? '#fff' : TEXT_DIM,
+            }}
+          >
+            {label}
+          </button>
         ))}
-      </select>
+      </div>
+
+      <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
+
+      {subView === 'statemachine' ? (
+        <>
+          <span style={{ fontSize: 12, color: TEXT_DIM }}>Capsule</span>
+          <select
+            value={capsuleId ?? ''}
+            onChange={(e) => setCapsule(e.target.value || null)}
+            style={{ background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', minWidth: 160 }}
+          >
+            <option value="">— select a class —</option>
+            {classes.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}{c.isAbstract ? ' «abstract»' : ''}</option>
+            ))}
+          </select>
+        </>
+      ) : (
+        <>
+          <span style={{ fontSize: 12, color: TEXT_DIM }}>Instance Model</span>
+          <select
+            value={currentIMIndex}
+            onChange={(e) => handleInstanceModelChange(Number(e.target.value))}
+            style={{ background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT, borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', minWidth: 160 }}
+          >
+            {instanceModels.map((im, i) => (
+              <option key={im.id} value={i}>{im.name}</option>
+            ))}
+          </select>
+        </>
+      )}
 
       <div style={{ flex: 1 }} />
 
@@ -125,7 +181,7 @@ export default function BehaviourTopbar() {
             <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
             <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
             <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />
-            <MenuItem onClick={handleExportJpeg} disabled={!capsuleId}>Export JPG</MenuItem>
+            <MenuItem onClick={handleExportJpeg} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
           </div>
         )}
       </div>

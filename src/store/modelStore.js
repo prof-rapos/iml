@@ -13,6 +13,7 @@ const mkIM = (name = 'NewInstanceModel') => ({
   name,
   objects: [],
   links: [],
+  connectors: [],
 });
 
 const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relations: [], enumerations: [], behaviours: {}, protocols: [] };
@@ -39,6 +40,25 @@ export function allProtocols(metaModel) {
 }
 export function getProtocolById(id, metaModel) {
   return allProtocols(metaModel).find((p) => p.id === id) ?? null;
+}
+
+// Drops any capsule-structure connector whose two ports no longer resolve to a
+// valid base↔conjugate pairing on the same protocol — used after a port or
+// protocol is deleted/edited out from under an existing connector.
+function pruneDanglingConnectors(metaModel, instanceModels) {
+  const findPort = (objects, objectId, portId) => {
+    const obj = objects.find((o) => o.id === objectId);
+    const cls = metaModel.classes.find((c) => c.id === obj?.classId);
+    return (cls?.ports ?? []).find((p) => p.id === portId);
+  };
+  return instanceModels.map((im) => ({
+    ...im,
+    connectors: (im.connectors ?? []).filter((c) => {
+      const srcPort = findPort(im.objects, c.sourceObjectId, c.sourcePortId);
+      const tgtPort = findPort(im.objects, c.targetObjectId, c.targetPortId);
+      return !!srcPort && !!tgtPort && srcPort.protocolId === tgtPort.protocolId && srcPort.conjugated !== tgtPort.conjugated;
+    }),
+  }));
 }
 
 // Messages a capsule can be *triggered* by: for each port, the signals it can
@@ -435,10 +455,14 @@ export const useModelStore = create((set, get) => ({
           relations: s.metaModel.relations.filter((r) => r.source !== id && r.target !== id),
           behaviours,
         },
-        instanceModels: s.instanceModels.map((im) => ({
-          ...im,
-          objects: im.objects.filter((o) => o.classId !== id),
-        })),
+        instanceModels: s.instanceModels.map((im) => {
+          const keptIds = new Set(im.objects.filter((o) => o.classId !== id).map((o) => o.id));
+          return {
+            ...im,
+            objects: im.objects.filter((o) => o.classId !== id),
+            connectors: (im.connectors ?? []).filter((c) => keptIds.has(c.sourceObjectId) && keptIds.has(c.targetObjectId)),
+          };
+        }),
         layouts,
         nodes:       s.nodes.filter((n) => n.id !== id),
         edges:       s.edges.filter((e) => e.source !== id && e.target !== id),
@@ -755,6 +779,7 @@ export const useModelStore = create((set, get) => ({
               ...im,
               objects: im.objects.filter((o) => o.id !== id),
               links:   im.links.filter((l) => l.source !== id && l.target !== id),
+              connectors: (im.connectors ?? []).filter((c) => c.sourceObjectId !== id && c.targetObjectId !== id),
             }
           : im
       ),
@@ -795,6 +820,64 @@ export const useModelStore = create((set, get) => ({
       edges:       s.edges.filter((e) => e.id !== id),
       selectedId:  s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
+    }));
+  },
+
+  // ── Capsule structure connectors (per instance model) ──────────────
+  // A connector joins one base port to one conjugate port of the same
+  // protocol, on two distinct objects. See capsuleStructureStore.js for the
+  // canvas that edits these.
+  addConnector: (sourceObjectId, sourcePortId, targetObjectId, targetPortId) => {
+    if (sourceObjectId === targetObjectId) {
+      get().notify('A connector cannot join a part to itself.');
+      return null;
+    }
+    const { metaModel, instanceModels, currentIMIndex } = get();
+    const im = instanceModels[currentIMIndex];
+    const findPort = (objectId, portId) => {
+      const obj = im?.objects.find((o) => o.id === objectId);
+      const cls = metaModel.classes.find((c) => c.id === obj?.classId);
+      return (cls?.ports ?? []).find((p) => p.id === portId);
+    };
+    const srcPort = findPort(sourceObjectId, sourcePortId);
+    const tgtPort = findPort(targetObjectId, targetPortId);
+    if (!srcPort || !tgtPort) return null;
+
+    if (srcPort.protocolId !== tgtPort.protocolId) {
+      get().notify('Connectors must join ports typed by the same protocol.');
+      return null;
+    }
+    if (srcPort.conjugated === tgtPort.conjugated) {
+      get().notify('Connectors must join a base port to a conjugate port.');
+      return null;
+    }
+    const portInUse = (im?.connectors ?? []).some((c) =>
+      [c.sourcePortId, c.targetPortId].includes(sourcePortId) ||
+      [c.sourcePortId, c.targetPortId].includes(targetPortId)
+    );
+    if (portInUse) {
+      get().notify('One of these ports is already connected.');
+      return null;
+    }
+
+    const id = nanoid(8);
+    set((s) => ({
+      instanceModels: s.instanceModels.map((cur, i) =>
+        i === s.currentIMIndex
+          ? { ...cur, connectors: [...(cur.connectors ?? []), { id, sourceObjectId, sourcePortId, targetObjectId, targetPortId }] }
+          : cur
+      ),
+    }));
+    return id;
+  },
+
+  deleteConnector: (id) => {
+    set((s) => ({
+      instanceModels: s.instanceModels.map((im, i) =>
+        i === s.currentIMIndex
+          ? { ...im, connectors: (im.connectors ?? []).filter((c) => c.id !== id) }
+          : im
+      ),
     }));
   },
 
@@ -862,6 +945,14 @@ export const useModelStore = create((set, get) => ({
       return { layouts: { ...s.layouts, [smKey]: { ...(s.layouts[smKey] ?? {}), ...posMap } } };
     }),
 
+  // Persists capsule-structure-diagram part positions, keyed independently
+  // from the object/attribute canvas's 'im-<id>' layout (see capsuleStructureStore.js).
+  setPartPositions: (instanceModelId, posMap) =>
+    set((s) => {
+      const csKey = `cs-${instanceModelId}`;
+      return { layouts: { ...s.layouts, [csKey]: { ...(s.layouts[csKey] ?? {}), ...posMap } } };
+    }),
+
   // ══════════════════════════════════════════════════════════════════
   // PROTOCOLS & PORTS (UML-RT messaging interface)
   // ══════════════════════════════════════════════════════════════════
@@ -879,12 +970,15 @@ export const useModelStore = create((set, get) => ({
     set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => p.id === id ? { ...p, ...patch } : p) } })),
 
   deleteProtocol: (id) =>
-    set((s) => ({ metaModel: {
-      ...s.metaModel,
-      protocols: (s.metaModel.protocols ?? []).filter((p) => p.id !== id),
-      // Drop any ports that referenced the removed protocol.
-      classes: s.metaModel.classes.map((c) => ({ ...c, ports: (c.ports ?? []).filter((pt) => pt.protocolId !== id) })),
-    } })),
+    set((s) => {
+      const metaModel = {
+        ...s.metaModel,
+        protocols: (s.metaModel.protocols ?? []).filter((p) => p.id !== id),
+        // Drop any ports that referenced the removed protocol.
+        classes: s.metaModel.classes.map((c) => ({ ...c, ports: (c.ports ?? []).filter((pt) => pt.protocolId !== id) })),
+      };
+      return { metaModel, instanceModels: pruneDanglingConnectors(metaModel, s.instanceModels) };
+    }),
 
   addSignal: (protocolId, direction = 'in') => {
     const id = nanoid(8);
@@ -942,12 +1036,22 @@ export const useModelStore = create((set, get) => ({
   },
 
   updatePort: (classId, portId, patch) =>
-    set((s) => ({ metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
-      c.id === classId ? { ...c, ports: (c.ports ?? []).map((p) => p.id === portId ? { ...p, ...patch } : p) } : c) } })),
+    set((s) => {
+      const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+        c.id === classId ? { ...c, ports: (c.ports ?? []).map((p) => p.id === portId ? { ...p, ...patch } : p) } : c) };
+      // Re-validate: a protocolId/conjugated change may invalidate an existing connector.
+      const instanceModels = ('protocolId' in patch || 'conjugated' in patch)
+        ? pruneDanglingConnectors(metaModel, s.instanceModels)
+        : s.instanceModels;
+      return { metaModel, instanceModels };
+    }),
 
   deletePort: (classId, portId) =>
-    set((s) => ({ metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
-      c.id === classId ? { ...c, ports: (c.ports ?? []).filter((p) => p.id !== portId) } : c) } })),
+    set((s) => {
+      const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+        c.id === classId ? { ...c, ports: (c.ports ?? []).filter((p) => p.id !== portId) } : c) };
+      return { metaModel, instanceModels: pruneDanglingConnectors(metaModel, s.instanceModels) };
+    }),
 
   // ══════════════════════════════════════════════════════════════════
   // CONFORMANCE VALIDATION
@@ -992,6 +1096,7 @@ export const useModelStore = create((set, get) => ({
         source: l.source ?? l.sourceId,
         target: l.target ?? l.targetId,
       })),
+      connectors: im.connectors ?? [],
     });
 
     if (data.instanceModels) {
