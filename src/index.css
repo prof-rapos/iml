@@ -70,6 +70,13 @@ body {
   opacity: 1;
 }
 
+/* Capsule structure diagram is the exception: the port markers ARE the UML
+   notation (filled = base, hollow = conjugate), not just drag affordances,
+   so they stay visible at all times rather than hover-revealed. */
+.react-flow__handle.part-port-handle {
+  opacity: 1;
+}
+
 /* ── Dark minimap ─────────────────────────────────────────────────────────── */
 .react-flow__minimap {
   background: #1e293b !important;

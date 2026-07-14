@@ -123,6 +123,7 @@ export default function PartNode({ id, data, selected }) {
             key={port.id}
             id={port.id}
             type="source"
+            className="part-port-handle"
             position={side === 'left' ? Position.Left : Position.Right}
             style={{ ...handleStyle(port.conjugated), top: HEADER_HEIGHT + row * ROW_HEIGHT + ROW_HEIGHT / 2 }}
           />
