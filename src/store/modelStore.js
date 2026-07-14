@@ -21,8 +21,12 @@ const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relatio
 // Built-in system protocols, always available (not user-editable). Timing gives
 // a receivable `timeout`; Log is a send-only service used in effects.
 export const SYSTEM_PROTOCOLS = [
-  { id: 'sys-timing', name: 'Timing', system: true, signals: [{ id: 'timeout', name: 'timeout', direction: 'in' }] },
-  { id: 'sys-log',    name: 'Log',    system: true, signals: [{ id: 'log',     name: 'log',     direction: 'out' }] },
+  { id: 'sys-timing', name: 'Timing', system: true, signals: [
+    { id: 'timeout',     name: 'timeout',     direction: 'in'  }, // received → triggers a transition
+    { id: 'informIn',    name: 'informIn',    direction: 'out' }, // sent: arm a one-shot timer
+    { id: 'informEvery', name: 'informEvery', direction: 'out' }, // sent: arm a recurring timer
+  ] },
+  { id: 'sys-log',    name: 'Log',    system: true, signals: [{ id: 'log', name: 'log', direction: 'out' }] },
 ];
 
 export function allProtocols(metaModel) {
@@ -60,9 +64,12 @@ export function capsuleCompletions(classId, metaModel, lineBeforeCursor = '') {
     const port = (cls.ports ?? []).find((p) => p.name === dot[1]);
     if (!port) return [];
     const proto = getProtocolById(port.protocolId, metaModel);
-    return (proto?.signals ?? []).map((sig) => ({
-      label: sig.name, kind: 'method', insert: `${sig.name}()`, detail: `${proto.name} · ${sig.direction}`,
-    }));
+    // You can only *send* the port's sendable signals — out-signals on a
+    // regular port, in-signals on a conjugated one (mirror of the trigger rule).
+    const sendable = port.conjugated ? 'in' : 'out';
+    return (proto?.signals ?? [])
+      .filter((sig) => sig.direction === sendable)
+      .map((sig) => ({ label: sig.name, kind: 'method', insert: `${sig.name}()`, detail: `${proto.name} · send` }));
   }
   const ports = (cls.ports ?? []).map((p) => ({ label: p.name, kind: 'field', insert: p.name, detail: 'port' }));
   const attrs = _getAllAttributes(cls.id, metaModel).map((a) => ({ label: a.name, kind: 'variable', insert: a.name, detail: `${a.type} · capsule attr` }));

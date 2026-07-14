@@ -88,4 +88,25 @@ describe('capsuleCompletions', () => {
   it('returns nothing after a dot on an unknown port', () => {
     expect(capsuleCompletions('C', mm(), 'nope.')).toEqual([]);
   });
+
+  it('only offers sendable (out) signals after a dot — a Timing port sends informIn/informEvery, not timeout', () => {
+    // Add a regular Timing port.
+    useModelStore.setState((s) => ({
+      metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+        c.id === 'C' ? { ...c, ports: [...c.ports, { id: 'tp', name: 'timer', protocolId: 'sys-timing', conjugated: false }] } : c) },
+    }));
+    const sends = capsuleCompletions('C', mm(), 'timer.').map((c) => c.label);
+    expect(sends).toEqual(expect.arrayContaining(['informIn', 'informEvery']));
+    expect(sends).not.toContain('timeout'); // timeout is received (in), not sent
+  });
+
+  it('timeout is still a receivable trigger message on a Timing port', () => {
+    useModelStore.setState((s) => ({
+      metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+        c.id === 'C' ? { ...c, ports: [...c.ports, { id: 'tp', name: 'timer', protocolId: 'sys-timing', conjugated: false }] } : c) },
+    }));
+    const triggers = capsuleMessages('C', mm()).map((m) => m.value);
+    expect(triggers).toContain('timer.timeout');
+    expect(triggers).not.toContain('timer.informIn'); // informIn is sent, not received
+  });
 });
