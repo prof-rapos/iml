@@ -101,7 +101,7 @@ export function seedDemoModel() {
             "id": "BJRBFQI4",
             "kind": "simple",
             "name": "Green",
-            "entry": "lightColor = LightValue.GREEN;\ntimer.informIn(10000);\nlog.log(direction + \" is now Green\");",
+            "entry": "lightColor = LightValue.GREEN;\ntimer.informIn(10000);\nlog.log(direction + \" is now Green.\");",
             "exit": ""
           },
           {
