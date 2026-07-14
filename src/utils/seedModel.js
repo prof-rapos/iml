@@ -1,7 +1,8 @@
 import { useModelStore } from '../store/modelStore';
 
-// Loads a demo TrafficLight capsule model (UML-RT protocols, ports, and a
-// state machine) so the canvas isn't empty on first launch.
+// Loads a demo TrafficLight capsule model (UML-RT protocols, ports, capsule
+// structure connectors, and a state machine) so the canvas isn't empty on
+// first launch.
 export function seedDemoModel() {
   useModelStore.setState(
   {
@@ -218,6 +219,22 @@ export function seedDemoModel() {
           "sourceHandle": "bottom",
           "targetHandle": "bottom"
         }
+      ],
+      "connectors": [
+        {
+          "id": "jmY59W3W",
+          "sourceObjectId": "bqe7CsQA",
+          "sourcePortId": "5LtFVlnC",
+          "targetObjectId": "vsvVNzAT",
+          "targetPortId": "vpyOQpuR"
+        },
+        {
+          "id": "-F3GSY-T",
+          "sourceObjectId": "bqe7CsQA",
+          "sourcePortId": "vpyOQpuR",
+          "targetObjectId": "vsvVNzAT",
+          "targetPortId": "5LtFVlnC"
+        }
       ]
     }
   ],
@@ -258,6 +275,12 @@ export function seedDemoModel() {
       "4_72OzMo": {
         "x": 359,
         "y": 104
+      }
+    },
+    "cs--R5tzUpx": {
+      "vsvVNzAT": {
+        "x": 571.5498,
+        "y": -4.88863636363638
       }
     }
   }
