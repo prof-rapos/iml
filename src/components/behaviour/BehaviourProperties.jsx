@@ -1,5 +1,5 @@
 import { Maximize2 } from 'lucide-react';
-import { useModelStore, capsuleMessages } from '../../store/modelStore';
+import { useModelStore, capsuleMessages, getProtocolById } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 
 const PANEL_BG   = '#0f172a';
@@ -91,6 +91,19 @@ export default function BehaviourProperties() {
 
   const messages = capsuleId ? capsuleMessages(capsuleId, metaModel) : [];
 
+  // Look up the params for a "port.signal" trigger string, for a read-only hint.
+  const triggerParams = (trigger) => {
+    if (!trigger) return null;
+    const [portName, sigName] = trigger.split('.');
+    if (!portName || !sigName) return null;
+    const cls = metaModel.classes.find((c) => c.id === capsuleId);
+    const port = (cls?.ports ?? []).find((p) => p.name === portName);
+    if (!port) return null;
+    const proto = getProtocolById(port.protocolId, metaModel);
+    const sig = proto?.signals.find((s) => s.name === sigName);
+    return sig?.params ?? null;
+  };
+
   const state = selectedType === 'node' ? sm?.states.find((st) => st.id === selectedId) : null;
   const trans = selectedType === 'edge' ? sm?.transitions.find((t) => t.id === selectedId) : null;
 
@@ -171,6 +184,14 @@ export default function BehaviourProperties() {
             <input style={inputStyle} value={trans.trigger}
               placeholder={messages.length ? 'trigger (or pick above)' : 'e.g. timer.timeout — add ports below'}
               onChange={(e) => updateTransition(capsuleId, trans.id, { trigger: e.target.value })} />
+            {(() => {
+              const params = triggerParams(trans.trigger);
+              return params && params.length > 0 ? (
+                <div style={{ fontSize: 11, color: TEXT_MUTED, marginTop: 4 }}>
+                  params: {params.map((p) => `${p.name}: ${p.type}`).join(', ')}
+                </div>
+              ) : null;
+            })()}
           </Field>
           <Field label="Guard">
             <input style={inputStyle} value={trans.guard} placeholder="e.g. amount >= price"

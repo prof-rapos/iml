@@ -57,6 +57,59 @@ describe('protocols & ports', () => {
     useModelStore.getState().deleteProtocol(prid);
     expect(mm().classes[0].ports.some((p) => p.id === pid)).toBe(false);
   });
+
+  it('the Timing protocol has a cancelTimer out-signal taking a tag', () => {
+    const timing = allProtocols(mm()).find((p) => p.name === 'Timing');
+    const cancel = timing.signals.find((s) => s.name === 'cancelTimer');
+    expect(cancel.direction).toBe('out');
+    expect(cancel.params).toEqual([{ id: 'tag', name: 'tag', type: 'STRING' }]);
+  });
+
+  it('informIn takes a tag and a millisecond duration; timeout carries the tag back', () => {
+    const timing = allProtocols(mm()).find((p) => p.name === 'Timing');
+    const informIn = timing.signals.find((s) => s.name === 'informIn');
+    expect(informIn.params.map((p) => p.name)).toEqual(['tag', 'ms']);
+    const timeout = timing.signals.find((s) => s.name === 'timeout');
+    expect(timeout.params).toEqual([{ id: 'tag', name: 'tag', type: 'STRING' }]);
+  });
+});
+
+describe('signal parameters', () => {
+  beforeEach(seed);
+
+  it('addParam appends a default STRING param; updateParam and deleteParam mutate/remove it', () => {
+    const prid = useModelStore.getState().addProtocol();
+    const sid = useModelStore.getState().addSignal(prid, 'out');
+    const paramId = useModelStore.getState().addParam(prid, sid);
+
+    let sig = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid);
+    expect(sig.params).toEqual([{ id: paramId, name: 'param1', type: 'STRING' }]);
+
+    useModelStore.getState().updateParam(prid, sid, paramId, { name: 'amount', type: 'INT' });
+    sig = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid);
+    expect(sig.params).toEqual([{ id: paramId, name: 'amount', type: 'INT' }]);
+
+    useModelStore.getState().deleteParam(prid, sid, paramId);
+    sig = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid);
+    expect(sig.params).toEqual([]);
+  });
+
+  it('capsuleMessages labels a triggerable signal with its params', () => {
+    const pid = useModelStore.getState().addPort('C');
+    useModelStore.getState().updatePort('C', pid, { name: 'timer', protocolId: 'sys-timing' });
+    const timeoutMsg = capsuleMessages('C', mm()).find((m) => m.value === 'timer.timeout');
+    expect(timeoutMsg.label).toBe('timer.timeout(tag)');
+  });
+
+  it('capsuleCompletions inserts a multi-param signal as a snippet with sequential tab-stops', () => {
+    useModelStore.setState((s) => ({
+      metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
+        c.id === 'C' ? { ...c, ports: [...c.ports, { id: 'tp', name: 'timer', protocolId: 'sys-timing', conjugated: false }] } : c) },
+    }));
+    const comps = capsuleCompletions('C', mm(), 'timer.');
+    const informIn = comps.find((c) => c.label === 'informIn');
+    expect(informIn.insert).toBe('informIn(${1:tag}, ${2:ms})');
+  });
 });
 
 describe('capsuleCompletions', () => {
@@ -78,11 +131,13 @@ describe('capsuleCompletions', () => {
     expect(labels).toEqual(expect.arrayContaining(['log', 'balance']));
   });
 
-  it('offers a port\'s signals as method sends after a dot', () => {
+  it('offers a port\'s signals as method sends after a dot, with param placeholders as snippet tab-stops', () => {
     const comps = capsuleCompletions('C', mm(), 'log.');
     expect(comps.map((c) => c.label)).toContain('log');
-    expect(comps.find((c) => c.label === 'log').insert).toBe('log()');
-    expect(comps.find((c) => c.label === 'log').kind).toBe('method');
+    const logComp = comps.find((c) => c.label === 'log');
+    expect(logComp.insert).toBe('log(${1:message})');
+    expect(logComp.kind).toBe('method');
+    expect(logComp.detail).toBe('Log · send(message: STRING)');
   });
 
   it('returns nothing after a dot on an unknown port', () => {

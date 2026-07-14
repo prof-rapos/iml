@@ -26,6 +26,7 @@ function registerCompletions(monaco) {
         label: c.label,
         kind: monaco.languages.CompletionItemKind[KIND[c.kind] ?? 'Text'],
         insertText: c.insert,
+        insertTextRules: monaco.languages.CompletionItemInsertTextRule.InsertAsSnippet,
         detail: c.detail,
         range,
       }));

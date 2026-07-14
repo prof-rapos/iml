@@ -22,11 +22,16 @@ const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relatio
 // a receivable `timeout`; Log is a send-only service used in effects.
 export const SYSTEM_PROTOCOLS = [
   { id: 'sys-timing', name: 'Timing', system: true, signals: [
-    { id: 'timeout',     name: 'timeout',     direction: 'in'  }, // received → triggers a transition
-    { id: 'informIn',    name: 'informIn',    direction: 'out' }, // sent: arm a one-shot timer
-    { id: 'informEvery', name: 'informEvery', direction: 'out' }, // sent: arm a recurring timer
+    // A `tag` (student-chosen name) identifies which timer fired/is being
+    // cancelled — a simplified stand-in for UML-RT's opaque RTTimerId handle.
+    { id: 'timeout',     name: 'timeout',     direction: 'in',  params: [{ id: 'tag', name: 'tag', type: 'STRING' }] }, // received → triggers a transition
+    { id: 'informIn',    name: 'informIn',    direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }, { id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a one-shot timer
+    { id: 'informEvery', name: 'informEvery', direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }, { id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a recurring timer
+    { id: 'cancelTimer', name: 'cancelTimer', direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }] }, // sent: cancel an armed timer
   ] },
-  { id: 'sys-log',    name: 'Log',    system: true, signals: [{ id: 'log', name: 'log', direction: 'out' }] },
+  { id: 'sys-log',    name: 'Log',    system: true, signals: [
+    { id: 'log', name: 'log', direction: 'out', params: [{ id: 'message', name: 'message', type: 'STRING' }] },
+  ] },
 ];
 
 export function allProtocols(metaModel) {
@@ -47,7 +52,12 @@ export function capsuleMessages(classId, metaModel) {
     if (!proto) continue;
     const wanted = port.conjugated ? 'out' : 'in';
     for (const sig of proto.signals) {
-      if (sig.direction === wanted) out.push({ value: `${port.name}.${sig.name}`, label: `${port.name}.${sig.name}` });
+      if (sig.direction !== wanted) continue;
+      const params = sig.params ?? [];
+      const label = params.length
+        ? `${port.name}.${sig.name}(${params.map((pr) => pr.name).join(', ')})`
+        : `${port.name}.${sig.name}`;
+      out.push({ value: `${port.name}.${sig.name}`, label });
     }
   }
   return out;
@@ -69,7 +79,14 @@ export function capsuleCompletions(classId, metaModel, lineBeforeCursor = '') {
     const sendable = port.conjugated ? 'in' : 'out';
     return (proto?.signals ?? [])
       .filter((sig) => sig.direction === sendable)
-      .map((sig) => ({ label: sig.name, kind: 'method', insert: `${sig.name}()`, detail: `${proto.name} · send` }));
+      .map((sig) => {
+        const params = sig.params ?? [];
+        const args = params.map((pr, i) => `\${${i + 1}:${pr.name}}`).join(', ');
+        const detail = params.length
+          ? `${proto.name} · send(${params.map((pr) => `${pr.name}: ${pr.type}`).join(', ')})`
+          : `${proto.name} · send`;
+        return { label: sig.name, kind: 'method', insert: `${sig.name}(${args})`, detail };
+      });
   }
   const ports = (cls.ports ?? []).map((p) => ({ label: p.name, kind: 'field', insert: p.name, detail: 'port' }));
   const attrs = _getAllAttributes(cls.id, metaModel).map((a) => ({ label: a.name, kind: 'variable', insert: a.name, detail: `${a.type} · capsule attr` }));
@@ -872,7 +889,7 @@ export const useModelStore = create((set, get) => ({
     const id = nanoid(8);
     set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
       if (p.id !== protocolId) return p;
-      return { ...p, signals: [...p.signals, { id, name: `signal${p.signals.length + 1}`, direction }] };
+      return { ...p, signals: [...p.signals, { id, name: `signal${p.signals.length + 1}`, direction, params: [] }] };
     }) } }));
     return id;
   },
@@ -884,6 +901,31 @@ export const useModelStore = create((set, get) => ({
   deleteSignal: (protocolId, signalId) =>
     set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
       p.id === protocolId ? { ...p, signals: p.signals.filter((sg) => sg.id !== signalId) } : p) } })),
+
+  addParam: (protocolId, signalId) => {
+    const id = nanoid(8);
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
+      if (p.id !== protocolId) return p;
+      return { ...p, signals: p.signals.map((sg) => {
+        if (sg.id !== signalId) return sg;
+        const params = sg.params ?? [];
+        return { ...sg, params: [...params, { id, name: `param${params.length + 1}`, type: 'STRING' }] };
+      }) };
+    }) } }));
+    return id;
+  },
+
+  updateParam: (protocolId, signalId, paramId, patch) =>
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
+      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId
+        ? { ...sg, params: (sg.params ?? []).map((pr) => pr.id === paramId ? { ...pr, ...patch } : pr) }
+        : sg) } : p) } })),
+
+  deleteParam: (protocolId, signalId, paramId) =>
+    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
+      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId
+        ? { ...sg, params: (sg.params ?? []).filter((pr) => pr.id !== paramId) }
+        : sg) } : p) } })),
 
   addPort: (classId) => {
     const id = nanoid(8);
