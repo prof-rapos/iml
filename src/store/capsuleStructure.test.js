@@ -33,7 +33,10 @@ function seed() {
           { id: 'portG', name: 'portG', protocolId: 'p1', conjugated: true },
         ] },
       ],
-      relations: [], enumerations: [], behaviours: {},
+      relations: [
+        { id: 'rel1', kind: 'REFERENCE', source: 'C1', target: 'C2', name: 'rel', sourceMultiplicity: '', targetMultiplicity: '' },
+      ],
+      enumerations: [], behaviours: {},
       protocols: [
         { id: 'p1', name: 'Proto1', signals: [] },
         { id: 'p2', name: 'Proto2', signals: [] },
@@ -122,10 +125,12 @@ describe('capsule structure connectors', () => {
     expect(currentConnectors()).toEqual([]);
   });
 
-  it('deleteClass cascades to connectors of objects removed with the class', () => {
+  it('deleteClass cascades to connectors AND links of objects removed with the class', () => {
     useModelStore.getState().addConnector('o1', 'portA', 'o2', 'portB');
+    const linkId = useModelStore.getState().addLink('rel1', 'o1', 'o2');
     useModelStore.getState().deleteClass('C1');
     expect(currentConnectors()).toEqual([]);
+    expect(useModelStore.getState().instanceModels[0].links.some((l) => l.id === linkId)).toBe(false);
   });
 
   it('deletePort cascades across instance models', () => {

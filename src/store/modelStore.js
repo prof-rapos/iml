@@ -460,6 +460,7 @@ export const useModelStore = create((set, get) => ({
           return {
             ...im,
             objects: im.objects.filter((o) => o.classId !== id),
+            links: im.links.filter((l) => keptIds.has(l.source) && keptIds.has(l.target)),
             connectors: (im.connectors ?? []).filter((c) => keptIds.has(c.sourceObjectId) && keptIds.has(c.targetObjectId)),
           };
         }),
