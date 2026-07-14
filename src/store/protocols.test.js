@@ -58,19 +58,19 @@ describe('protocols & ports', () => {
     expect(mm().classes[0].ports.some((p) => p.id === pid)).toBe(false);
   });
 
-  it('the Timing protocol has a cancelTimer out-signal taking a tag', () => {
+  it('the Timing protocol has a parameterless cancelTimer out-signal — the port identifies the timer', () => {
     const timing = allProtocols(mm()).find((p) => p.name === 'Timing');
     const cancel = timing.signals.find((s) => s.name === 'cancelTimer');
     expect(cancel.direction).toBe('out');
-    expect(cancel.params).toEqual([{ id: 'tag', name: 'tag', type: 'STRING' }]);
+    expect(cancel.params).toEqual([]);
   });
 
-  it('informIn takes a tag and a millisecond duration; timeout carries the tag back', () => {
+  it('informIn/informEvery take only a millisecond duration; timeout takes no params', () => {
     const timing = allProtocols(mm()).find((p) => p.name === 'Timing');
     const informIn = timing.signals.find((s) => s.name === 'informIn');
-    expect(informIn.params.map((p) => p.name)).toEqual(['tag', 'ms']);
+    expect(informIn.params).toEqual([{ id: 'ms', name: 'ms', type: 'INT' }]);
     const timeout = timing.signals.find((s) => s.name === 'timeout');
-    expect(timeout.params).toEqual([{ id: 'tag', name: 'tag', type: 'STRING' }]);
+    expect(timeout.params).toEqual([]);
   });
 });
 
@@ -94,21 +94,32 @@ describe('signal parameters', () => {
     expect(sig.params).toEqual([]);
   });
 
-  it('capsuleMessages labels a triggerable signal with its params', () => {
+  it('capsuleMessages labels a triggerable signal with its params (none for timeout — the port is the identity)', () => {
     const pid = useModelStore.getState().addPort('C');
     useModelStore.getState().updatePort('C', pid, { name: 'timer', protocolId: 'sys-timing' });
     const timeoutMsg = capsuleMessages('C', mm()).find((m) => m.value === 'timer.timeout');
-    expect(timeoutMsg.label).toBe('timer.timeout(tag)');
+    expect(timeoutMsg.label).toBe('timer.timeout');
   });
 
-  it('capsuleCompletions inserts a multi-param signal as a snippet with sequential tab-stops', () => {
+  it('two Timing ports on one capsule surface distinct, independently-identified timeout triggers', () => {
+    const a = useModelStore.getState().addPort('C');
+    useModelStore.getState().updatePort('C', a, { name: 'timerA', protocolId: 'sys-timing' });
+    const b = useModelStore.getState().addPort('C');
+    useModelStore.getState().updatePort('C', b, { name: 'timerB', protocolId: 'sys-timing' });
+    const triggers = capsuleMessages('C', mm()).map((m) => m.value);
+    expect(triggers).toEqual(expect.arrayContaining(['timerA.timeout', 'timerB.timeout']));
+  });
+
+  it('capsuleCompletions inserts a single-param signal as a snippet with a tab-stop', () => {
     useModelStore.setState((s) => ({
       metaModel: { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
         c.id === 'C' ? { ...c, ports: [...c.ports, { id: 'tp', name: 'timer', protocolId: 'sys-timing', conjugated: false }] } : c) },
     }));
     const comps = capsuleCompletions('C', mm(), 'timer.');
     const informIn = comps.find((c) => c.label === 'informIn');
-    expect(informIn.insert).toBe('informIn(${1:tag}, ${2:ms})');
+    expect(informIn.insert).toBe('informIn(${1:ms})');
+    const cancel = comps.find((c) => c.label === 'cancelTimer');
+    expect(cancel.insert).toBe('cancelTimer()');
   });
 });
 

@@ -22,12 +22,12 @@ const EMPTY_MM = { kind: 'metamodel', name: 'NewMetaModel', classes: [], relatio
 // a receivable `timeout`; Log is a send-only service used in effects.
 export const SYSTEM_PROTOCOLS = [
   { id: 'sys-timing', name: 'Timing', system: true, signals: [
-    // A `tag` (student-chosen name) identifies which timer fired/is being
-    // cancelled — a simplified stand-in for UML-RT's opaque RTTimerId handle.
-    { id: 'timeout',     name: 'timeout',     direction: 'in',  params: [{ id: 'tag', name: 'tag', type: 'STRING' }] }, // received → triggers a transition
-    { id: 'informIn',    name: 'informIn',    direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }, { id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a one-shot timer
-    { id: 'informEvery', name: 'informEvery', direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }, { id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a recurring timer
-    { id: 'cancelTimer', name: 'cancelTimer', direction: 'out', params: [{ id: 'tag', name: 'tag', type: 'STRING' }] }, // sent: cancel an armed timer
+    // The port itself identifies the timer (arm one per Timing port) — a
+    // simplified stand-in for UML-RT's opaque RTTimerId handle.
+    { id: 'timeout',     name: 'timeout',     direction: 'in',  params: [] }, // received → triggers a transition
+    { id: 'informIn',    name: 'informIn',    direction: 'out', params: [{ id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a one-shot timer
+    { id: 'informEvery', name: 'informEvery', direction: 'out', params: [{ id: 'ms', name: 'ms', type: 'INT' }] }, // sent: arm a recurring timer
+    { id: 'cancelTimer', name: 'cancelTimer', direction: 'out', params: [] }, // sent: cancel this port's armed timer
   ] },
   { id: 'sys-log',    name: 'Log',    system: true, signals: [
     { id: 'log', name: 'log', direction: 'out', params: [{ id: 'message', name: 'message', type: 'STRING' }] },
