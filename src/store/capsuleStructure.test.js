@@ -25,6 +25,13 @@ function seed() {
         { id: 'C5', name: 'C5', attributes: [], ports: [
           { id: 'portE', name: 'log', protocolId: 'sys-log', conjugated: true },
         ] },
+        // Symmetric peer class (like TrafficLight): both a base and a
+        // conjugate port of the same protocol, so two instances can be
+        // wired reciprocally in both directions.
+        { id: 'C6', name: 'C6', attributes: [], ports: [
+          { id: 'portF', name: 'portF', protocolId: 'p1', conjugated: false },
+          { id: 'portG', name: 'portG', protocolId: 'p1', conjugated: true },
+        ] },
       ],
       relations: [], enumerations: [], behaviours: {},
       protocols: [
@@ -41,6 +48,8 @@ function seed() {
         { id: 'o4', classId: 'C1', name: 'O4', attributeValues: {} },
         { id: 'o5', classId: 'C4', name: 'O5', attributeValues: {} },
         { id: 'o6', classId: 'C5', name: 'O6', attributeValues: {} },
+        { id: 'o7', classId: 'C6', name: 'O7', attributeValues: {} },
+        { id: 'o8', classId: 'C6', name: 'O8', attributeValues: {} },
       ],
       links: [], connectors: [],
     }],
@@ -88,6 +97,17 @@ describe('capsule structure connectors', () => {
     const id = useModelStore.getState().addConnector('o1', 'portA2', 'o2', 'portB');
     expect(id).toBeNull();
     expect(currentConnectors()).toHaveLength(1);
+  });
+
+  it('allows a reciprocal second connector between the same two objects, using the same class-defined port ids in reverse (regression: port ids are shared across instances of a class, so "already connected" must be scoped per object, not per bare port id)', () => {
+    const first  = useModelStore.getState().addConnector('o7', 'portF', 'o8', 'portG');
+    const second = useModelStore.getState().addConnector('o8', 'portF', 'o7', 'portG');
+    expect(first).toBeTruthy();
+    expect(second).toBeTruthy();
+    expect(currentConnectors()).toEqual([
+      { id: first,  sourceObjectId: 'o7', sourcePortId: 'portF', targetObjectId: 'o8', targetPortId: 'portG' },
+      { id: second, sourceObjectId: 'o8', sourcePortId: 'portF', targetObjectId: 'o7', targetPortId: 'portG' },
+    ]);
   });
 
   it('deleteConnector removes it', () => {

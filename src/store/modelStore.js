@@ -855,9 +855,15 @@ export const useModelStore = create((set, get) => ({
       get().notify('Connectors must join a base port to a conjugate port.');
       return null;
     }
+    // Port ids are defined once on the class and shared by every instance, so
+    // "already connected" must be scoped to the (object, port) pair — not the
+    // bare port id — or a second object's identically-named port would be
+    // wrongly seen as already taken.
     const portInUse = (im?.connectors ?? []).some((c) =>
-      [c.sourcePortId, c.targetPortId].includes(sourcePortId) ||
-      [c.sourcePortId, c.targetPortId].includes(targetPortId)
+      (c.sourceObjectId === sourceObjectId && c.sourcePortId === sourcePortId) ||
+      (c.targetObjectId === sourceObjectId && c.targetPortId === sourcePortId) ||
+      (c.sourceObjectId === targetObjectId && c.sourcePortId === targetPortId) ||
+      (c.targetObjectId === targetObjectId && c.targetPortId === targetPortId)
     );
     if (portInUse) {
       get().notify('One of these ports is already connected.');
