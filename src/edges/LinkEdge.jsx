@@ -4,10 +4,9 @@ import { useModelStore } from '../store/modelStore';
 export default function LinkEdge({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition,
-  data, selected, markerEnd,
+  data, selected,
 }) {
   const setSelectedId = useModelStore((s) => s.setSelectedId);
-  const deleteLink    = useModelStore((s) => s.deleteLink);
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,

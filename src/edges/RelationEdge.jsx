@@ -21,11 +21,10 @@ function multOffset(position) {
 export default function RelationEdge({
   id, sourceX, sourceY, targetX, targetY,
   sourcePosition, targetPosition,
-  selected, markerEnd,
+  selected,
 }) {
   // Read directly from store — avoids the syncedEdges re-render → blur cycle
-  const rel          = useModelStore((s) => s.metaModel.relations.find((r) => r.id === id));
-  const deleteRelation = useModelStore((s) => s.deleteRelation);
+  const rel = useModelStore((s) => s.metaModel.relations.find((r) => r.id === id));
 
   const kind  = rel?.kind  ?? 'REFERENCE';
   const glowColor = GLOW_COLORS[kind] ?? '#cccccc';

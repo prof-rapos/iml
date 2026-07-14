@@ -86,7 +86,7 @@ export function runTransform(source, target, rules) {
           // Scope: source attribute name → value (so expressions read {attrName}).
           const scope = {};
           for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
-          let raw = '';
+          let raw;
           try { raw = evalExpression(m.expression ?? '', scope); } catch { raw = ''; }
           // Treat a numeric result as DOUBLE so the target type coercion (e.g.
           // truncation to INT) applies; otherwise treat it as a plain string.

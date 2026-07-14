@@ -19,7 +19,9 @@ export default function App() {
   useEffect(() => {
     seedDemoModel();
     setTimeout(() => rebuildCanvas('metamodel'), 50);
-  }, []);
+    // rebuildCanvas is a Zustand action (stable reference) — this still
+    // only runs once, on mount.
+  }, [rebuildCanvas]);
 
   if (appView === 'home')            return <LandingPage />;
   if (appView === 'ide')             return <IDEView />;

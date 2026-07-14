@@ -10,6 +10,32 @@ export default function CodeEditor({ files, activeFilePath, onContentChange }) {
 
   const activeFile = files.find((f) => f.path === activeFilePath);
 
+  function syncModels(files, monaco) {
+    const currentPaths = new Set(files.map((f) => f.path));
+
+    // Create models for new files
+    for (const f of files) {
+      if (!modelsRef.current[f.path]) {
+        const uri = monaco.Uri.parse(`file:///${f.path}`);
+        const existing = monaco.editor.getModel(uri);
+        if (existing) {
+          modelsRef.current[f.path] = existing;
+        } else {
+          const model = monaco.editor.createModel(f.content, 'java', uri);
+          modelsRef.current[f.path] = model;
+        }
+      }
+    }
+
+    // Dispose models for deleted files
+    for (const path of Object.keys(modelsRef.current)) {
+      if (!currentPaths.has(path)) {
+        modelsRef.current[path]?.dispose();
+        delete modelsRef.current[path];
+      }
+    }
+  }
+
   function handleEditorMount(editor, monaco) {
     editorRef.current = editor;
     monacoRef.current = monaco;
@@ -45,32 +71,6 @@ export default function CodeEditor({ files, activeFilePath, onContentChange }) {
       editor.setModel(model);
     }
   }, [activeFilePath]);
-
-  function syncModels(files, monaco) {
-    const currentPaths = new Set(files.map((f) => f.path));
-
-    // Create models for new files
-    for (const f of files) {
-      if (!modelsRef.current[f.path]) {
-        const uri = monaco.Uri.parse(`file:///${f.path}`);
-        const existing = monaco.editor.getModel(uri);
-        if (existing) {
-          modelsRef.current[f.path] = existing;
-        } else {
-          const model = monaco.editor.createModel(f.content, 'java', uri);
-          modelsRef.current[f.path] = model;
-        }
-      }
-    }
-
-    // Dispose models for deleted files
-    for (const path of Object.keys(modelsRef.current)) {
-      if (!currentPaths.has(path)) {
-        modelsRef.current[path]?.dispose();
-        delete modelsRef.current[path];
-      }
-    }
-  }
 
   if (!activeFile) {
     return (

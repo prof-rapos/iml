@@ -17,5 +17,10 @@ export default defineConfig([
       globals: globals.browser,
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
+    rules: {
+      // Convention for intentionally-unused destructured/omitted bindings,
+      // e.g. `const { drop: _drop, ...rest } = obj` to strip a field.
+      'no-unused-vars': ['error', { varsIgnorePattern: '^_', argsIgnorePattern: '^_' }],
+    },
   },
 ])

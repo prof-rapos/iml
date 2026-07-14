@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react';
 
 const TEXT = '#e6edf3';
 const TEXT_DIM = '#8b949e';
-const ACCENT = '#2563eb';
 const BORDER = 'rgba(255,255,255,0.08)';
 const HOVER_BG = 'rgba(255,255,255,0.06)';
 const ACTIVE_BG = 'rgba(37,99,235,0.25)';

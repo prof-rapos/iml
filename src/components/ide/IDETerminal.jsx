@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
@@ -48,17 +48,15 @@ export default function IDETerminal({ files }) {
   const [collapsed, setCollapsed] = useState(false);
   const [running, setRunning]     = useState(false);
   const [status, setStatus]       = useState('ready');
-  const [selectedMain, setSelectedMain] = useState(null);
+  const [manualMain, setManualMain] = useState(null);
 
-  const mains = findMainClasses(files);
-
-  // Keep selectedMain in sync with available mains
-  useEffect(() => {
-    if (mains.length === 0) { setSelectedMain(null); return; }
-    if (!selectedMain || !mains.find((m) => m.className === selectedMain)) {
-      setSelectedMain(mains[0].className);
-    }
-  }, [files]);
+  const mains = useMemo(() => findMainClasses(files), [files]);
+  // Respect an explicit user pick as long as it's still valid; otherwise fall
+  // back to the first main class. Derived during render instead of synced via
+  // an effect — no extra render pass, no stale-closure risk.
+  const selectedMain = manualMain && mains.some((m) => m.className === manualMain)
+    ? manualMain
+    : (mains[0]?.className ?? null);
 
   // Initialise terminal once
   useEffect(() => {
@@ -269,7 +267,7 @@ export default function IDETerminal({ files }) {
           {mains.length > 1 && (
             <select
               value={selectedMain ?? ''}
-              onChange={(e) => setSelectedMain(e.target.value)}
+              onChange={(e) => setManualMain(e.target.value)}
               disabled={running}
               style={{
                 background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT,

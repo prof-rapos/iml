@@ -681,14 +681,14 @@ export const useModelStore = create((set, get) => ({
   },
 
   switchInstanceModel: (idx) => {
-    set((s) => ({
+    set({
       currentIMIndex:   idx,
       nodes:            [],
       edges:            [],
       selectedId:       null,
       selectedType:     null,
       conformanceResults: [],
-    }));
+    });
     get().rebuildCanvas('instance');
     get().log(`Switched to instance model "${get().instanceModels[idx]?.name}"`);
   },
@@ -1094,11 +1094,11 @@ export const useModelStore = create((set, get) => ({
           for (const sl of obj.slots) {
             attributeValues[sl.attrId] = sl.values !== undefined ? sl.values : (sl.value ?? '');
           }
-          const { slots, className, ...rest } = obj;
+          const { slots: _slots, className: _className, ...rest } = obj;
           return { ...rest, attributeValues };
         }
         // New format: strip legacy className field if present
-        const { className, ...rest } = obj;
+        const { className: _className, ...rest } = obj;
         return rest;
       }),
       // Normalise link endpoints: source/target are the canonical field names.

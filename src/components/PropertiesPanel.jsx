@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
 
 // ── Shared dark-theme tokens ──────────────────────────────────────────────────
@@ -253,40 +253,6 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
   };
   const typeValue = attr.type === 'ENUM' ? `enum:${attr.enumId}` : attr.type;
 
-  function DefaultInput() {
-    if (attr.type === 'BOOLEAN') {
-      return (
-        <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
-          value={attr.defaultValue ?? ''}
-          onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
-          <option value="">— none —</option>
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      );
-    }
-    if (attr.type === 'ENUM') {
-      return (
-        <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
-          value={attr.defaultValue ?? ''}
-          onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
-          <option value="">— none —</option>
-          {(enumDef?.literals ?? []).map((lit) => <option key={lit} value={lit}>{lit}</option>)}
-        </select>
-      );
-    }
-    return (
-      <input
-        style={{ ...inputStyle, padding: '5px 8px', fontSize: 12 }}
-        type={attr.type === 'INT' || attr.type === 'DOUBLE' ? 'number' : 'text'}
-        step={attr.type === 'DOUBLE' ? 'any' : undefined}
-        value={attr.defaultValue ?? ''}
-        placeholder="none"
-        onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}
-      />
-    );
-  }
-
   return (
     <div style={{ background: CARD_BG, borderRadius: 6, padding: '10px', marginBottom: 8, border: `1px solid ${BORDER}` }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
@@ -331,10 +297,44 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
       {isSingle && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Default</span>
-          <div style={{ flex: 1 }}><DefaultInput /></div>
+          <div style={{ flex: 1 }}><DefaultInput attr={attr} classId={classId} enumDef={enumDef} updateAttribute={updateAttribute} /></div>
         </div>
       )}
     </div>
+  );
+}
+
+function DefaultInput({ attr, classId, enumDef, updateAttribute }) {
+  if (attr.type === 'BOOLEAN') {
+    return (
+      <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
+        value={attr.defaultValue ?? ''}
+        onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
+        <option value="">— none —</option>
+        <option value="true">true</option>
+        <option value="false">false</option>
+      </select>
+    );
+  }
+  if (attr.type === 'ENUM') {
+    return (
+      <select style={{ ...selectStyle, padding: '5px 6px', fontSize: 12 }}
+        value={attr.defaultValue ?? ''}
+        onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}>
+        <option value="">— none —</option>
+        {(enumDef?.literals ?? []).map((lit) => <option key={lit} value={lit}>{lit}</option>)}
+      </select>
+    );
+  }
+  return (
+    <input
+      style={{ ...inputStyle, padding: '5px 8px', fontSize: 12 }}
+      type={attr.type === 'INT' || attr.type === 'DOUBLE' ? 'number' : 'text'}
+      step={attr.type === 'DOUBLE' ? 'any' : undefined}
+      value={attr.defaultValue ?? ''}
+      placeholder="none"
+      onChange={(e) => updateAttribute(classId, attr.id, { defaultValue: e.target.value })}
+    />
   );
 }
 
@@ -479,13 +479,12 @@ function RelationEditor({ rel, metaModel, updateRelation, deleteRelation }) {
   const tgtClass = metaModel.classes.find((c) => c.id === rel.target);
   const isInheritance = rel.kind === 'INHERITANCE';
 
+  // The caller mounts this with key={rel.id}, so React already remounts (and
+  // re-initializes this state) whenever the selected relation changes — no
+  // effect needed to keep these in sync.
   const [name,    setName]    = useState(rel.name ?? '');
   const [srcMult, setSrcMult] = useState(rel.sourceMultiplicity ?? '');
   const [tgtMult, setTgtMult] = useState(rel.targetMultiplicity ?? '');
-
-  useEffect(() => { setName(rel.name ?? '');                  }, [rel.id]);
-  useEffect(() => { setSrcMult(rel.sourceMultiplicity ?? ''); }, [rel.id]);
-  useEffect(() => { setTgtMult(rel.targetMultiplicity ?? ''); }, [rel.id]);
 
   const commit = (patch) => updateRelation(rel.id, patch);
 

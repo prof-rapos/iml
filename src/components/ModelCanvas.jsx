@@ -85,7 +85,7 @@ export default function ModelCanvas() {
         pendingRelationId: null,
       }));
     }
-  }, [mode, pendingEdgeType, pendingRelationId, addRelation, addLink, metaModel.relations]);
+  }, [mode, pendingEdgeType, pendingRelationId, addRelation, addLink, metaModel.relations, setPendingEdgeType]);
 
   // Reconnect: drag edge endpoint to a different node/handle
   const onReconnect = useCallback((oldEdge, newConnection) => {
@@ -121,7 +121,7 @@ export default function ModelCanvas() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, selectedType, mode]);
+  }, [selectedId, selectedType, mode, deleteRelation, deleteLink, deleteClass, deleteObject]);
 
   // Save viewport continuously (on interaction end to avoid thrashing)
   useOnViewportChange({
