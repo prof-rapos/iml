@@ -2,6 +2,51 @@ import { create } from 'zustand';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { useModelStore, getProtocolById } from './modelStore';
 
+const wireablePorts = (obj, metaModel) => {
+  const cls = metaModel.classes.find((c) => c.id === obj?.classId);
+  return (cls?.ports ?? []).filter((p) => !getProtocolById(p.protocolId, metaModel)?.system);
+};
+
+// Assigns each object's wireable ports a vertical "row" slot, defaulting to
+// its position in the class's port list, but swapping a connector's two
+// endpoints onto the same row whenever they'd otherwise differ. That's what
+// makes a reciprocal pair of connectors between the same two parts render as
+// flat, parallel lines instead of crossing in an X. Pure + exported for unit
+// testing; only fixes the common pairwise case — not a general crossing-free
+// layout solver for parts wired to many others.
+export function computePortRows(metaModel, im) {
+  const rows  = {}; // { [objectId]: { [portId]: rowIndex } }
+  const order = {}; // { [objectId]: [portId at row 0, row 1, ...] }
+
+  for (const obj of im?.objects ?? []) {
+    const ports = wireablePorts(obj, metaModel);
+    if (ports.length === 0) continue;
+    order[obj.id] = ports.map((p) => p.id);
+    rows[obj.id]  = {};
+    ports.forEach((p, i) => { rows[obj.id][p.id] = i; });
+  }
+
+  for (const c of im?.connectors ?? []) {
+    const srcRows = rows[c.sourceObjectId];
+    const tgtRows = rows[c.targetObjectId];
+    if (!srcRows || !tgtRows) continue;
+    const srcRow = srcRows[c.sourcePortId];
+    const tgtRow = tgtRows[c.targetPortId];
+    if (srcRow === undefined || tgtRow === undefined || srcRow === tgtRow) continue;
+
+    // Move the target port onto the source's row, swapping with whichever
+    // port currently occupies that row so every port keeps a unique slot.
+    const tgtOrder = order[c.targetObjectId];
+    const displacedPortId = tgtOrder[srcRow];
+    tgtOrder[srcRow] = c.targetPortId;
+    tgtOrder[tgtRow] = displacedPortId;
+    tgtRows[c.targetPortId]  = srcRow;
+    tgtRows[displacedPortId] = tgtRow;
+  }
+
+  return rows;
+}
+
 // View-level state for the capsule structure (parts + connectors) editor. The
 // persistent model (connectors) lives in modelStore's current instance model;
 // this store holds selection and the React Flow graph, mirroring behaviourStore.js.
@@ -29,12 +74,14 @@ export const useCapsuleStructureStore = create((set, get) => ({
     const imSaved = ms.layouts[`im-${im.id}`] ?? {};
     const pos = (id, i) => csSaved[id] ?? imSaved[id] ?? { x: 80 + (i % 4) * 240, y: 80 + Math.floor(i / 4) * 220 };
 
+    const portRows = computePortRows(ms.metaModel, im);
+
     set({
       nodes: parts.map((obj, i) => ({
         id: obj.id,
         type: 'partNode',
         position: pos(obj.id, i),
-        data: { objectId: obj.id },
+        data: { objectId: obj.id, portRows: portRows[obj.id] ?? {} },
       })),
       edges: (im.connectors ?? []).map((c) => {
         const srcObj = im.objects.find((o) => o.id === c.sourceObjectId);
