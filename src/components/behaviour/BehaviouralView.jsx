@@ -6,6 +6,7 @@ import BehaviourSidebar from './BehaviourSidebar';
 import StateMachineCanvas from './StateMachineCanvas';
 import BehaviourProperties from './BehaviourProperties';
 import CapsuleStructureCanvas from './CapsuleStructureCanvas';
+import CapsuleStructureSidebar from './CapsuleStructureSidebar';
 import CapsuleStructureProperties from './CapsuleStructureProperties';
 import CodeDrawer from './CodeDrawer';
 
@@ -24,7 +25,7 @@ export default function BehaviouralView() {
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117', color: '#e6edf3', fontFamily: 'var(--iml-font-sans)' }}>
       <BehaviourTopbar />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', position: 'relative' }}>
-        {!isStructure && <BehaviourSidebar />}
+        {isStructure ? <CapsuleStructureSidebar /> : <BehaviourSidebar />}
         <div style={{ flex: 1, position: 'relative', display: 'flex' }}>
           <ReactFlowProvider>
             {isStructure ? <CapsuleStructureCanvas /> : <StateMachineCanvas />}

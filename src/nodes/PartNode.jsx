@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import { useModelStore } from '../store/modelStore';
+import { useModelStore, getProtocolById } from '../store/modelStore';
 
 const HEADER_HEIGHT = 33;
 const ROW_HEIGHT     = 22;
@@ -20,7 +20,12 @@ export default function PartNode({ id, selected }) {
   const metaModel = useModelStore((s) => s.metaModel);
   const classId   = obj?.classId ?? '';
   const cls = useMemo(() => metaModel.classes.find((c) => c.id === classId), [classId, metaModel.classes]);
-  const ports = cls?.ports ?? [];
+  // Service ports (Timing, Log, ...) connect to the runtime, not to other
+  // parts — only user-defined-protocol ports are wireable here.
+  const ports = useMemo(
+    () => (cls?.ports ?? []).filter((p) => !getProtocolById(p.protocolId, metaModel)?.system),
+    [cls, metaModel],
+  );
 
   if (!obj || !cls) return null;
 

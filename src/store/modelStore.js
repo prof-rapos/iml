@@ -843,6 +843,10 @@ export const useModelStore = create((set, get) => ({
     const tgtPort = findPort(targetObjectId, targetPortId);
     if (!srcPort || !tgtPort) return null;
 
+    if (getProtocolById(srcPort.protocolId, metaModel)?.system || getProtocolById(tgtPort.protocolId, metaModel)?.system) {
+      get().notify('Service ports (Timing, Log, …) connect to the runtime, not to other parts.');
+      return null;
+    }
     if (srcPort.protocolId !== tgtPort.protocolId) {
       get().notify('Connectors must join ports typed by the same protocol.');
       return null;

@@ -19,6 +19,12 @@ function seed() {
         { id: 'C3', name: 'C3', attributes: [], ports: [
           { id: 'portC', name: 'portC', protocolId: 'p2', conjugated: true },
         ] },
+        { id: 'C4', name: 'C4', attributes: [], ports: [
+          { id: 'portD', name: 'log', protocolId: 'sys-log', conjugated: false },
+        ] },
+        { id: 'C5', name: 'C5', attributes: [], ports: [
+          { id: 'portE', name: 'log', protocolId: 'sys-log', conjugated: true },
+        ] },
       ],
       relations: [], enumerations: [], behaviours: {},
       protocols: [
@@ -33,6 +39,8 @@ function seed() {
         { id: 'o2', classId: 'C2', name: 'O2', attributeValues: {} },
         { id: 'o3', classId: 'C3', name: 'O3', attributeValues: {} },
         { id: 'o4', classId: 'C1', name: 'O4', attributeValues: {} },
+        { id: 'o5', classId: 'C4', name: 'O5', attributeValues: {} },
+        { id: 'o6', classId: 'C5', name: 'O6', attributeValues: {} },
       ],
       links: [], connectors: [],
     }],
@@ -53,6 +61,12 @@ describe('capsule structure connectors', () => {
 
   it('rejects a connector joining an object to itself', () => {
     const id = useModelStore.getState().addConnector('o1', 'portA', 'o1', 'portA2');
+    expect(id).toBeNull();
+    expect(currentConnectors()).toEqual([]);
+  });
+
+  it('rejects a connector between service (system-protocol) ports, even a valid base/conjugate pair', () => {
+    const id = useModelStore.getState().addConnector('o5', 'portD', 'o6', 'portE');
     expect(id).toBeNull();
     expect(currentConnectors()).toEqual([]);
   });
