@@ -68,6 +68,17 @@ describe('modelStore — behaviour (state machine) actions', () => {
     expect(useModelStore.getState().metaModel.behaviours.C).toBeUndefined();
     expect(useModelStore.getState().layouts['sm-C']).toBeUndefined();
   });
+
+  it('clearMetaModel wipes layouts too, so no orphaned mm/sm-*/im-* entries survive', () => {
+    useModelStore.getState().addState('C', 'simple');
+    useModelStore.setState((s) => ({
+      layouts: { ...s.layouts, mm: { C: { x: 1, y: 2 } }, 'sm-C': { foo: { x: 0, y: 0 } }, 'im-old': { bar: { x: 3, y: 4 } } },
+    }));
+
+    useModelStore.getState().clearMetaModel();
+
+    expect(useModelStore.getState().layouts).toEqual({});
+  });
 });
 
 describe('transitionLabel', () => {

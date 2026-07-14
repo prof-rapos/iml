@@ -621,6 +621,7 @@ export const useModelStore = create((set, get) => ({
       nodes: [], edges: [],
       selectedId: null, selectedType: null,
       conformanceResults: [],
+      layouts: {},
     });
     get().log('Meta-model cleared.');
   },
