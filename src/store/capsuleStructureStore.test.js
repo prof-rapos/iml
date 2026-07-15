@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { computePortRows } from './capsuleStructureStore.js';
+import { computePortRows, useCapsuleStructureStore } from './capsuleStructureStore.js';
 
 // Mirrors the Lights model: two instances of a symmetric peer class (a base
 // and a conjugate port of the same protocol), wired reciprocally.
@@ -71,5 +71,21 @@ describe('computePortRows', () => {
     instance.objects.push({ id: 'd', classId: 'D', name: 'D1', attributeValues: {} });
     const rows = computePortRows(mm, instance);
     expect(rows.d).toBeUndefined();
+  });
+});
+
+describe('useCapsuleStructureStore selection', () => {
+  it('onNodesChange prioritises a selected:true change over a same-batch deselect, so clicking a different part switches selection instead of flashing null', () => {
+    useCapsuleStructureStore.setState({ nodes: [], edges: [], selectedId: 'a', selectedType: 'node' });
+
+    // React Flow can report a's deselect before b's select in the same batch.
+    useCapsuleStructureStore.getState().onNodesChange([
+      { type: 'select', id: 'a', selected: false },
+      { type: 'select', id: 'b', selected: true },
+    ]);
+
+    const s = useCapsuleStructureStore.getState();
+    expect(s.selectedId).toBe('b');
+    expect(s.selectedType).toBe('node');
   });
 });

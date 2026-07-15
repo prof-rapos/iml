@@ -42,20 +42,25 @@ export function getProtocolById(id, metaModel) {
   return allProtocols(metaModel).find((p) => p.id === id) ?? null;
 }
 
+// Resolves a connector/message endpoint (an object id + one of its class's
+// port ids) to the actual port definition. The single source of truth for
+// this lookup — used by connector validation, pruning, and the structure
+// diagram/properties panel.
+export function getPortByEndpoint(metaModel, objects, objectId, portId) {
+  const obj = objects.find((o) => o.id === objectId);
+  const cls = metaModel.classes.find((c) => c.id === obj?.classId);
+  return (cls?.ports ?? []).find((p) => p.id === portId) ?? null;
+}
+
 // Drops any capsule-structure connector whose two ports no longer resolve to a
 // valid base↔conjugate pairing on the same protocol — used after a port or
 // protocol is deleted/edited out from under an existing connector.
 function pruneDanglingConnectors(metaModel, instanceModels) {
-  const findPort = (objects, objectId, portId) => {
-    const obj = objects.find((o) => o.id === objectId);
-    const cls = metaModel.classes.find((c) => c.id === obj?.classId);
-    return (cls?.ports ?? []).find((p) => p.id === portId);
-  };
   return instanceModels.map((im) => ({
     ...im,
     connectors: (im.connectors ?? []).filter((c) => {
-      const srcPort = findPort(im.objects, c.sourceObjectId, c.sourcePortId);
-      const tgtPort = findPort(im.objects, c.targetObjectId, c.targetPortId);
+      const srcPort = getPortByEndpoint(metaModel, im.objects, c.sourceObjectId, c.sourcePortId);
+      const tgtPort = getPortByEndpoint(metaModel, im.objects, c.targetObjectId, c.targetPortId);
       return !!srcPort && !!tgtPort && srcPort.protocolId === tgtPort.protocolId && srcPort.conjugated !== tgtPort.conjugated;
     }),
   }));
@@ -654,7 +659,7 @@ export const useModelStore = create((set, get) => ({
   clearInstanceModel: () => {
     set((s) => ({
       instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex ? { ...im, objects: [], links: [] } : im
+        i === s.currentIMIndex ? { ...im, objects: [], links: [], connectors: [] } : im
       ),
       nodes: [], edges: [],
       selectedId: null, selectedType: null,
@@ -835,13 +840,8 @@ export const useModelStore = create((set, get) => ({
     }
     const { metaModel, instanceModels, currentIMIndex } = get();
     const im = instanceModels[currentIMIndex];
-    const findPort = (objectId, portId) => {
-      const obj = im?.objects.find((o) => o.id === objectId);
-      const cls = metaModel.classes.find((c) => c.id === obj?.classId);
-      return (cls?.ports ?? []).find((p) => p.id === portId);
-    };
-    const srcPort = findPort(sourceObjectId, sourcePortId);
-    const tgtPort = findPort(targetObjectId, targetPortId);
+    const srcPort = getPortByEndpoint(metaModel, im?.objects ?? [], sourceObjectId, sourcePortId);
+    const tgtPort = getPortByEndpoint(metaModel, im?.objects ?? [], targetObjectId, targetPortId);
     if (!srcPort || !tgtPort) return null;
 
     if (getProtocolById(srcPort.protocolId, metaModel)?.system || getProtocolById(tgtPort.protocolId, metaModel)?.system) {
@@ -906,9 +906,15 @@ export const useModelStore = create((set, get) => ({
       return null;
     }
     const id = nanoid(8);
-    const n  = machine.states.filter((s) => s.kind === 'simple').length + 1;
     // Initial and final are symbol-only pseudostates (no name).
-    const state = { id, kind, name: kind === 'simple' ? `State${n}` : '', entry: '', exit: '' };
+    let name = '';
+    if (kind === 'simple') {
+      const existing = new Set(machine.states.filter((s) => s.kind === 'simple').map((s) => s.name));
+      let n = machine.states.filter((s) => s.kind === 'simple').length + 1;
+      name = `State${n}`;
+      while (existing.has(name)) name = `State${++n}`;
+    }
+    const state = { id, kind, name, entry: '', exit: '' };
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({ ...m, states: [...m.states, state] })) }));
     return id;
   },

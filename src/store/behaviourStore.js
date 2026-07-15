@@ -79,7 +79,9 @@ export const useBehaviourStore = create((set, get) => ({
         useModelStore.getState().setStatePositions(s.capsuleId, posMap);
       }
 
-      const sel = changes.find((c) => c.type === 'select');
+      // Prioritise selected:true so switching nodes doesn't flash null.
+      const sel = changes.find((c) => c.type === 'select' && c.selected)
+        ?? changes.find((c) => c.type === 'select');
       if (sel) {
         if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'node'; }
         else if (s.selectedType === 'node' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
@@ -91,7 +93,8 @@ export const useBehaviourStore = create((set, get) => ({
   onEdgesChange: (changes) => {
     set((s) => {
       const patch = { edges: applyEdgeChanges(changes, s.edges) };
-      const sel = changes.find((c) => c.type === 'select');
+      const sel = changes.find((c) => c.type === 'select' && c.selected)
+        ?? changes.find((c) => c.type === 'select');
       if (sel) {
         if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'edge'; }
         else if (s.selectedType === 'edge' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }

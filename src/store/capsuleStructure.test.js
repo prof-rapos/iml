@@ -133,6 +133,15 @@ describe('capsule structure connectors', () => {
     expect(useModelStore.getState().instanceModels[0].links.some((l) => l.id === linkId)).toBe(false);
   });
 
+  it('clearInstanceModel clears connectors too, not just objects and links', () => {
+    useModelStore.getState().addConnector('o1', 'portA', 'o2', 'portB');
+    useModelStore.getState().clearInstanceModel();
+    const im = useModelStore.getState().instanceModels[0];
+    expect(im.objects).toEqual([]);
+    expect(im.links).toEqual([]);
+    expect(im.connectors).toEqual([]);
+  });
+
   it('deletePort cascades across instance models', () => {
     useModelStore.getState().addConnector('o1', 'portA', 'o2', 'portB');
     useModelStore.getState().deletePort('C1', 'portA');

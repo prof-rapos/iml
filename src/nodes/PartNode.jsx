@@ -59,6 +59,11 @@ export default function PartNode({ id, data, selected }) {
 
   if (!obj || !cls) return null;
 
+  // Compute each port's side/row once per render and reuse for both the
+  // label row and its Handle, instead of recomputing (each an O(connectors +
+  // nodes) scan) twice per port.
+  const portLayout = ports.map((port, i) => ({ port, side: sideFor(port, i), row: rowFor(port, i) }));
+
   return (
     <div
       style={{
@@ -92,14 +97,12 @@ export default function PartNode({ id, data, selected }) {
         borderTop: '1px solid var(--iml-border)', position: 'relative',
         height: Math.max(ports.length, 1) * ROW_HEIGHT,
       }}>
-        {ports.length === 0 ? (
+        {portLayout.length === 0 ? (
           <div style={{ height: ROW_HEIGHT, display: 'flex', alignItems: 'center', padding: '0 10px', color: 'rgba(255,255,255,0.35)', fontSize: 12, fontStyle: 'italic' }}>
             no ports
           </div>
         ) : (
-          ports.map((port, i) => {
-            const side = sideFor(port, i);
-            const row  = rowFor(port, i);
+          portLayout.map(({ port, side, row }) => {
             return (
               <div key={port.id} style={{
                 position: 'absolute', top: row * ROW_HEIGHT, left: 0, right: 0, height: ROW_HEIGHT,
@@ -115,9 +118,7 @@ export default function PartNode({ id, data, selected }) {
         )}
       </div>
 
-      {ports.map((port, i) => {
-        const side = sideFor(port, i);
-        const row  = rowFor(port, i);
+      {portLayout.map(({ port, side, row }) => {
         return (
           <Handle
             key={port.id}

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useModelStore } from './modelStore.js';
-import { transitionLabel } from './behaviourStore.js';
+import { transitionLabel, useBehaviourStore } from './behaviourStore.js';
 
 // Reset the store to a single-class meta-model before each test.
 function seed() {
@@ -35,6 +35,16 @@ describe('modelStore — behaviour (state machine) actions', () => {
     expect(useModelStore.getState().getBehaviour('C').states.map((x) => x.name)).toEqual(['State1', 'State2']);
   });
 
+  it('names a new simple state around a gap left by deleting an earlier one, instead of colliding', () => {
+    const a = useModelStore.getState().addState('C', 'simple'); // State1
+    useModelStore.getState().addState('C', 'simple');           // State2
+    useModelStore.getState().deleteState('C', a);                // only State2 remains
+
+    useModelStore.getState().addState('C', 'simple');
+    const names = useModelStore.getState().getBehaviour('C').states.map((x) => x.name);
+    expect(new Set(names).size).toBe(names.length); // no duplicate names
+  });
+
   it('deletes a state and cascades its transitions and layout', () => {
     const a = useModelStore.getState().addState('C', 'simple');
     const b = useModelStore.getState().addState('C', 'simple');
@@ -67,6 +77,22 @@ describe('modelStore — behaviour (state machine) actions', () => {
 
     expect(useModelStore.getState().metaModel.behaviours.C).toBeUndefined();
     expect(useModelStore.getState().layouts['sm-C']).toBeUndefined();
+  });
+
+  it('onNodesChange prioritises a selected:true change over a same-batch deselect, so clicking a different state switches selection instead of flashing null', () => {
+    const a = useModelStore.getState().addState('C', 'simple');
+    const b = useModelStore.getState().addState('C', 'simple');
+    useBehaviourStore.setState({ selectedId: a, selectedType: 'node' });
+
+    // React Flow can report a's deselect before b's select in the same batch.
+    useBehaviourStore.getState().onNodesChange([
+      { type: 'select', id: a, selected: false },
+      { type: 'select', id: b, selected: true },
+    ]);
+
+    const s = useBehaviourStore.getState();
+    expect(s.selectedId).toBe(b);
+    expect(s.selectedType).toBe('node');
   });
 
   it('clearMetaModel wipes layouts too, so no orphaned mm/sm-*/im-* entries survive', () => {

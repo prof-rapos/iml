@@ -11,6 +11,7 @@ import EnumNode from '../nodes/EnumNode';
 import RelationEdge from '../edges/RelationEdge';
 import LinkEdge from '../edges/LinkEdge';
 import SvgMarkers from './SvgMarkers';
+import { useDeleteKeyHandler } from '../utils/useDeleteKeyHandler';
 
 const nodeTypes = { classNode: ClassNode, objectNode: ObjectNode, enumNode: EnumNode };
 const edgeTypes = { relationEdge: RelationEdge, linkEdge: LinkEdge };
@@ -105,23 +106,16 @@ export default function ModelCanvas() {
     }
   }, [mode, updateRelation, updateLink]);
 
-  // Delete key — guards against firing inside text inputs
-  useEffect(() => {
-    const handler = (e) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
-      if (!selectedId) return;
-      if (selectedType === 'edge') {
-        if (mode === 'metamodel') deleteRelation(selectedId);
-        else deleteLink(selectedId);
-      } else if (selectedType === 'node') {
-        if (mode === 'metamodel') deleteClass(selectedId);
-        else deleteObject(selectedId);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+  const handleDelete = useCallback(() => {
+    if (selectedType === 'edge') {
+      if (mode === 'metamodel') deleteRelation(selectedId);
+      else deleteLink(selectedId);
+    } else if (selectedType === 'node') {
+      if (mode === 'metamodel') deleteClass(selectedId);
+      else deleteObject(selectedId);
+    }
   }, [selectedId, selectedType, mode, deleteRelation, deleteLink, deleteClass, deleteObject]);
+  useDeleteKeyHandler(selectedId, handleDelete);
 
   // Save viewport continuously (on interaction end to avoid thrashing)
   useOnViewportChange({

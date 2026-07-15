@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
-import { useModelStore, getProtocolById } from './modelStore';
+import { useModelStore, getProtocolById, getPortByEndpoint } from './modelStore';
 
 const wireablePorts = (obj, metaModel) => {
   const cls = metaModel.classes.find((c) => c.id === obj?.classId);
@@ -84,9 +84,7 @@ export const useCapsuleStructureStore = create((set, get) => ({
         data: { objectId: obj.id, portRows: portRows[obj.id] ?? {} },
       })),
       edges: (im.connectors ?? []).map((c) => {
-        const srcObj = im.objects.find((o) => o.id === c.sourceObjectId);
-        const srcCls = ms.metaModel.classes.find((cl) => cl.id === srcObj?.classId);
-        const srcPort = (srcCls?.ports ?? []).find((p) => p.id === c.sourcePortId);
+        const srcPort = getPortByEndpoint(ms.metaModel, im.objects, c.sourceObjectId, c.sourcePortId);
         const proto = srcPort ? getProtocolById(srcPort.protocolId, ms.metaModel) : null;
         return {
           id: c.id,
@@ -115,7 +113,9 @@ export const useCapsuleStructureStore = create((set, get) => ({
         }
       }
 
-      const sel = changes.find((c) => c.type === 'select');
+      // Prioritise selected:true so switching nodes doesn't flash null.
+      const sel = changes.find((c) => c.type === 'select' && c.selected)
+        ?? changes.find((c) => c.type === 'select');
       if (sel) {
         if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'node'; }
         else if (s.selectedType === 'node' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
@@ -127,7 +127,8 @@ export const useCapsuleStructureStore = create((set, get) => ({
   onEdgesChange: (changes) => {
     set((s) => {
       const patch = { edges: applyEdgeChanges(changes, s.edges) };
-      const sel = changes.find((c) => c.type === 'select');
+      const sel = changes.find((c) => c.type === 'select' && c.selected)
+        ?? changes.find((c) => c.type === 'select');
       if (sel) {
         if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'edge'; }
         else if (s.selectedType === 'edge' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }

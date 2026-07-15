@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType } from '@xyflow/react';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import StateNode from '../../nodes/StateNode';
@@ -6,6 +6,7 @@ import InitialNode from '../../nodes/InitialNode';
 import FinalNode from '../../nodes/FinalNode';
 import TransitionEdge from '../../edges/TransitionEdge';
 import SvgMarkers from '../SvgMarkers';
+import { useDeleteKeyHandler } from '../../utils/useDeleteKeyHandler';
 
 const nodeTypes = { stateNode: StateNode, initialNode: InitialNode, finalNode: FinalNode };
 const edgeTypes = { transitionEdge: TransitionEdge };
@@ -30,14 +31,7 @@ export default function StateMachineCanvas() {
     reconnectTransition(oldEdge, conn);
   }, [reconnectTransition]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) deleteSelected();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, deleteSelected]);
+  useDeleteKeyHandler(selectedId, deleteSelected);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: 'var(--iml-canvas-bg)' }}>

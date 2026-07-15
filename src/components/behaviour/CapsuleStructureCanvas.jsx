@@ -4,6 +4,7 @@ import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
 import PartNode from '../../nodes/PartNode';
 import ConnectorEdge from '../../edges/ConnectorEdge';
 import SvgMarkers from '../SvgMarkers';
+import { useDeleteKeyHandler } from '../../utils/useDeleteKeyHandler';
 
 const nodeTypes = { partNode: PartNode };
 const edgeTypes = { connectorEdge: ConnectorEdge };
@@ -18,19 +19,18 @@ export default function CapsuleStructureCanvas() {
   const deleteSelected = useCapsuleStructureStore((s) => s.deleteSelected);
   const setViewport    = useCapsuleStructureStore((s) => s.setViewport);
   const selectedId     = useCapsuleStructureStore((s) => s.selectedId);
+  const rebuild        = useCapsuleStructureStore((s) => s.rebuild);
 
   const onConnect = useCallback((params) => {
     addConnector(params.source, params.sourceHandle, params.target, params.targetHandle);
   }, [addConnector]);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
-      if ((e.key === 'Delete' || e.key === 'Backspace') && selectedId) deleteSelected();
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [selectedId, deleteSelected]);
+  // Re-derive from the model on every mount — the model may have changed
+  // (objects/ports/connectors added elsewhere) while this view was unmounted,
+  // and rebuild() is otherwise only triggered by explicit topbar actions.
+  useEffect(() => { rebuild(); }, [rebuild]);
+
+  useDeleteKeyHandler(selectedId, deleteSelected);
 
   return (
     <div style={{ flex: 1, position: 'relative', background: 'var(--iml-canvas-bg)' }}>

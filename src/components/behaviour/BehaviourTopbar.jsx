@@ -35,6 +35,13 @@ export default function BehaviourTopbar() {
     rebuildStructure();
   };
 
+  // If the selected capsule's class was deleted elsewhere (e.g. Structural
+  // Modeling), drop the stale reference instead of leaving a dead capsuleId
+  // that no longer matches any <option> or resolves to a real class.
+  useEffect(() => {
+    if (capsuleId && !classes.some((c) => c.id === capsuleId)) setCapsule(null);
+  }, [capsuleId, classes, setCapsule]);
+
   const fileRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);

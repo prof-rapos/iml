@@ -1,23 +1,11 @@
 import { Maximize2 } from 'lucide-react';
 import { useModelStore, capsuleMessages, getProtocolById } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
+import { BORDER, TEXT, TEXT_MUTED, panelStyle, headerStyle } from '../panelShellTokens';
+import { DeleteBtn } from '../panelShell';
 
-const PANEL_BG   = '#0f172a';
-const HEADER_BG  = '#1e293b';
-const BORDER     = 'rgba(255,255,255,0.1)';
-const TEXT       = '#f1f5f9';
-const TEXT_MUTED = 'rgba(255,255,255,0.45)';
 const INPUT_BG   = 'rgba(255,255,255,0.07)';
 
-const panelStyle = {
-  width: 260, background: PANEL_BG, borderLeft: `1px solid ${BORDER}`,
-  display: 'flex', flexDirection: 'column', flexShrink: 0, overflow: 'hidden', color: TEXT,
-  fontFamily: 'var(--iml-font-sans)',
-};
-const headerStyle = {
-  padding: '10px 14px', borderBottom: `1px solid ${BORDER}`, fontWeight: 600, fontSize: 13,
-  background: HEADER_BG, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-};
 const inputStyle = {
   border: `1px solid rgba(255,255,255,0.15)`, borderRadius: 4, padding: '6px 10px',
   fontSize: 13, color: TEXT, background: INPUT_BG, outline: 'none',
@@ -68,14 +56,6 @@ function Field({ label, children }) {
   );
 }
 
-function DeleteBtn({ onClick }) {
-  return (
-    <button onClick={onClick} style={{
-      background: 'rgba(220,38,38,0.15)', color: '#fca5a5', border: '1px solid rgba(220,38,38,0.3)',
-      borderRadius: 4, padding: '3px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-    }}>Delete</button>
-  );
-}
 
 export default function BehaviourProperties() {
   const capsuleId    = useBehaviourStore((s) => s.capsuleId);
