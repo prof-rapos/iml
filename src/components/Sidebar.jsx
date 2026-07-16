@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
 import { useOutsideClick } from '../utils/useOutsideClick';
 
@@ -33,7 +33,10 @@ export default function Sidebar() {
   const clearInstanceModel  = useModelStore((s) => s.clearInstanceModel);
   const instanceModel       = useModelStore((s) => s.instanceModels[s.currentIMIndex]);
   const conformanceResults  = useModelStore((s) => s.conformanceResults);
-  const coEvoWarnings = (instanceModel?.objects ?? []).flatMap((obj) => {
+  // Recomputed only when the current instance model's objects or the
+  // meta-model's classes/relations (what getAllAttributes reads) actually
+  // change, instead of on every render of the sidebar.
+  const coEvoWarnings = useMemo(() => (instanceModel?.objects ?? []).flatMap((obj) => {
     const cls = metaModel.classes.find((c) => c.id === obj.classId);
     if (!cls) return [];
     const allAttrIds  = new Set(getAllAttributes(obj.classId, metaModel).map((a) => a.id));
@@ -41,7 +44,7 @@ export default function Sidebar() {
     return orphanKeys.length > 0
       ? [`"${obj.name}": ${orphanKeys.length} stale attribute(s)`]
       : [];
-  });
+  }), [instanceModel?.objects, metaModel.classes, metaModel.relations]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentIMId = instanceModels[currentIMIndex]?.id;
   const layoutKey   = mode === 'metamodel' ? 'mm' : `im-${currentIMId}`;

@@ -142,3 +142,18 @@ export const useCapsuleStructureStore = create((set, get) => ({
     get().rebuild();
   },
 }));
+
+// Keep the derived graph in sync with the model on its own — mirrors
+// modelStore's own live-conformance subscription — instead of depending on
+// every future mount site remembering to call rebuild(). This is also what
+// lets the Structure canvas show up-to-date parts/connectors the moment it
+// mounts, even if the model changed while it was unmounted.
+useModelStore.subscribe((state, prevState) => {
+  if (
+    state.metaModel      !== prevState.metaModel ||
+    state.instanceModels !== prevState.instanceModels ||
+    state.currentIMIndex !== prevState.currentIMIndex
+  ) {
+    useCapsuleStructureStore.getState().rebuild();
+  }
+});

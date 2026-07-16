@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback } from 'react';
 import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType, useOnViewportChange } from '@xyflow/react';
 import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
 import PartNode from '../../nodes/PartNode';
@@ -19,16 +19,10 @@ export default function CapsuleStructureCanvas() {
   const deleteSelected = useCapsuleStructureStore((s) => s.deleteSelected);
   const setViewport    = useCapsuleStructureStore((s) => s.setViewport);
   const selectedId     = useCapsuleStructureStore((s) => s.selectedId);
-  const rebuild        = useCapsuleStructureStore((s) => s.rebuild);
 
   const onConnect = useCallback((params) => {
     addConnector(params.source, params.sourceHandle, params.target, params.targetHandle);
   }, [addConnector]);
-
-  // Re-derive from the model on every mount — the model may have changed
-  // (objects/ports/connectors added elsewhere) while this view was unmounted,
-  // and rebuild() is otherwise only triggered by explicit topbar actions.
-  useEffect(() => { rebuild(); }, [rebuild]);
 
   // Only used to pick a spawn position for new parts, so onEnd (not every
   // pan/zoom frame) is fresh enough and avoids extra re-renders mid-gesture.
