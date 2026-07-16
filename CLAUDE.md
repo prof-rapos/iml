@@ -31,28 +31,27 @@ src/
     Sidebar.jsx         — node palette / toolbox
     Topbar.jsx          — toolbar actions
     PropertiesPanel.jsx — selected node/edge properties
-    BottomPanel.jsx     — bottom panel
-    JavaRunnerPanel.jsx — embedded terminal for running Java
-    ide/                — IDE view (code editor)
+    ide/                — IDE view (code editor + terminal)
     transform/          — model transform view
-    behaviour/          — behavioural/state machine view
-  nodes/                — custom React Flow node types (Class, Enum, State, Object, etc.)
-  edges/                — custom React Flow edge types (Link, Relation, Transition)
+    behaviour/          — behavioural view (state machines + capsule structure diagrams)
+  nodes/                — custom React Flow node types (Class, Enum, State, Object, Part, etc.)
+  edges/                — custom React Flow edge types (Link, Relation, Transition, Connector)
   store/
-    modelStore.js       — main diagram model state
-    behaviourStore.js   — state machine/behaviour state
-    ideStore.js         — IDE/code editor state
-    transformStore.js   — transform state
+    modelStore.js            — main diagram model state (meta-model, instances, protocols/ports)
+    behaviourStore.js        — state machine editor view state
+    capsuleStructureStore.js — capsule structure (parts + connectors) editor view state
+    ideStore.js              — IDE/code editor state
+    transformStore.js        — transform state
   utils/
     javaCodeGen.js      — generates Java source from the model
-    javaRunner.js       — WebSocket client connecting to iml-java-runner
+    javaRunner.js       — small fetch-based helper that pings/calls iml-java-runner
     conformance.js      — model conformance/validation checks
     modelHelpers.js     — shared model utility functions
     runTransform.js     — executes model transformations
 ```
 
 ## Important notes
-- The Java execution backend is a **separate service**: `iml-java-runner` (deployed on Fly.io). `javaRunner.js` connects to it via WebSocket
+- The Java execution backend is a **separate service**: `iml-java-runner` (deployed on Fly.io). The IDE's terminal (`src/components/ide/IDETerminal.jsx`) is the actual WebSocket client that streams compile/run output from it — `javaRunner.js` is a separate, smaller fetch-based helper
 - Deployed as a **static site** on GitHub Pages (`https://prof-rapos.github.io`)
 - Tests (`.test.js` files) live alongside the source files they test
 - ES modules throughout (`"type": "module"` in package.json)

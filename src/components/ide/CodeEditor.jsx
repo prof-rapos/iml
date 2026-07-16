@@ -1,7 +1,6 @@
 import { useRef, useEffect } from 'react';
 import MonacoEditor from '@monaco-editor/react';
-
-const TEXT_DIM = '#8b949e';
+import { TEXT_DIM } from '../theme';
 
 export default function CodeEditor({ files, activeFilePath, onContentChange }) {
   const editorRef = useRef(null);

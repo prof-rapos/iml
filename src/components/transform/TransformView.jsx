@@ -2,8 +2,8 @@ import { useTransformStore } from '../../store/transformStore';
 import TransformTopbar from './TransformTopbar';
 import ModelPanel from './ModelPanel';
 import RuleEditor from './RuleEditor';
+import { TEXT } from '../theme';
 
-const TEXT   = '#e6edf3';
 const BORDER = 'rgba(255,255,255,0.10)';
 
 export default function TransformView() {

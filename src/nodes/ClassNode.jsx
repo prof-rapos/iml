@@ -1,5 +1,5 @@
-import { Handle, Position } from '@xyflow/react';
 import { useModelStore } from '../store/modelStore';
+import { AllSidesHandles, NodeEmptyState } from './nodeShell';
 
 const VISIBILITY = { PUBLIC: '+', PRIVATE: '-', PROTECTED: '#' };
 
@@ -52,9 +52,7 @@ export default function ClassNode({ id, selected }) {
       {/* Attributes */}
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--iml-border)' }}>
         {cls.attributes.length === 0 ? (
-          <div style={{ padding: '4px 10px', color: 'rgba(255,255,255,0.35)', fontSize: 12, fontStyle: 'italic' }}>
-            no attributes
-          </div>
+          <NodeEmptyState>no attributes</NodeEmptyState>
         ) : (
           cls.attributes.map((a) => (
             <div key={a.id} style={{ padding: '2px 10px', color: '#e2e8f0', fontSize: 12 }}>
@@ -68,10 +66,7 @@ export default function ClassNode({ id, selected }) {
       </div>
 
       {/* Handles on all 4 sides — each side has both source+target so direction is determined by drag order */}
-      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
-      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
-      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
+      <AllSidesHandles style={handleStyle} />
     </div>
   );
 }

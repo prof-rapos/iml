@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { useModelStore, getProtocolById, getPortByEndpoint } from './modelStore';
+import { selectionPatch } from './selectionChanges';
 
 const wireablePorts = (obj, metaModel) => {
   const cls = metaModel.classes.find((c) => c.id === obj?.classId);
@@ -113,13 +114,7 @@ export const useCapsuleStructureStore = create((set, get) => ({
         }
       }
 
-      // Prioritise selected:true so switching nodes doesn't flash null.
-      const sel = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (sel) {
-        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'node'; }
-        else if (s.selectedType === 'node' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
-      }
+      Object.assign(patch, selectionPatch(changes, 'node', s));
       return patch;
     });
   },
@@ -127,12 +122,7 @@ export const useCapsuleStructureStore = create((set, get) => ({
   onEdgesChange: (changes) => {
     set((s) => {
       const patch = { edges: applyEdgeChanges(changes, s.edges) };
-      const sel = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (sel) {
-        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'edge'; }
-        else if (s.selectedType === 'edge' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
-      }
+      Object.assign(patch, selectionPatch(changes, 'edge', s));
       return patch;
     });
   },

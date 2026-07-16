@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType } from '@xyflow/react';
+import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType, useOnViewportChange } from '@xyflow/react';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import StateNode from '../../nodes/StateNode';
 import InitialNode from '../../nodes/InitialNode';
@@ -31,6 +31,13 @@ export default function StateMachineCanvas() {
     reconnectTransition(oldEdge, conn);
   }, [reconnectTransition]);
 
+  // Only used to pick a spawn position for new states, so onEnd (not every
+  // pan/zoom frame) is fresh enough and avoids re-rendering BehaviourSidebar
+  // on each frame of a gesture.
+  useOnViewportChange({
+    onEnd: useCallback((vp) => setViewport(vp), [setViewport]),
+  });
+
   useDeleteKeyHandler(selectedId, deleteSelected);
 
   return (
@@ -42,7 +49,6 @@ export default function StateMachineCanvas() {
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onReconnect={onReconnect}
-        onMove={(_, vp) => setViewport(vp)}
         onPaneClick={() => setSelected(null, null)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

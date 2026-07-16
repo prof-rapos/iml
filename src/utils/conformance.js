@@ -151,17 +151,23 @@ export function validateConformance(metaModel, instanceModel) {
     const tgtClsName  = metaModel.classes.find((c) => c.id === rel.target)?.name ?? '?';
     const linksForRel = im.links.filter((l) => l.relationId === rel.id);
 
+    // Count links per endpoint once per relation instead of re-filtering
+    // linksForRel for every object — O(objects + links) instead of O(objects × links).
     if (tgtMult) {
+      const countBySource = new Map();
+      for (const l of linksForRel) countBySource.set(l.source, (countBySource.get(l.source) ?? 0) + 1);
       for (const srcObj of im.objects.filter((o) => isConformantClass(o.classId, rel.source, metaModel.relations))) {
-        const count = linksForRel.filter((l) => l.source === srcObj.id).length;
+        const count = countBySource.get(srcObj.id) ?? 0;
         const bad = count < tgtMult.lower || (tgtMult.upper !== Infinity && count > tgtMult.upper);
         if (bad)
           errors.push({ kind: 'object', id: srcObj.id, msg: `"${srcObj.name}" (${srcClsName}): relation "${relName}" needs ${multDesc(tgtMult)} ${tgtClsName} — found ${count}` });
       }
     }
     if (srcMult) {
+      const countByTarget = new Map();
+      for (const l of linksForRel) countByTarget.set(l.target, (countByTarget.get(l.target) ?? 0) + 1);
       for (const tgtObj of im.objects.filter((o) => isConformantClass(o.classId, rel.target, metaModel.relations))) {
-        const count = linksForRel.filter((l) => l.target === tgtObj.id).length;
+        const count = countByTarget.get(tgtObj.id) ?? 0;
         const bad = count < srcMult.lower || (srcMult.upper !== Infinity && count > srcMult.upper);
         if (bad)
           errors.push({ kind: 'object', id: tgtObj.id, msg: `"${tgtObj.name}" (${tgtClsName}): relation "${relName}" needs ${multDesc(srcMult)} ${srcClsName} — found ${count}` });

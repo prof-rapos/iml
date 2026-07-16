@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
+import { useOutsideClick } from '../utils/useOutsideClick';
 
 
 const EDGE_TYPES  = ['INHERITANCE', 'REFERENCE', 'COMPOSITION'];
@@ -32,11 +33,10 @@ export default function Sidebar() {
   const clearInstanceModel  = useModelStore((s) => s.clearInstanceModel);
   const instanceModel       = useModelStore((s) => s.instanceModels[s.currentIMIndex]);
   const conformanceResults  = useModelStore((s) => s.conformanceResults);
-  const metaModelForCoEvo   = metaModel;
   const coEvoWarnings = (instanceModel?.objects ?? []).flatMap((obj) => {
-    const cls = metaModelForCoEvo.classes.find((c) => c.id === obj.classId);
+    const cls = metaModel.classes.find((c) => c.id === obj.classId);
     if (!cls) return [];
-    const allAttrIds  = new Set(getAllAttributes(obj.classId, metaModelForCoEvo).map((a) => a.id));
+    const allAttrIds  = new Set(getAllAttributes(obj.classId, metaModel).map((a) => a.id));
     const orphanKeys  = Object.keys(obj.attributeValues ?? {}).filter((k) => !allAttrIds.has(k));
     return orphanKeys.length > 0
       ? [`"${obj.name}": ${orphanKeys.length} stale attribute(s)`]
@@ -57,53 +57,31 @@ export default function Sidebar() {
     return { x: cx - 100 + step, y: cy - 60 + step };
   };
 
-  const handleAddClass = (isAbstract) => {
-    const id = addClass(isAbstract);
-    const existing = nodes.filter((n) => n.type === 'classNode');
+  // Adds a freshly-created node of `type` to the canvas at a spawn position
+  // clear of existing nodes of the same type — shared by all three "add"
+  // handlers below, which otherwise each repeated this exact block.
+  const spawnNode = (id, type, dataKey) => {
+    const existing = nodes.filter((n) => n.type === type);
     useModelStore.setState((s) => ({
       nodes: [...s.nodes, {
-        id, type: 'classNode',
+        id, type,
         position: spawnPosition(existing.length),
-        data: { classId: id },
+        data: { [dataKey]: id },
       }],
     }));
   };
 
-  const handleAddEnum = () => {
-    const id = addEnumeration();
-    const existing = nodes.filter((n) => n.type === 'enumNode');
-    useModelStore.setState((s) => ({
-      nodes: [...s.nodes, {
-        id, type: 'enumNode',
-        position: spawnPosition(existing.length),
-        data: { enumId: id },
-      }],
-    }));
-  };
-
+  const handleAddClass = (isAbstract) => spawnNode(addClass(isAbstract), 'classNode', 'classId');
+  const handleAddEnum  = () => spawnNode(addEnumeration(), 'enumNode', 'enumId');
   const handleAddObject = (classId) => {
     const id = addObject(classId);
     if (!id) return;
-    const existing = nodes.filter((n) => n.type === 'objectNode');
-    useModelStore.setState((s) => ({
-      nodes: [...s.nodes, {
-        id, type: 'objectNode',
-        position: spawnPosition(existing.length),
-        data: { objectId: id },
-      }],
-    }));
+    spawnNode(id, 'objectNode', 'objectId');
   };
 
   const [issueOpen, setIssueOpen] = useState(false);
   const issueRef = useRef(null);
-  useEffect(() => {
-    if (!issueOpen) return;
-    const handler = (e) => {
-      if (issueRef.current && !issueRef.current.contains(e.target)) setIssueOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [issueOpen]);
+  useOutsideClick(issueRef, () => setIssueOpen(false), issueOpen);
 
   const [confirm, setConfirm] = useState(null); // { message, onConfirm }
   const ask = (message, onConfirm) => setConfirm({ message, onConfirm });

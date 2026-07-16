@@ -1,4 +1,4 @@
-import { Handle, Position } from '@xyflow/react';
+import { AllSidesHandles } from './nodeShell';
 
 // The final state — an outer ring around a filled centre. Transitions enter it.
 const handleStyle = {
@@ -21,10 +21,7 @@ export default function FinalNode({ selected }) {
       }}
     >
       <div style={{ position: 'absolute', inset: 5, borderRadius: '50%', background: ring }} />
-      <Handle id="right"  type="target" position={Position.Right}  style={handleStyle} />
-      <Handle id="bottom" type="target" position={Position.Bottom} style={handleStyle} />
-      <Handle id="left"   type="target" position={Position.Left}   style={handleStyle} />
-      <Handle id="top"    type="target" position={Position.Top}    style={handleStyle} />
+      <AllSidesHandles type="target" style={handleStyle} />
     </div>
   );
 }

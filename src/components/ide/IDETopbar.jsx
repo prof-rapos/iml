@@ -1,8 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { useModelStore } from '../../store/modelStore';
 import { useIdeStore } from '../../store/ideStore';
 import JSZip from 'jszip';
 import NewProjectWizard from './NewProjectWizard';
+import { useOutsideClick } from '../../utils/useOutsideClick';
+import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 
 async function exportZip(files, name = 'project') {
   const zip = new JSZip();
@@ -27,15 +29,7 @@ export default function IDETopbar() {
 
   const hasFiles = files.length > 0;
 
-  // Close menu on outside click
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
+  useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
   const close = () => setMenuOpen(false);
 
@@ -117,20 +111,7 @@ export default function IDETopbar() {
         <div style={{ flex: 1 }} />
 
         {/* Home button */}
-        <button
-          onClick={() => setAppView('home')}
-          title="Home"
-          style={{
-            width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
-            border: '1px solid rgba(255,255,255,0.15)',
-            background: 'rgba(255,255,255,0.07)', color: '#f1f5f9',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
-            <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 003 11h1v6a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6h1a1 1 0 00.707-1.707l-7-7z" />
-          </svg>
-        </button>
+        <HomeButton onClick={() => setAppView('home')} />
 
         {/* Hamburger menu */}
         <div ref={menuRef} style={{ position: 'relative' }}>
@@ -190,31 +171,5 @@ export default function IDETopbar() {
         <NewProjectWizard onConfirm={handleWizardConfirm} onCancel={() => setNewProjectWizard(false)} />
       )}
     </>
-  );
-}
-
-function MenuSection({ label }) {
-  return <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>{label}</div>;
-}
-
-function MenuDivider() {
-  return <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />;
-}
-
-function MenuItem({ children, onClick, disabled }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left',
-        padding: '9px 14px', fontSize: 13, fontWeight: 500,
-        background: hover && !disabled ? 'rgba(255,255,255,0.08)' : 'transparent',
-        color: disabled ? 'rgba(255,255,255,0.25)' : '#f1f5f9',
-        border: 'none', cursor: disabled ? 'default' : 'pointer',
-      }}
-    >{children}</button>
   );
 }

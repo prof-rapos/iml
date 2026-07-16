@@ -4,7 +4,7 @@ import {
   ConnectionLineType, ConnectionMode,
   useReactFlow, useOnViewportChange,
 } from '@xyflow/react';
-import { useModelStore } from '../store/modelStore';
+import { useModelStore, relationToEdge, linkToEdge } from '../store/modelStore';
 import ClassNode from '../nodes/ClassNode';
 import ObjectNode from '../nodes/ObjectNode';
 import EnumNode from '../nodes/EnumNode';
@@ -53,19 +53,8 @@ export default function ModelCanvas() {
       const kind  = pendingEdgeType || 'REFERENCE';
       const relId = addRelation(kind, params.source, params.target, params.sourceHandle, params.targetHandle);
       if (relId !== null) {
-        useModelStore.setState((s) => ({
-          edges: [...s.edges, {
-            id: relId,
-            source: params.source, target: params.target,
-            sourceHandle: params.sourceHandle,
-            targetHandle: params.targetHandle,
-            type: 'relationEdge',
-            data: { kind },
-            markerEnd: kind === 'INHERITANCE'
-              ? { type: 'arrowclosed', width: 16, height: 16 }
-              : { type: 'arrow', width: 14, height: 14 },
-          }],
-        }));
+        const rel = useModelStore.getState().metaModel.relations.find((r) => r.id === relId);
+        useModelStore.setState((s) => ({ edges: [...s.edges, relationToEdge(rel)] }));
       }
       setPendingEdgeType(null);
     } else {
@@ -73,20 +62,13 @@ export default function ModelCanvas() {
       const rel = metaModel.relations.find((r) => r.id === pendingRelationId);
       if (!rel) return;
       const linkId = addLink(pendingRelationId, params.source, params.target, params.sourceHandle, params.targetHandle);
+      const link = { id: linkId, relationId: pendingRelationId, source: params.source, target: params.target, sourceHandle: params.sourceHandle, targetHandle: params.targetHandle };
       useModelStore.setState((s) => ({
-        edges: [...s.edges, {
-          id: linkId,
-          source: params.source, target: params.target,
-          sourceHandle: params.sourceHandle,
-          targetHandle: params.targetHandle,
-          type: 'linkEdge',
-          data: { relationId: pendingRelationId, label: rel?.name || rel?.kind || '' },
-          markerEnd: { type: 'arrow', width: 14, height: 14 },
-        }],
+        edges: [...s.edges, linkToEdge(link, metaModel)],
         pendingRelationId: null,
       }));
     }
-  }, [mode, pendingEdgeType, pendingRelationId, addRelation, addLink, metaModel.relations, setPendingEdgeType]);
+  }, [mode, pendingEdgeType, pendingRelationId, addRelation, addLink, metaModel, setPendingEdgeType]);
 
   // Reconnect: drag edge endpoint to a different node/handle
   const onReconnect = useCallback((oldEdge, newConnection) => {

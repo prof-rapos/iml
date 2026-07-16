@@ -3,9 +3,10 @@ import { toJpeg } from 'html-to-image';
 import { useModelStore } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
+import { TEXT, TEXT_DIM } from '../theme';
+import { useOutsideClick } from '../../utils/useOutsideClick';
+import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 
-const TEXT     = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
 
 export default function BehaviourTopbar() {
@@ -51,12 +52,7 @@ export default function BehaviourTopbar() {
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e) => { if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false); };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
+  useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
   const handleExportIml = () => {
     const blob = new Blob([JSON.stringify(getFullJSON(), null, 2)], { type: 'application/json' });
@@ -168,15 +164,7 @@ export default function BehaviourTopbar() {
 
       <div style={{ flex: 1 }} />
 
-      <button
-        onClick={() => setAppView('home')}
-        style={btn(false)}
-        title="Back to home"
-      >
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
-          <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 003 11h1v6a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6h1a1 1 0 00.707-1.707l-7-7z" />
-        </svg>
-      </button>
+      <HomeButton onClick={() => setAppView('home')} size={34} borderColor={BORDER} color={TEXT} />
 
       <div ref={menuRef} style={{ position: 'relative' }}>
         <button onClick={() => setMenuOpen((o) => !o)} title="Menu" style={{ ...btn(menuOpen), flexDirection: 'column', gap: 3 }}>
@@ -189,10 +177,10 @@ export default function BehaviourTopbar() {
             background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: 170, overflow: 'hidden',
           }}>
-            <div style={sectionStyle}>Model</div>
+            <MenuSection label="Model" />
             <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
             <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
-            <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />
+            <MenuDivider />
             <MenuItem onClick={handleExportJpeg} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
           </div>
         )}
@@ -209,23 +197,3 @@ const btn = (active) => ({
   color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center',
 });
 const bar = { display: 'block', width: 15, height: 1.5, background: TEXT, borderRadius: 1 };
-const sectionStyle = { padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' };
-
-function MenuItem({ children, onClick, disabled }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left', padding: '9px 14px', fontSize: 13, fontWeight: 500,
-        background: hover && !disabled ? 'rgba(255,255,255,0.08)' : 'transparent',
-        color: disabled ? TEXT_DIM : TEXT, border: 'none', cursor: disabled ? 'default' : 'pointer', opacity: disabled ? 0.5 : 1,
-      }}
-    >
-      {children}
-    </button>
-  );
-}

@@ -3,13 +3,12 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { findMainClasses } from '../../store/ideStore';
+import { TEXT, TEXT_DIM } from '../theme';
 
 const RUNNER_URL = import.meta.env.VITE_JAVA_RUNNER_URL || 'https://iml-java-runner.fly.dev';
 const WS_URL = RUNNER_URL.replace(/^https/, 'wss').replace(/^http(?!s)/, 'ws');
 
 const BORDER  = 'rgba(255,255,255,0.10)';
-const TEXT    = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const ACCENT  = '#2563eb';
 const HEADER_BG = '#161b22';
 

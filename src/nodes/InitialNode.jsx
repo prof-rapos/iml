@@ -1,4 +1,4 @@
-import { Handle, Position } from '@xyflow/react';
+import { AllSidesHandles } from './nodeShell';
 
 // The initial pseudostate — a small filled circle with a single outgoing transition.
 const handleStyle = {
@@ -20,10 +20,7 @@ export default function InitialNode({ selected }) {
         cursor: 'pointer',
       }}
     >
-      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
-      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
-      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
+      <AllSidesHandles style={handleStyle} />
     </div>
   );
 }

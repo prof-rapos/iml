@@ -1,4 +1,5 @@
-const TEXT_DIM = '#8b949e';
+import { TEXT_DIM } from '../theme';
+
 const BORDER   = 'rgba(255,255,255,0.10)';
 
 const sectionHeader = {

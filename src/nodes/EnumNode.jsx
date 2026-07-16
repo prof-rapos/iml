@@ -1,4 +1,5 @@
 import { useModelStore } from '../store/modelStore';
+import { NodeEmptyState } from './nodeShell';
 
 // An enumeration is a type definition, not a participant in relations,
 // so it has no connection handles — attributes reference it by name.
@@ -37,9 +38,7 @@ export default function EnumNode({ id, selected }) {
       {/* Literals */}
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--iml-border)' }}>
         {(en.literals ?? []).length === 0 ? (
-          <div style={{ padding: '4px 10px', color: 'rgba(255,255,255,0.35)', fontSize: 12, fontStyle: 'italic' }}>
-            no literals
-          </div>
+          <NodeEmptyState>no literals</NodeEmptyState>
         ) : (
           en.literals.map((lit, i) => (
             <div key={i} style={{ padding: '2px 10px', color: '#fed7aa', fontSize: 12 }}>

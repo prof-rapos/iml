@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { packageToDir } from '../../store/ideStore';
+import { TEXT, TEXT_DIM } from '../theme';
 
 const BG = '#161b22';
 const BORDER = 'rgba(255,255,255,0.12)';
-const TEXT = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const ACCENT = '#2563eb';
 const INPUT_BG = '#0d1117';
 

@@ -1,5 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath, Position } from '@xyflow/react';
 import { useModelStore } from '../store/modelStore';
+import { EdgeClickCatcher } from './edgeShell';
 
 const GLOW_COLORS = {
   INHERITANCE: 'var(--iml-inheritance)',
@@ -25,6 +26,7 @@ export default function RelationEdge({
 }) {
   // Read directly from store — avoids the syncedEdges re-render → blur cycle
   const rel = useModelStore((s) => s.metaModel.relations.find((r) => r.id === id));
+  const setSelectedId = useModelStore((s) => s.setSelectedId);
 
   const kind  = rel?.kind  ?? 'REFERENCE';
   const glowColor = GLOW_COLORS[kind] ?? '#cccccc';
@@ -57,6 +59,8 @@ export default function RelationEdge({
         style={{ stroke: color, strokeWidth }}
         interactionWidth={14}
       />
+
+      <EdgeClickCatcher id={id} edgePath={edgePath} onSelect={setSelectedId} />
 
       <EdgeLabelRenderer>
         {/* Relation name — floats at midpoint */}

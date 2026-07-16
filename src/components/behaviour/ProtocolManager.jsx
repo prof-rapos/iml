@@ -1,7 +1,6 @@
 import { useModelStore, SYSTEM_PROTOCOLS } from '../../store/modelStore';
+import { TEXT, TEXT_DIM } from '../theme';
 
-const TEXT     = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
 const CARD_BG  = '#161b22';
 

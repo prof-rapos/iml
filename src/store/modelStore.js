@@ -7,6 +7,7 @@ import {
   convertAttrValue,
 } from '../utils/modelHelpers.js';
 import { validateConformance } from '../utils/conformance.js';
+import { selectionPatch } from './selectionChanges.js';
 
 const mkIM = (name = 'NewInstanceModel') => ({
   id: nanoid(8),
@@ -127,6 +128,25 @@ function withMachine(metaModel, classId, fn) {
   return { ...metaModel, behaviours: { ...behaviours, [classId]: fn(machine) } };
 }
 
+// Updates one protocol via fn(protocol) => next protocol, leaving the rest of
+// metaModel.protocols untouched.
+function withProtocol(metaModel, protocolId, fn) {
+  return { ...metaModel, protocols: (metaModel.protocols ?? []).map((p) => p.id === protocolId ? fn(p) : p) };
+}
+
+// Updates one signal within a protocol via fn(signal) => next signal.
+function withSignal(protocol, signalId, fn) {
+  return { ...protocol, signals: protocol.signals.map((sg) => sg.id === signalId ? fn(sg) : sg) };
+}
+
+// Updates only the current instance model via fn(currentIM) => partial patch,
+// leaving every other instance model untouched. The single place every
+// instance-model-scoped CRUD action goes through instead of hand-rolling the
+// same `map((im, i) => i === currentIMIndex ? ... : im)` each time.
+function withCurrentIM(instanceModels, currentIMIndex, fn) {
+  return instanceModels.map((im, i) => i === currentIMIndex ? { ...im, ...fn(im) } : im);
+}
+
 // Re-export so existing importers (ObjectNode, etc.) don't need changing.
 export const getAllAttributes = _getAllAttributes;
 export const getAllRelations  = _getAllRelations;
@@ -222,6 +242,36 @@ function isJavaKeyword(name) {
 const mmKey  = () => 'mm';
 const imKey  = (imId) => `im-${imId}`;
 
+// Canonical relationEdge/linkEdge shapes — the single source of truth used by
+// both rebuildCanvas's initial build and ModelCanvas's onConnect, so a new
+// edge appended live can't drift out of sync with a freshly-rebuilt one.
+export function relationToEdge(rel) {
+  return {
+    id: rel.id, source: rel.source, target: rel.target,
+    sourceHandle: rel.sourceHandle ?? null,
+    targetHandle: rel.targetHandle ?? null,
+    type: 'relationEdge',
+    data: { kind: rel.kind, name: rel.name || '', sourceMultiplicity: rel.sourceMultiplicity || '', targetMultiplicity: rel.targetMultiplicity || '' },
+    markerEnd: rel.kind === 'INHERITANCE'
+      ? { type: 'arrowclosed', width: 16, height: 16 }
+      : { type: 'arrow', width: 14, height: 14 },
+  };
+}
+
+export function linkToEdge(link, metaModel) {
+  const rel = metaModel.relations.find((r) => r.id === link.relationId);
+  return {
+    id: link.id,
+    source: link.source ?? link.sourceId,
+    target: link.target ?? link.targetId,
+    sourceHandle: link.sourceHandle ?? null,
+    targetHandle: link.targetHandle ?? null,
+    type: 'linkEdge',
+    data: { relationId: link.relationId, label: rel?.name || rel?.kind || '' },
+    markerEnd: { type: 'arrow', width: 14, height: 14 },
+  };
+}
+
 export const useModelStore = create((set, get) => ({
   // ── App-level navigation ──────────────────────────────────────────
   appView: 'home',
@@ -258,40 +308,15 @@ export const useModelStore = create((set, get) => ({
         patch.layouts = { ...s.layouts, [layoutKey]: { ...(s.layouts[layoutKey] ?? {}), ...updates } };
       }
 
-      // Drive selection — prioritise selected:true so switching nodes doesn't flash null
-      const selChange = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (selChange) {
-        if (selChange.selected) {
-          patch.selectedId   = selChange.id;
-          patch.selectedType = 'node';
-        } else if (s.selectedType === 'node' && s.selectedId === selChange.id) {
-          patch.selectedId   = null;
-          patch.selectedType = null;
-        }
-      }
-
+      Object.assign(patch, selectionPatch(changes, 'node', s));
       return patch;
     });
   },
 
   onEdgesChange: (changes) => {
     set((s) => {
-      const newEdges = applyEdgeChanges(changes, s.edges);
-      const patch = { edges: newEdges };
-
-      const selChange = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (selChange) {
-        if (selChange.selected) {
-          patch.selectedId   = selChange.id;
-          patch.selectedType = 'edge';
-        } else if (s.selectedType === 'edge' && s.selectedId === selChange.id) {
-          patch.selectedId   = null;
-          patch.selectedType = null;
-        }
-      }
-
+      const patch = { edges: applyEdgeChanges(changes, s.edges) };
+      Object.assign(patch, selectionPatch(changes, 'edge', s));
       return patch;
     });
   },
@@ -357,21 +382,12 @@ export const useModelStore = create((set, get) => ({
         return;
       }
     }
-    set((s) => {
-      const updatedIMs = patch.name
-        ? s.instanceModels.map((im) => ({
-            ...im,
-            objects: im.objects.map((o) => o.classId === id ? { ...o, className: patch.name } : o),
-          }))
-        : s.instanceModels;
-      return {
-        metaModel: {
-          ...s.metaModel,
-          classes: s.metaModel.classes.map((c) => c.id === id ? { ...c, ...patch } : c),
-        },
-        instanceModels: updatedIMs,
-      };
-    });
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        classes: s.metaModel.classes.map((c) => c.id === id ? { ...c, ...patch } : c),
+      },
+    }));
   },
 
   addClass_attribute: (classId, attr) => {
@@ -720,9 +736,7 @@ export const useModelStore = create((set, get) => ({
 
   clearInstanceModel: () => {
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex ? { ...im, objects: [], links: [], connectors: [] } : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, () => ({ objects: [], links: [], connectors: [] })),
       nodes: [], edges: [],
       selectedId: null, selectedType: null,
       conformanceResults: [],
@@ -768,21 +782,23 @@ export const useModelStore = create((set, get) => ({
   deleteInstanceModel: (idx) => {
     const s = get();
     if (s.instanceModels.length <= 1) return; // keep at least one
+    const removedId = s.instanceModels[idx]?.id;
     const newList = s.instanceModels.filter((_, i) => i !== idx);
     // Deleting an entry before the current selection shifts it left by one;
     // Math.min alone (the old bug) only handled deleting at/after it.
     const newIdx = idx < s.currentIMIndex
       ? s.currentIMIndex - 1
       : Math.min(s.currentIMIndex, newList.length - 1);
-    set({ instanceModels: newList, currentIMIndex: newIdx });
+    // Drop this instance model's own layout entries — otherwise they linger
+    // forever, keyed off an id nothing references anymore.
+    const { [`im-${removedId}`]: _imLayout, [`cs-${removedId}`]: _csLayout, ...layouts } = s.layouts;
+    set({ instanceModels: newList, currentIMIndex: newIdx, layouts });
     get().rebuildCanvas('instance');
     get().log(`Deleted instance model at index ${idx}`);
   },
 
   updateInstanceModelName: (name) => set((s) => ({
-    instanceModels: s.instanceModels.map((im, i) =>
-      i === s.currentIMIndex ? { ...im, name } : im
-    ),
+    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, () => ({ name })),
   })),
 
   // ── Instance model operations (always on currentIMIndex) ──────────
@@ -799,67 +815,44 @@ export const useModelStore = create((set, get) => ({
     }
     const obj = { id, classId, name: `${cls.name}1`, attributeValues };
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex ? { ...im, objects: [...im.objects, obj] } : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({ objects: [...im.objects, obj] })),
     }));
     get().log(`Added object "${obj.name}" : ${cls.name}`);
     return id;
   },
 
   updateObject: (id, patch) => set((s) => ({
-    instanceModels: s.instanceModels.map((im, i) =>
-      i === s.currentIMIndex
-        ? { ...im, objects: im.objects.map((o) => o.id === id ? { ...o, ...patch } : o) }
-        : im
-    ),
+    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+      objects: im.objects.map((o) => o.id === id ? { ...o, ...patch } : o),
+    })),
     conformanceStale: true,
   })),
 
   updateSlotValues: (objId, attrId, values) => set((s) => ({
-    instanceModels: s.instanceModels.map((im, i) =>
-      i === s.currentIMIndex
-        ? {
-            ...im,
-            objects: im.objects.map((o) =>
-              o.id === objId
-                ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: values } }
-                : o
-            ),
-          }
-        : im
-    ),
+    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+      objects: im.objects.map((o) =>
+        o.id === objId ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: values } } : o
+      ),
+    })),
     conformanceStale: true,
   })),
 
   updateSlot: (objId, attrId, value) => set((s) => ({
-    instanceModels: s.instanceModels.map((im, i) =>
-      i === s.currentIMIndex
-        ? {
-            ...im,
-            objects: im.objects.map((o) =>
-              o.id === objId
-                ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: value } }
-                : o
-            ),
-          }
-        : im
-    ),
+    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+      objects: im.objects.map((o) =>
+        o.id === objId ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: value } } : o
+      ),
+    })),
     conformanceStale: true,
   })),
 
   deleteObject: (id) => {
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex
-          ? {
-              ...im,
-              objects: im.objects.filter((o) => o.id !== id),
-              links:   im.links.filter((l) => l.source !== id && l.target !== id),
-              connectors: (im.connectors ?? []).filter((c) => c.sourceObjectId !== id && c.targetObjectId !== id),
-            }
-          : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+        objects: im.objects.filter((o) => o.id !== id),
+        links:   im.links.filter((l) => l.source !== id && l.target !== id),
+        connectors: (im.connectors ?? []).filter((c) => c.sourceObjectId !== id && c.targetObjectId !== id),
+      })),
       nodes:       s.nodes.filter((n) => n.id !== id),
       edges:       s.edges.filter((e) => e.source !== id && e.target !== id),
       selectedId:  s.selectedId === id ? null : s.selectedId,
@@ -868,32 +861,26 @@ export const useModelStore = create((set, get) => ({
   },
 
   updateLink: (id, patch) => set((s) => ({
-    instanceModels: s.instanceModels.map((im, i) =>
-      i === s.currentIMIndex
-        ? { ...im, links: im.links.map((l) => l.id === id ? { ...l, ...patch } : l) }
-        : im
-    ),
+    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+      links: im.links.map((l) => l.id === id ? { ...l, ...patch } : l),
+    })),
   })),
 
   addLink: (relationId, source, target, sourceHandle, targetHandle) => {
     const id = nanoid(8);
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex
-          ? { ...im, links: [...im.links, { id, relationId, source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null }] }
-          : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+        links: [...im.links, { id, relationId, source, target, sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null }],
+      })),
     }));
     return id;
   },
 
   deleteLink: (id) => {
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex
-          ? { ...im, links: im.links.filter((l) => l.id !== id) }
-          : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+        links: im.links.filter((l) => l.id !== id),
+      })),
       edges:       s.edges.filter((e) => e.id !== id),
       selectedId:  s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -944,22 +931,18 @@ export const useModelStore = create((set, get) => ({
 
     const id = nanoid(8);
     set((s) => ({
-      instanceModels: s.instanceModels.map((cur, i) =>
-        i === s.currentIMIndex
-          ? { ...cur, connectors: [...(cur.connectors ?? []), { id, sourceObjectId, sourcePortId, targetObjectId, targetPortId }] }
-          : cur
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (cur) => ({
+        connectors: [...(cur.connectors ?? []), { id, sourceObjectId, sourcePortId, targetObjectId, targetPortId }],
+      })),
     }));
     return id;
   },
 
   deleteConnector: (id) => {
     set((s) => ({
-      instanceModels: s.instanceModels.map((im, i) =>
-        i === s.currentIMIndex
-          ? { ...im, connectors: (im.connectors ?? []).filter((c) => c.id !== id) }
-          : im
-      ),
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+        connectors: (im.connectors ?? []).filter((c) => c.id !== id),
+      })),
     }));
   },
 
@@ -1086,7 +1069,7 @@ export const useModelStore = create((set, get) => ({
   },
 
   updateProtocol: (id, patch) =>
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => p.id === id ? { ...p, ...patch } : p) } })),
+    set((s) => ({ metaModel: withProtocol(s.metaModel, id, (p) => ({ ...p, ...patch })) })),
 
   deleteProtocol: (id) =>
     set((s) => {
@@ -1101,53 +1084,50 @@ export const useModelStore = create((set, get) => ({
 
   addSignal: (protocolId, direction = 'in') => {
     const id = nanoid(8);
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
-      if (p.id !== protocolId) return p;
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) => {
       const existing = new Set(p.signals.map((sg) => sg.name));
       let n = p.signals.length + 1;
       let name = `signal${n}`;
       while (existing.has(name)) name = `signal${++n}`;
       return { ...p, signals: [...p.signals, { id, name, direction, params: [] }] };
-    }) } }));
+    }) }));
     return id;
   },
 
   updateSignal: (protocolId, signalId, patch) =>
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
-      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId ? { ...sg, ...patch } : sg) } : p) } })),
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
+      withSignal(p, signalId, (sg) => ({ ...sg, ...patch }))) })),
 
   deleteSignal: (protocolId, signalId) =>
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
-      p.id === protocolId ? { ...p, signals: p.signals.filter((sg) => sg.id !== signalId) } : p) } })),
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) => ({
+      ...p, signals: p.signals.filter((sg) => sg.id !== signalId),
+    })) })),
 
   addParam: (protocolId, signalId) => {
     const id = nanoid(8);
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
-      if (p.id !== protocolId) return p;
-      return { ...p, signals: p.signals.map((sg) => {
-        if (sg.id !== signalId) return sg;
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
+      withSignal(p, signalId, (sg) => {
         const params = sg.params ?? [];
         const existing = new Set(params.map((pr) => pr.name));
         let n = params.length + 1;
         let name = `param${n}`;
         while (existing.has(name)) name = `param${++n}`;
         return { ...sg, params: [...params, { id, name, type: 'STRING' }] };
-      }) };
-    }) } }));
+      })) }));
     return id;
   },
 
   updateParam: (protocolId, signalId, paramId, patch) =>
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
-      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId
-        ? { ...sg, params: (sg.params ?? []).map((pr) => pr.id === paramId ? { ...pr, ...patch } : pr) }
-        : sg) } : p) } })),
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
+      withSignal(p, signalId, (sg) => ({
+        ...sg, params: (sg.params ?? []).map((pr) => pr.id === paramId ? { ...pr, ...patch } : pr),
+      }))) })),
 
   deleteParam: (protocolId, signalId, paramId) =>
-    set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) =>
-      p.id === protocolId ? { ...p, signals: p.signals.map((sg) => sg.id === signalId
-        ? { ...sg, params: (sg.params ?? []).filter((pr) => pr.id !== paramId) }
-        : sg) } : p) } })),
+    set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
+      withSignal(p, signalId, (sg) => ({
+        ...sg, params: (sg.params ?? []).filter((pr) => pr.id !== paramId),
+      }))) })),
 
   addPort: (classId) => {
     const id = nanoid(8);
@@ -1272,16 +1252,7 @@ export const useModelStore = create((set, get) => ({
       }));
       set({
         nodes: [...classNodes, ...enumNodes],
-        edges: s.metaModel.relations.map((r) => ({
-          id: r.id, source: r.source, target: r.target,
-          sourceHandle: r.sourceHandle ?? null,
-          targetHandle: r.targetHandle ?? null,
-          type: 'relationEdge',
-          data: { kind: r.kind, name: r.name || '', sourceMultiplicity: r.sourceMultiplicity || '', targetMultiplicity: r.targetMultiplicity || '' },
-          markerEnd: r.kind === 'INHERITANCE'
-            ? { type: 'arrowclosed', width: 16, height: 16 }
-            : { type: 'arrow', width: 14, height: 14 },
-        })),
+        edges: s.metaModel.relations.map(relationToEdge),
       });
     } else {
       if (!currIM) return;
@@ -1291,32 +1262,24 @@ export const useModelStore = create((set, get) => ({
           position: getPos(obj.id, i),
           data: { objectId: obj.id },
         })),
-        edges: currIM.links.map((l) => {
-          const rel = s.metaModel.relations.find((r) => r.id === l.relationId);
-          return {
-            id: l.id,
-            source: l.source ?? l.sourceId,
-            target: l.target ?? l.targetId,
-            sourceHandle: l.sourceHandle ?? null,
-            targetHandle: l.targetHandle ?? null,
-            type: 'linkEdge',
-            data: { relationId: l.relationId, label: rel?.name || rel?.kind || '' },
-            markerEnd: { type: 'arrow', width: 14, height: 14 },
-          };
-        }),
+        edges: currIM.links.map((l) => linkToEdge(l, s.metaModel)),
       });
     }
     get().log(`Canvas rebuilt: ${mode}`);
   },
 }));
 
-// Live conformance: re-validate whenever model data changes
+// Live conformance: re-validate whenever model data changes. Debounced so
+// typing in a name/attribute field doesn't run a full model scan on every
+// keystroke — only once the user pauses.
+let validateTimer = null;
 useModelStore.subscribe((state, prevState) => {
   if (
     state.metaModel       !== prevState.metaModel ||
     state.instanceModels  !== prevState.instanceModels ||
     state.currentIMIndex  !== prevState.currentIMIndex
   ) {
-    useModelStore.getState()._runValidate();
+    clearTimeout(validateTimer);
+    validateTimer = setTimeout(() => useModelStore.getState()._runValidate(), 250);
   }
 });

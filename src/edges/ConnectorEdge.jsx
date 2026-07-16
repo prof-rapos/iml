@@ -1,5 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
 import { useCapsuleStructureStore } from '../store/capsuleStructureStore';
+import { EdgeClickCatcher } from './edgeShell';
 
 // A connector joins one base port to one conjugate port of the same protocol
 // (validated in modelStore.addConnector) — labeled with that shared protocol's name.
@@ -24,8 +25,7 @@ export default function ConnectorEdge({
       <BaseEdge id={id} path={edgePath}
         style={{ stroke: selected ? '#a855f7' : '#7c3aed', strokeWidth: selected ? 3.5 : 2.5 }} interactionWidth={14} />
 
-      <path d={edgePath} fill="none" stroke="transparent" strokeWidth={18}
-        onClick={() => setSelected(id, 'edge')} style={{ cursor: 'pointer' }} />
+      <EdgeClickCatcher id={id} edgePath={edgePath} onSelect={setSelected} />
 
       {data?.label && (
         <EdgeLabelRenderer>

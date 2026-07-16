@@ -20,7 +20,7 @@ function safeId(name) {
   return sanitized || '_field';
 }
 
-function toClassName(name) {
+export function toClassName(name) {
   const sanitized = (name || 'Class')
     .replace(/[^a-zA-Z0-9_$\s]/g, '')
     .trim()
@@ -31,7 +31,7 @@ function toClassName(name) {
   return sanitized || 'GeneratedClass';
 }
 
-function toPackageName(name) {
+export function toPackageName(name) {
   return (name || 'model')
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '_')
@@ -161,13 +161,8 @@ function getRelationFieldName(rel, targetCls) {
 // Separator : " * " + "=" * (BOX_INNER + 4)
 // Box line  : " * ||" + BOX_INNER chars + "||"
 
-function generateAsciiComment(cls, metaModel) {
+function generateAsciiComment(cls, metaModel, parent, relations) {
   const VISIBILITY = { PUBLIC: '+', PRIVATE: '-', PROTECTED: '#' };
-
-  const parent    = getParentClass(cls.id, metaModel);
-  const relations = metaModel.relations.filter(
-    r => r.source === cls.id && r.kind !== 'INHERITANCE'
-  );
 
   // ── Collect content strings to compute required width ──────────────
   const headerName    = cls.isAbstract ? `«${cls.name}»` : cls.name;
@@ -271,7 +266,7 @@ function generateClassFile(cls, metaModel, pkg) {
 
   const lines = [];
 
-  lines.push(generateAsciiComment(cls, metaModel));
+  lines.push(generateAsciiComment(cls, metaModel, parent, relations));
   lines.push(`package ${pkg};`);
   lines.push('');
   if (needsArrayList) {
@@ -436,11 +431,7 @@ function generateClassFile(cls, metaModel, pkg) {
 
   for (const attr of ownAttrs) {
     const field = safeId(attr.name);
-    if (attr.upperBound !== 1) {
-      lines.push(`        sb.append(pad).append("  ${field}: ").append(${field}).append("\\n");`);
-    } else {
-      lines.push(`        sb.append(pad).append("  ${field}: ").append(${field}).append("\\n");`);
-    }
+    lines.push(`        sb.append(pad).append("  ${field}: ").append(${field}).append("\\n");`);
   }
 
   for (const rel of relations) {

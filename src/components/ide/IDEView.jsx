@@ -7,10 +7,9 @@ import CodeEditor from './CodeEditor';
 import IDETerminal from './IDETerminal';
 import NewFileDialog from './NewFileDialog';
 import NewProjectWizard from './NewProjectWizard';
+import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER = 'rgba(255,255,255,0.08)';
-const TEXT = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const ACTIVE_TAB = '#0d1117';
 const TAB_BG = '#161b22';
 

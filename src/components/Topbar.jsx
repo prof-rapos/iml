@@ -1,10 +1,12 @@
 import { useModelStore } from '../store/modelStore';
 import { useIdeStore } from '../store/ideStore';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState } from 'react';
 import { toJpeg } from 'html-to-image';
 import JSZip from 'jszip';
-import { generateJavaCode } from '../utils/javaCodeGen';
+import { generateJavaCode, toClassName, toPackageName } from '../utils/javaCodeGen';
 import OverwriteConfirmDialog from './ide/OverwriteConfirmDialog';
+import { useOutsideClick } from '../utils/useOutsideClick';
+import { MenuSection, MenuDivider, MenuItem, HomeButton } from './topbarMenu';
 
 export default function Topbar() {
   const mode = useModelStore((s) => s.mode);
@@ -25,14 +27,7 @@ export default function Topbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handler = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [menuOpen]);
+  useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
   const handleSave = () => {
     const data = getFullJSON();
@@ -92,11 +87,6 @@ export default function Topbar() {
 
     // Determine active file: the currently selected instance model's file
     const im = instanceModels[currentIMIndex];
-    const toClassName = (name) =>
-      (name || 'Class').replace(/[^a-zA-Z0-9_$\s]/g, '').trim().split(/\s+/).filter(Boolean)
-        .map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join('') || 'GeneratedClass';
-    const toPackageName = (name) =>
-      (name || 'model').toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/^_+|_+$/g, '') || 'model';
     const pkgDir = `iml/${toPackageName(metaModel.name)}`;
     const activePath = im ? `${pkgDir}/${toClassName(im.name)}.java` : files[0]?.path;
 
@@ -177,21 +167,7 @@ export default function Topbar() {
       <div style={{ flex: 1 }} />
 
       {/* Home button */}
-      <button
-        onClick={() => setAppView('home')}
-        title="Home"
-        style={{
-          width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
-          border: '1px solid rgba(255,255,255,0.15)',
-          background: 'rgba(255,255,255,0.07)',
-          color: '#f1f5f9',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        <svg viewBox="0 0 20 20" width="16" height="16" fill="currentColor">
-          <path d="M10.707 2.293a1 1 0 00-1.414 0l-7 7A1 1 0 003 11h1v6a1 1 0 001 1h4v-4h2v4h4a1 1 0 001-1v-6h1a1 1 0 00.707-1.707l-7-7z" />
-        </svg>
-      </button>
+      <HomeButton onClick={() => setAppView('home')} />
 
       {/* Hamburger menu — right side */}
       <div ref={menuRef} style={{ position: 'relative' }}>
@@ -242,36 +218,5 @@ export default function Topbar() {
       />
     )}
     </>
-  );
-}
-
-function MenuSection({ label }) {
-  return (
-    <div style={{ padding: '8px 14px 4px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.35)' }}>
-      {label}
-    </div>
-  );
-}
-
-function MenuDivider() {
-  return <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />;
-}
-
-function MenuItem({ children, onClick }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <button
-      onClick={onClick}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      style={{
-        display: 'block', width: '100%', textAlign: 'left',
-        padding: '9px 14px', fontSize: 13, fontWeight: 500,
-        background: hover ? 'rgba(255,255,255,0.08)' : 'transparent',
-        color: '#f1f5f9', border: 'none', cursor: 'pointer',
-      }}
-    >
-      {children}
-    </button>
   );
 }

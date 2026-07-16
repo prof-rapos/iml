@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import { useModelStore } from './modelStore';
+import { selectionPatch } from './selectionChanges';
 
 // Builds the transition label: trigger [guard] / effect (any part optional).
 export function transitionLabel(t) {
@@ -79,13 +80,7 @@ export const useBehaviourStore = create((set, get) => ({
         useModelStore.getState().setStatePositions(s.capsuleId, posMap);
       }
 
-      // Prioritise selected:true so switching nodes doesn't flash null.
-      const sel = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (sel) {
-        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'node'; }
-        else if (s.selectedType === 'node' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
-      }
+      Object.assign(patch, selectionPatch(changes, 'node', s));
       return patch;
     });
   },
@@ -93,12 +88,7 @@ export const useBehaviourStore = create((set, get) => ({
   onEdgesChange: (changes) => {
     set((s) => {
       const patch = { edges: applyEdgeChanges(changes, s.edges) };
-      const sel = changes.find((c) => c.type === 'select' && c.selected)
-        ?? changes.find((c) => c.type === 'select');
-      if (sel) {
-        if (sel.selected) { patch.selectedId = sel.id; patch.selectedType = 'edge'; }
-        else if (s.selectedType === 'edge' && s.selectedId === sel.id) { patch.selectedId = null; patch.selectedType = null; }
-      }
+      Object.assign(patch, selectionPatch(changes, 'edge', s));
       return patch;
     });
   },

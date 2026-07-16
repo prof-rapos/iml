@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
+import { TEXT, TEXT_DIM } from '../theme';
 
-const TEXT = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const BORDER = 'rgba(255,255,255,0.08)';
 const HOVER_BG = 'rgba(255,255,255,0.06)';
 const ACTIVE_BG = 'rgba(37,99,235,0.25)';
@@ -24,6 +23,15 @@ function buildTree(files) {
     if (!collided) node[parts[parts.length - 1]] = f.path; // leaf = full path
   }
   return root;
+}
+
+// Sorts a tree level's entries so folders (plain objects) come before files
+// (stored as their full path string) — shared by TreeNode and the root render.
+function folderFirstComparator([, a], [, b]) {
+  const aIsFile = typeof a === 'string';
+  const bIsFile = typeof b === 'string';
+  if (aIsFile !== bIsFile) return aIsFile ? 1 : -1;
+  return 0;
 }
 
 function FileIcon() {
@@ -121,12 +129,7 @@ function TreeNode({ name, node, depth, activeFilePath, onSelect, onDelete, onRen
   }
 
   // Folder
-  const children = Object.entries(node).sort(([, a], [, b]) => {
-    const aIsFile = typeof a === 'string';
-    const bIsFile = typeof b === 'string';
-    if (aIsFile !== bIsFile) return aIsFile ? 1 : -1;
-    return 0;
-  });
+  const children = Object.entries(node).sort(folderFirstComparator);
 
   return (
     <div>
@@ -163,12 +166,7 @@ function TreeNode({ name, node, depth, activeFilePath, onSelect, onDelete, onRen
 
 export default function FileTree({ files, activeFilePath, onSelect, onDelete, onRename, onNewFile, projectPackage }) {
   const tree = buildTree(files);
-  const entries = Object.entries(tree).sort(([, a], [, b]) => {
-    const aIsFile = typeof a === 'string';
-    const bIsFile = typeof b === 'string';
-    if (aIsFile !== bIsFile) return aIsFile ? 1 : -1;
-    return 0;
-  });
+  const entries = Object.entries(tree).sort(folderFirstComparator);
 
   return (
     <div style={{

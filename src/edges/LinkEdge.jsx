@@ -1,5 +1,6 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
 import { useModelStore } from '../store/modelStore';
+import { EdgeClickCatcher } from './edgeShell';
 
 export default function LinkEdge({
   id, sourceX, sourceY, targetX, targetY,
@@ -26,8 +27,7 @@ export default function LinkEdge({
         style={{ stroke: '#000000', strokeWidth: selected ? 3.5 : 2.8 }}
         interactionWidth={14} />
 
-      <path d={edgePath} fill="none" stroke="transparent" strokeWidth={18}
-        onClick={() => setSelectedId(id, 'edge')} style={{ cursor: 'pointer' }} />
+      <EdgeClickCatcher id={id} edgePath={edgePath} onSelect={setSelectedId} />
 
       <EdgeLabelRenderer>
         {data?.label && (

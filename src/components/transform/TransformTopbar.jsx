@@ -2,9 +2,8 @@ import { useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
 import { useModelStore } from '../../store/modelStore';
 import { runTransform } from '../../utils/runTransform';
+import { TEXT, TEXT_DIM } from '../theme';
 
-const TEXT     = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#7c3aed';
 

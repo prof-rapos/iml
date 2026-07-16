@@ -1,6 +1,6 @@
-import { Handle, Position } from '@xyflow/react';
 import { Code2 } from 'lucide-react';
 import { useModelStore } from '../store/modelStore';
+import { AllSidesHandles } from './nodeShell';
 
 const ACCENT_NORMAL   = 'var(--iml-primary)'; // blue  — normal
 const ACCENT_SELECTED = '#d97706';            // orange — selected
@@ -63,10 +63,7 @@ export default function StateNode({ id, data, selected }) {
         </div>
       )}
 
-      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
-      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
-      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
+      <AllSidesHandles style={handleStyle} />
     </div>
   );
 }

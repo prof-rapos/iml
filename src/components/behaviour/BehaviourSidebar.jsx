@@ -3,9 +3,8 @@ import { Settings2 } from 'lucide-react';
 import { useModelStore, allProtocols } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import ProtocolManager from './ProtocolManager';
+import { TEXT, TEXT_DIM } from '../theme';
 
-const TEXT     = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#d97706';
 

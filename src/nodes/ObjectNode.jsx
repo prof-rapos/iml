@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import { Handle, Position } from '@xyflow/react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
+import { AllSidesHandles, NodeEmptyState } from './nodeShell';
 
 const handleStyle = {
   width: 10, height: 10,
@@ -18,9 +18,12 @@ export default function ObjectNode({ id, selected }) {
     () => metaModel.classes.find((c) => c.id === classId)?.name ?? classId,
     [classId, metaModel.classes],
   );
+  // getAllAttributes only reads classes + relations — narrow the deps to
+  // those so an unrelated metaModel change (enums, protocols, behaviours)
+  // doesn't recompute this for every ObjectNode on the canvas.
   const allAttrs = useMemo(
     () => classId ? getAllAttributes(classId, metaModel) : [],
-    [classId, metaModel],
+    [classId, metaModel.classes, metaModel.relations], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   if (!obj) return null;
@@ -68,9 +71,7 @@ export default function ObjectNode({ id, selected }) {
 
       <div style={{ padding: '4px 0', borderTop: '1px solid var(--iml-border)' }}>
         {allAttrs.length === 0 ? (
-          <div style={{ padding: '4px 10px', color: 'rgba(255,255,255,0.35)', fontSize: 12, fontStyle: 'italic' }}>
-            no attributes
-          </div>
+          <NodeEmptyState>no attributes</NodeEmptyState>
         ) : (
           allAttrs.map((attr) => {
             const val     = obj.attributeValues?.[attr.id];
@@ -90,10 +91,7 @@ export default function ObjectNode({ id, selected }) {
         )}
       </div>
 
-      <Handle id="right"  type="source" position={Position.Right}  style={handleStyle} />
-      <Handle id="left"   type="source" position={Position.Left}   style={handleStyle} />
-      <Handle id="top"    type="source" position={Position.Top}    style={handleStyle} />
-      <Handle id="bottom" type="source" position={Position.Bottom} style={handleStyle} />
+      <AllSidesHandles style={handleStyle} />
     </div>
   );
 }

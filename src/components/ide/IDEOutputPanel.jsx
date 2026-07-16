@@ -3,9 +3,9 @@ import { runJava } from '../../utils/javaRunner';
 import { findMainClasses } from '../../store/ideStore';
 
 const BG = '#0d1117';
+import { TEXT, TEXT_DIM } from '../theme';
+
 const BORDER = 'rgba(255,255,255,0.10)';
-const TEXT = '#e6edf3';
-const TEXT_DIM = '#8b949e';
 const ACCENT = '#2563eb';
 const ERR = '#f85149';
 const SUCCESS = '#3fb950';

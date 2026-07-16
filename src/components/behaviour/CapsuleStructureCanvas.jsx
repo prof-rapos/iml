@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from 'react';
-import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType } from '@xyflow/react';
+import { ReactFlow, Background, Controls, ConnectionMode, ConnectionLineType, useOnViewportChange } from '@xyflow/react';
 import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
 import PartNode from '../../nodes/PartNode';
 import ConnectorEdge from '../../edges/ConnectorEdge';
@@ -30,6 +30,12 @@ export default function CapsuleStructureCanvas() {
   // and rebuild() is otherwise only triggered by explicit topbar actions.
   useEffect(() => { rebuild(); }, [rebuild]);
 
+  // Only used to pick a spawn position for new parts, so onEnd (not every
+  // pan/zoom frame) is fresh enough and avoids extra re-renders mid-gesture.
+  useOnViewportChange({
+    onEnd: useCallback((vp) => setViewport(vp), [setViewport]),
+  });
+
   useDeleteKeyHandler(selectedId, deleteSelected);
 
   return (
@@ -40,7 +46,6 @@ export default function CapsuleStructureCanvas() {
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
-        onMove={(_, vp) => setViewport(vp)}
         onPaneClick={() => setSelected(null, null)}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

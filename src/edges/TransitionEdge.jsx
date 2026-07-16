@@ -2,6 +2,7 @@ import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
 import { Code2 } from 'lucide-react';
 import { useModelStore } from '../store/modelStore';
 import { useBehaviourStore, transitionLabel } from '../store/behaviourStore';
+import { EdgeClickCatcher } from './edgeShell';
 
 export default function TransitionEdge({
   id, sourceX, sourceY, targetX, targetY,
@@ -35,8 +36,7 @@ export default function TransitionEdge({
       <BaseEdge id={id} path={edgePath} markerEnd={'url(#arrow-open)'}
         style={{ stroke: selected ? '#d97706' : '#111827', strokeWidth: selected ? 3.5 : 2.5 }} interactionWidth={14} />
 
-      <path d={edgePath} fill="none" stroke="transparent" strokeWidth={18}
-        onClick={() => setSelected(id, 'edge')} style={{ cursor: 'pointer' }} />
+      <EdgeClickCatcher id={id} edgePath={edgePath} onSelect={setSelected} />
 
       {showLabel && (
         <EdgeLabelRenderer>
