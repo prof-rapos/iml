@@ -58,6 +58,29 @@ describe('protocols & ports', () => {
     expect(mm().classes[0].ports.some((p) => p.id === pid)).toBe(false);
   });
 
+  it('rejects renaming a port to duplicate a sibling port on the same class', () => {
+    const a = useModelStore.getState().addPort('C');
+    const b = useModelStore.getState().addPort('C');
+    useModelStore.getState().updatePort('C', a, { name: 'north' });
+    useModelStore.getState().updatePort('C', b, { name: 'north' });
+    const names = mm().classes[0].ports.map((p) => p.name);
+    expect(names.filter((n) => n === 'north')).toHaveLength(1);
+  });
+
+  it('deleting an enum used by a protocol param reverts that param to STRING instead of leaving a dangling enumId', () => {
+    const enumId = useModelStore.getState().addEnumeration();
+    const prid = useModelStore.getState().addProtocol();
+    const sid = useModelStore.getState().addSignal(prid, 'in');
+    const paramId = useModelStore.getState().addParam(prid, sid);
+    useModelStore.getState().updateParam(prid, sid, paramId, { type: 'ENUM', enumId });
+
+    useModelStore.getState().deleteEnumeration(enumId);
+
+    const param = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid).params.find((p) => p.id === paramId);
+    expect(param.type).toBe('STRING');
+    expect(param.enumId).toBeUndefined();
+  });
+
   it('the Timing protocol has a parameterless cancelTimer out-signal — the port identifies the timer', () => {
     const timing = allProtocols(mm()).find((p) => p.name === 'Timing');
     const cancel = timing.signals.find((s) => s.name === 'cancelTimer');
@@ -92,6 +115,29 @@ describe('signal parameters', () => {
     useModelStore.getState().deleteParam(prid, sid, paramId);
     sig = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid);
     expect(sig.params).toEqual([]);
+  });
+
+  it('addSignal avoids name collisions after a delete + re-add cycle', () => {
+    const prid = useModelStore.getState().addProtocol();
+    const first = useModelStore.getState().addSignal(prid, 'in'); // signal1
+    useModelStore.getState().addSignal(prid, 'in');                // signal2
+    useModelStore.getState().deleteSignal(prid, first);            // only signal2 left
+    useModelStore.getState().addSignal(prid, 'in');                // must not collide with signal2
+
+    const names = mm().protocols.find((p) => p.id === prid).signals.map((s) => s.name);
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('addParam avoids name collisions after a delete + re-add cycle', () => {
+    const prid = useModelStore.getState().addProtocol();
+    const sid = useModelStore.getState().addSignal(prid, 'out');
+    const first = useModelStore.getState().addParam(prid, sid); // param1
+    useModelStore.getState().addParam(prid, sid);                // param2
+    useModelStore.getState().deleteParam(prid, sid, first);      // only param2 left
+    useModelStore.getState().addParam(prid, sid);                // must not collide with param2
+
+    const names = mm().protocols.find((p) => p.id === prid).signals.find((s) => s.id === sid).params.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
   });
 
   it('capsuleMessages labels a triggerable signal with its params (none for timeout — the port is the identity)', () => {

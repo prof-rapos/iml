@@ -49,6 +49,10 @@ export default function IDETerminal({ files }) {
   const [running, setRunning]     = useState(false);
   const [status, setStatus]       = useState('ready');
   const [manualMain, setManualMain] = useState(null);
+  // Mirrors `running` for ws.onclose, which is created once per run inside
+  // handleRun and would otherwise read a stale closure of the state value.
+  const runningRef = useRef(false);
+  useEffect(() => { runningRef.current = running; }, [running]);
 
   const mains = useMemo(() => findMainClasses(files), [files]);
   // Respect an explicit user pick as long as it's still valid; otherwise fall
@@ -178,12 +182,21 @@ export default function IDETerminal({ files }) {
     };
 
     ws.onclose = () => {
-      if (running) setRunning(false);
+      // A close with no prior 'error'/'exit' message (network drop, server
+      // restart) would otherwise leave the UI stuck showing "Running" forever.
+      if (runningRef.current) {
+        setRunning(false);
+        setStatus('error');
+        term.writeln('\r\n\x1b[31m[Connection closed unexpectedly]\x1b[0m');
+      }
     };
   };
 
   const handleKill = () => {
-    wsRef.current?.send(JSON.stringify({ type: 'kill' }));
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'kill' }));
+    }
+    wsRef.current?.close();
     termRef.current?.writeln('\r\n\x1b[33m[Killed]\x1b[0m');
     setRunning(false);
     setStatus('ready');
@@ -305,13 +318,13 @@ export default function IDETerminal({ files }) {
         </div>
       </div>
 
-      {/* xterm mount point */}
-      {!collapsed && (
-        <div
-          ref={mountRef}
-          style={{ flex: 1, overflow: 'hidden', padding: '4px 0' }}
-        />
-      )}
+      {/* xterm mount point — always mounted so the live Terminal instance stays
+          attached to the same DOM node; only its visibility toggles, so
+          collapsing/expanding doesn't orphan xterm against a discarded node. */}
+      <div
+        ref={mountRef}
+        style={{ flex: 1, overflow: 'hidden', padding: '4px 0', display: collapsed ? 'none' : 'block' }}
+      />
     </div>
   );
 }

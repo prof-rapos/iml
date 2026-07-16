@@ -109,7 +109,15 @@ export default function Sidebar() {
   const ask = (message, onConfirm) => setConfirm({ message, onConfirm });
   const dismiss = () => setConfirm(null);
 
-  const switchMode = (m) => { setMode(m); rebuildCanvas(m); };
+  // Clear any in-progress "draw a relation/edge" tool selection — otherwise
+  // its banner/cursor stays active in ModelCanvas even though the other
+  // mode's onConnect branch ignores it entirely.
+  const switchMode = (m) => {
+    setMode(m);
+    setPendingEdgeType(null);
+    setPendingRelationId(null);
+    rebuildCanvas(m);
+  };
 
   const nonInheritanceRelations = metaModel.relations.filter((r) => r.kind !== 'INHERITANCE');
 

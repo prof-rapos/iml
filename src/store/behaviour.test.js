@@ -69,6 +69,33 @@ describe('modelStore — behaviour (state machine) actions', () => {
     expect(tr).toMatchObject({ trigger: 'go', guard: 'x>0', effect: 'run()', sourceHandle: 'right', targetHandle: 'left' });
   });
 
+  it('rejects an outgoing transition from a final state and an incoming one to the initial state', () => {
+    const init  = useModelStore.getState().addState('C', 'initial');
+    const mid   = useModelStore.getState().addState('C', 'simple');
+    const fin   = useModelStore.getState().addState('C', 'final');
+
+    expect(useModelStore.getState().addTransition('C', fin, mid)).toBeNull();
+    expect(useModelStore.getState().addTransition('C', mid, init)).toBeNull();
+    expect(useModelStore.getState().getBehaviour('C').transitions).toHaveLength(0);
+
+    // A valid transition still goes through.
+    expect(useModelStore.getState().addTransition('C', init, mid)).toBeTruthy();
+  });
+
+  it('rejects reconnecting an existing transition onto a final source or initial target', () => {
+    const init = useModelStore.getState().addState('C', 'initial');
+    const a    = useModelStore.getState().addState('C', 'simple');
+    const b    = useModelStore.getState().addState('C', 'simple');
+    const fin  = useModelStore.getState().addState('C', 'final');
+    const t    = useModelStore.getState().addTransition('C', a, b);
+
+    useModelStore.getState().updateTransition('C', t, { source: fin });
+    expect(useModelStore.getState().getBehaviour('C').transitions.find((x) => x.id === t).source).toBe(a); // unchanged
+
+    useModelStore.getState().updateTransition('C', t, { target: init });
+    expect(useModelStore.getState().getBehaviour('C').transitions.find((x) => x.id === t).target).toBe(b); // unchanged
+  });
+
   it('removes behaviour and sm-layout when the class is deleted', () => {
     useModelStore.getState().addState('C', 'simple');
     useModelStore.getState().setStatePositions('C', { foo: { x: 0, y: 0 } });

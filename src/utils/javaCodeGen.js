@@ -111,7 +111,15 @@ function javaLiteralForAttr(value, attr, metaModel) {
 }
 
 function generateEnumFile(en, pkg) {
-  const consts = (en.literals ?? []).map(safeEnumConst);
+  // Distinct literals can sanitize to the same identifier (e.g. "A!" and "A?"
+  // both strip to "A_") — suffix repeats so the generated enum still compiles.
+  const seen = new Map();
+  const consts = (en.literals ?? []).map((lit) => {
+    const base  = safeEnumConst(lit);
+    const count = seen.get(base) ?? 0;
+    seen.set(base, count + 1);
+    return count === 0 ? base : `${base}_${count}`;
+  });
   return [
     `package ${pkg};`,
     '',
@@ -138,7 +146,8 @@ function isMultiRelation(rel) {
     const upper = mult.split('..')[1].trim();
     return upper === '*' || parseInt(upper, 10) > 1;
   }
-  return false;
+  const n = parseInt(mult, 10);
+  return !isNaN(n) && n > 1;
 }
 
 function getRelationFieldName(rel, targetCls) {
@@ -257,7 +266,7 @@ function generateClassFile(cls, metaModel, pkg) {
   );
 
   const needsArrayList =
-    ownAttrs.some(a => a.upperBound !== 1) ||
+    allAttrs.some(a => a.upperBound !== 1) ||
     relations.some(r => isMultiRelation(r));
 
   const lines = [];

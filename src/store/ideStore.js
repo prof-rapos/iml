@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { useModelStore } from './modelStore';
 
 function inferPackage(files) {
   const first = files[0];
@@ -28,12 +29,20 @@ export const useIdeStore = create((set, get) => ({
   projectPackage: '',
 
   loadFiles: (files, activePath) => {
-    const paths = files.map((f) => f.path);
+    // Multi-file imports (Import ZIP, Import Java) enforce no path uniqueness
+    // of their own — drop duplicates here so tabs never share a React key.
+    const seen = new Set();
+    const deduped = files.filter((f) => {
+      if (seen.has(f.path)) return false;
+      seen.add(f.path);
+      return true;
+    });
+    const paths = deduped.map((f) => f.path);
     set({
-      files,
+      files: deduped,
       openFilePaths: paths,
       activeFilePath: activePath ?? paths[0] ?? null,
-      projectPackage: inferPackage(files),
+      projectPackage: inferPackage(deduped),
     });
   },
 
@@ -83,7 +92,10 @@ export const useIdeStore = create((set, get) => ({
   }),
 
   renameFile: (oldPath, newPath) => set((s) => {
-    if (s.files.some((f) => f.path === newPath)) return s;
+    if (s.files.some((f) => f.path === newPath)) {
+      useModelStore.getState().notify(`A file named "${newPath}" already exists.`);
+      return s;
+    }
     return {
       files: s.files.map((f) => f.path === oldPath ? { ...f, path: newPath } : f),
       openFilePaths: s.openFilePaths.map((p) => p === oldPath ? newPath : p),

@@ -96,14 +96,13 @@ export default function ModelCanvas() {
       sourceHandle: newConnection.sourceHandle,
       targetHandle: newConnection.targetHandle,
     };
+    // updateRelation can reject the reconnect (self-loop, cycle, etc.) — only
+    // apply the canvas-side edge patch once the store has actually accepted it.
+    const ok = mode === 'metamodel' ? updateRelation(oldEdge.id, patch) : updateLink(oldEdge.id, patch);
+    if (ok === false) return;
     useModelStore.setState((s) => ({
       edges: s.edges.map((e) => e.id !== oldEdge.id ? e : { ...e, ...patch }),
     }));
-    if (mode === 'metamodel') {
-      updateRelation(oldEdge.id, patch);
-    } else {
-      updateLink(oldEdge.id, patch);
-    }
   }, [mode, updateRelation, updateLink]);
 
   const handleDelete = useCallback(() => {

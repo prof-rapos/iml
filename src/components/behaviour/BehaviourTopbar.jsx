@@ -21,12 +21,17 @@ export default function BehaviourTopbar() {
   const setCapsule    = useBehaviourStore((s) => s.setCapsule);
   const subView       = useBehaviourStore((s) => s.subView);
   const setSubView    = useBehaviourStore((s) => s.setSubView);
+  const closeCodeDrawer = useBehaviourStore((s) => s.closeCodeDrawer);
   const rebuildStructure = useCapsuleStructureStore((s) => s.rebuild);
 
   const currentIM = instanceModels[currentIMIndex];
 
   const handleSubViewChange = (v) => {
     setSubView(v);
+    // Otherwise a code drawer left open from the other sub-view (it's
+    // rendered unconditionally in BehaviouralView) keeps floating over
+    // whichever canvas is now showing.
+    closeCodeDrawer();
     if (v === 'structure') rebuildStructure();
   };
 

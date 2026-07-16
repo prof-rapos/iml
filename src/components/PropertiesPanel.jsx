@@ -193,7 +193,7 @@ export default function PropertiesPanel() {
               <SlotEditor key={attr.id} attr={attr}
                 enumLiterals={enumDef ? enumDef.literals : null}
                 enumName={enumDef ? enumDef.name : null}
-                value={obj.attributeValues?.[attr.id] ?? ''}
+                value={obj.attributeValues?.[attr.id] ?? (attr.upperBound !== 1 ? [] : '')}
                 onChange={(v) => updateSlot(obj.id, attr.id, v)}
                 onChangeValues={(vs) => updateSlotValues(obj.id, attr.id, vs)} />
             );
@@ -260,7 +260,14 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
         <input
           style={{ ...inputStyle, width: 46, textAlign: 'center', padding: '5px 4px', fontSize: 13, fontWeight: 600 }}
           value={attr.upperBound === -1 ? '*' : attr.upperBound}
-          onChange={(e) => updateAttribute(classId, attr.id, { upperBound: e.target.value === '*' ? -1 : Number(e.target.value) })}
+          onChange={(e) => {
+            const raw = e.target.value;
+            if (raw === '*') { updateAttribute(classId, attr.id, { upperBound: -1 }); return; }
+            // Ignore non-numeric input rather than committing NaN — conformance's
+            // `count > upperBound` check silently treats NaN as "no limit".
+            const n = Number(raw);
+            if (Number.isFinite(n) && n >= 1) updateAttribute(classId, attr.id, { upperBound: n });
+          }}
           title="Upper bound — * = many"
         />
         <button onClick={() => deleteAttribute(classId, attr.id)}

@@ -49,7 +49,13 @@ export default function PartNode({ id, data, selected }) {
     const conn = connectors.find((c) =>
       (c.sourceObjectId === id && c.sourcePortId === port.id) ||
       (c.targetObjectId === id && c.targetPortId === port.id));
-    if (conn && thisPos) {
+    // A self-loop connector (a part wired to another port on itself) has
+    // sourceObjectId === targetObjectId === id, so "the other end" can't be
+    // resolved by comparing against id — both its ports would otherwise
+    // resolve to the same position and collapse onto the same side. Fall
+    // through to the row-parity heuristic instead.
+    const isSelfLoop = conn && conn.sourceObjectId === conn.targetObjectId;
+    if (conn && thisPos && !isSelfLoop) {
       const otherId = conn.sourceObjectId === id ? conn.targetObjectId : conn.sourceObjectId;
       const otherPos = nodes.find((n) => n.id === otherId)?.position;
       if (otherPos) return otherPos.x < thisPos.x ? 'left' : 'right';

@@ -11,6 +11,18 @@ export function getAllAttributes(classId, metaModel) {
   return [...parentAttrs.filter((a) => !ownIds.has(a.id)), ...cls.attributes];
 }
 
+// ── Relation collection (inheritance-aware) ───────────────────────────────────
+// Returns all non-inheritance relations sourced from classId: inherited ones
+// (from the parent chain) first, then classId's own — mirrors getAllAttributes.
+export function getAllRelations(classId, metaModel) {
+  const cls = metaModel.classes.find((c) => c.id === classId);
+  if (!cls) return [];
+  const parentRel  = metaModel.relations.find((r) => r.kind === 'INHERITANCE' && r.source === classId);
+  const parentRels = parentRel ? getAllRelations(parentRel.target, metaModel) : [];
+  const ownRels    = metaModel.relations.filter((r) => r.source === classId && r.kind !== 'INHERITANCE');
+  return [...parentRels, ...ownRels];
+}
+
 // ── Enumerations ──────────────────────────────────────────────────────────────
 // An attribute with type 'ENUM' references a meta-model enumeration via enumId.
 export function getEnum(enumId, metaModel) {

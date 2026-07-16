@@ -119,3 +119,56 @@ describe('generateJavaCode — enumerations', () => {
     expect(pack).toContain('.setSize(Size.LARGE);');
   });
 });
+
+describe('generateJavaCode — inherited multi-valued attribute triggers the ArrayList import', () => {
+  // Dog has no own multi-valued attribute or relation, only an inherited one —
+  // needsArrayList must look at allAttrs, not just the class's own attributes.
+  const meta = {
+    kind: 'metamodel', name: 'Pets',
+    classes: [
+      { id: 'Animal', name: 'Animal', isAbstract: true,
+        attributes: [{ id: 'a1', name: 'tags', type: 'STRING', visibility: 'PUBLIC', lowerBound: 0, upperBound: -1 }] },
+      { id: 'Dog', name: 'Dog', isAbstract: false, attributes: [] },
+    ],
+    relations: [{ id: 'r1', kind: 'INHERITANCE', source: 'Dog', target: 'Animal', name: '' }],
+  };
+  const files = generateJavaCode(meta, []);
+
+  it('imports ArrayList in the subclass file even though the multi-valued attribute is inherited', () => {
+    expect(fileFor(files, 'Dog.java')).toContain('import java.util.ArrayList;');
+  });
+});
+
+describe('generateJavaCode — enum literals that sanitize to the same identifier stay unique', () => {
+  const meta = {
+    kind: 'metamodel', name: 'Pets',
+    enumerations: [{ id: 'e1', name: 'Weird', literals: ['A!', 'A?'] }],
+    classes: [],
+    relations: [],
+  };
+  const files = generateJavaCode(meta, []);
+
+  it('suffixes the second colliding constant instead of emitting a duplicate', () => {
+    const en = fileFor(files, 'Weird.java');
+    expect(en).toContain('A_, A__1');
+  });
+});
+
+describe('generateJavaCode — bare numeric multiplicities greater than 1 are treated as multi-valued', () => {
+  const meta = {
+    kind: 'metamodel', name: 'Pets',
+    classes: [
+      { id: 'A', name: 'A', isAbstract: false, attributes: [] },
+      { id: 'B', name: 'B', isAbstract: false, attributes: [] },
+    ],
+    relations: [
+      { id: 'r1', kind: 'REFERENCE', source: 'A', target: 'B', name: 'bs', targetMultiplicity: '3' },
+    ],
+  };
+  const files = generateJavaCode(meta, []);
+
+  it('renders the relation field as an ArrayList instead of a single scalar', () => {
+    const a = fileFor(files, 'A.java');
+    expect(a).toContain('ArrayList<B> bs');
+  });
+});

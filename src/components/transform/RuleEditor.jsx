@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
-import { getAllAttributes } from '../../store/modelStore';
+import { getAllAttributes, getAllRelations } from '../../store/modelStore';
 
 const TEXT     = '#e6edf3';
 const TEXT_DIM = '#8b949e';
@@ -94,7 +94,7 @@ function RuleCard({ rule, source, target }) {
   const tgtCls  = target.metaModel.classes.find((c) => c.id === rule.targetClassId);
   const srcAttrs = getAllAttributes(rule.sourceClassId, source.metaModel);
   const tgtAttrs = getAllAttributes(rule.targetClassId, target.metaModel);
-  const srcRels  = source.metaModel.relations.filter((r) => r.source === rule.sourceClassId && r.kind !== 'INHERITANCE');
+  const srcRels  = getAllRelations(rule.sourceClassId, source.metaModel);
 
   const handleTypeChange = (targetAttrId, newType) => {
     updateAttrMapping(rule.id, targetAttrId, {

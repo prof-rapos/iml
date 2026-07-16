@@ -87,11 +87,23 @@ export function runTransform(source, target, rules) {
           const scope = {};
           for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
           let raw;
-          try { raw = evalExpression(m.expression ?? '', scope); } catch { raw = ''; }
+          try {
+            raw = evalExpression(m.expression ?? '', scope);
+          } catch (err) {
+            console.warn(`Transform expression "${m.expression}" failed for attribute ${m.targetAttrId}:`, err);
+            raw = '';
+          }
           // Treat a numeric result as DOUBLE so the target type coercion (e.g.
           // truncation to INT) applies; otherwise treat it as a plain string.
           const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
           attributeValues[m.targetAttrId] = coerceValue(raw, { type: fromType, upperBound: 1 }, tgtAttr);
+        } else {
+          // 'omit' (or any unrecognized mapping type) — still initialize the
+          // slot, matching every other object-creation path (addObject,
+          // addClass_attribute), so a multi-valued target attribute doesn't
+          // end up with a missing key that PropertiesPanel misreads as single-valued.
+          const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+          attributeValues[m.targetAttrId] = tgtAttr && tgtAttr.upperBound !== 1 ? [] : '';
         }
       }
 

@@ -12,11 +12,16 @@ function buildTree(files) {
   for (const f of files) {
     const parts = f.path.split('/');
     let node = root;
+    let collided = false;
     for (let i = 0; i < parts.length - 1; i++) {
+      // A shorter path already claimed this segment as a file leaf (a string) —
+      // importing unrestricted Java paths can produce this. Skip the file
+      // rather than assigning a property onto a string primitive and crashing.
+      if (typeof node[parts[i]] === 'string') { collided = true; break; }
       node[parts[i]] = node[parts[i]] || {};
       node = node[parts[i]];
     }
-    node[parts[parts.length - 1]] = f.path; // leaf = full path
+    if (!collided) node[parts[parts.length - 1]] = f.path; // leaf = full path
   }
   return root;
 }

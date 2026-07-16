@@ -148,6 +148,38 @@ describe('runTransform — type + multiplicity coercion', () => {
     expect(result.instanceModels[0].objects[0].attributeValues.r).toBe('');
   });
 
+  it('initializes an omitted multi-valued target attribute to [] instead of leaving the key missing', () => {
+    const source = srcModel({
+      attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
+      value: 'ignored',
+    });
+    const target = tgtModel({ id: 'tags', name: 'tags', type: 'STRING', lowerBound: 0, upperBound: -1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'omit', targetAttrId: 'tags' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.tags).toEqual([]);
+  });
+
+  it('initializes an omitted single-valued target attribute to \'\' instead of leaving the key missing', () => {
+    const source = srcModel({
+      attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
+      value: 'ignored',
+    });
+    const target = tgtModel({ id: 'r', name: 'r', type: 'STRING', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'omit', targetAttrId: 'r' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.r).toBe('');
+  });
+
   it('respects target multiplicity for constant mappings', () => {
     const source = srcModel({
       attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },

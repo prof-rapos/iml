@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useIdeStore } from '../../store/ideStore';
+import Notification from '../Notification';
 import IDETopbar from './IDETopbar';
 import FileTree from './FileTree';
 import CodeEditor from './CodeEditor';
@@ -75,6 +76,7 @@ export default function IDEView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#0d1117', color: TEXT, fontFamily: 'var(--iml-font-sans)' }}>
+      <Notification />
       <IDETopbar />
 
       {showEmptyState ? (

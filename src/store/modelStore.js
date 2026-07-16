@@ -3,6 +3,7 @@ import { nanoid } from 'nanoid';
 import { applyNodeChanges, applyEdgeChanges } from '@xyflow/react';
 import {
   getAllAttributes as _getAllAttributes,
+  getAllRelations as _getAllRelations,
   convertAttrValue,
 } from '../utils/modelHelpers.js';
 import { validateConformance } from '../utils/conformance.js';
@@ -128,6 +129,7 @@ function withMachine(metaModel, classId, fn) {
 
 // Re-export so existing importers (ObjectNode, etc.) don't need changing.
 export const getAllAttributes = _getAllAttributes;
+export const getAllRelations  = _getAllRelations;
 
 // Returns all transitive subclass IDs of classId (not including classId itself).
 function getSubclassIds(classId, metaModel) {
@@ -154,6 +156,49 @@ function hasRelationPath(fromId, toId, kind, relations, visited = new Set()) {
   visited.add(fromId);
   const outgoing = relations.filter((r) => r.kind === kind && r.source === fromId);
   return outgoing.some((r) => hasRelationPath(r.target, toId, kind, relations, visited));
+}
+
+// Shared by addRelation/updateRelation. Returns an error message if the
+// relation described would be invalid, or null if it's OK. `excludeId` omits
+// the relation being edited from its own cycle/uniqueness checks so editing
+// a relation in place doesn't trip over its own prior state.
+function validateRelation(metaModel, excludeId, kind, source, target, name) {
+  const srcCls = metaModel.classes.find((c) => c.id === source);
+  const tgtCls = metaModel.classes.find((c) => c.id === target);
+  const others = metaModel.relations.filter((r) => r.id !== excludeId);
+
+  if (source === target && (kind === 'INHERITANCE' || kind === 'COMPOSITION')) {
+    return `A class cannot have a ${kind.toLowerCase()} relation to itself.`;
+  }
+
+  if (kind === 'INHERITANCE') {
+    const existingParent = others.find((r) => r.kind === 'INHERITANCE' && r.source === source);
+    if (existingParent) {
+      const parentCls = metaModel.classes.find((c) => c.id === existingParent.target);
+      return `"${srcCls?.name}" already extends "${parentCls?.name}". Only single inheritance is supported.`;
+    }
+    if (hasInheritancePath(target, source, others)) {
+      return `Cannot add inheritance: "${srcCls?.name}" and "${tgtCls?.name}" would form a cycle.`;
+    }
+  }
+
+  if (kind === 'COMPOSITION' && hasRelationPath(target, source, 'COMPOSITION', others)) {
+    return `Cannot add composition: "${srcCls?.name}" and "${tgtCls?.name}" would form a composition cycle.`;
+  }
+
+  const trimmedName = (name ?? '').trim();
+  if (trimmedName) {
+    const nameClash = others.some((r) => r.source === source && (r.name || '').trim() === trimmedName);
+    if (nameClash) {
+      return `"${srcCls?.name}" already has a relation named "${trimmedName}".`;
+    }
+    const attrClash = srcCls && getAllAttributes(source, metaModel).some((a) => a.name === trimmedName);
+    if (attrClash) {
+      return `"${srcCls?.name}" already has an attribute named "${trimmedName}".`;
+    }
+  }
+
+  return null;
 }
 
 // ── Java keyword / reserved name blacklist ────────────────────────────────────
@@ -529,6 +574,18 @@ export const useModelStore = create((set, get) => ({
             a.type === 'ENUM' && a.enumId === id ? { ...a, type: 'STRING', enumId: undefined } : a
           ),
         })),
+        // Same reversion for protocol signal params typed with this enum —
+        // otherwise they're left with a dangling enumId, desyncing
+        // ProtocolManager's type dropdown from the stored param data.
+        protocols: (s.metaModel.protocols ?? []).map((p) => ({
+          ...p,
+          signals: p.signals.map((sg) => ({
+            ...sg,
+            params: (sg.params ?? []).map((pr) =>
+              pr.type === 'ENUM' && pr.enumId === id ? { ...pr, type: 'STRING', enumId: undefined } : pr
+            ),
+          })),
+        })),
       },
       nodes:        s.nodes.filter((n) => n.id !== id),
       selectedId:   s.selectedId === id ? null : s.selectedId,
@@ -559,6 +616,12 @@ export const useModelStore = create((set, get) => ({
   // will flag any object still referencing the old literal.
   updateEnumLiteral: (enumId, index, newVal) => {
     const val = String(newVal ?? '').trim();
+    if (!val) return;
+    const en = (get().metaModel.enumerations ?? []).find((e) => e.id === enumId);
+    if (en && en.literals.some((l, i) => i !== index && l === val)) {
+      get().notify(`Literal "${val}" already exists in "${en.name}".`);
+      return;
+    }
     set((s) => ({
       metaModel: {
         ...s.metaModel,
@@ -582,36 +645,8 @@ export const useModelStore = create((set, get) => ({
 
   addRelation: (kind, source, target, sourceHandle, targetHandle) => {
     const { metaModel } = get();
-    const srcCls = metaModel.classes.find((c) => c.id === source);
-    const tgtCls = metaModel.classes.find((c) => c.id === target);
-
-    if (source === target && (kind === 'INHERITANCE' || kind === 'COMPOSITION')) {
-      get().notify(`A class cannot have a ${kind.toLowerCase()} relation to itself.`);
-      return null;
-    }
-
-    if (kind === 'INHERITANCE') {
-      // Single inheritance: block if source already has a parent
-      const existingParent = metaModel.relations.find((r) => r.kind === 'INHERITANCE' && r.source === source);
-      if (existingParent) {
-        const parentCls = metaModel.classes.find((c) => c.id === existingParent.target);
-        get().notify(`"${srcCls?.name}" already extends "${parentCls?.name}". Only single inheritance is supported.`);
-        return null;
-      }
-      // Block inheritance cycles
-      if (hasInheritancePath(target, source, metaModel.relations)) {
-        get().notify(`Cannot add inheritance: "${srcCls?.name}" and "${tgtCls?.name}" would form a cycle.`);
-        return null;
-      }
-    }
-
-    if (kind === 'COMPOSITION') {
-      // Block composition cycles (A composes B composes ... composes A)
-      if (hasRelationPath(target, source, 'COMPOSITION', metaModel.relations)) {
-        get().notify(`Cannot add composition: "${srcCls?.name}" and "${tgtCls?.name}" would form a composition cycle.`);
-        return null;
-      }
-    }
+    const err = validateRelation(metaModel, null, kind, source, target, '');
+    if (err) { get().notify(err); return null; }
 
     const id  = nanoid(8);
     const rel = { id, kind, source, target, name: '', sourceMultiplicity: '', targetMultiplicity: '', sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null };
@@ -622,17 +657,44 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updateRelation: (id, patch) => set((s) => ({
-    metaModel: {
-      ...s.metaModel,
-      relations: s.metaModel.relations.map((r) => r.id === id ? { ...r, ...patch } : r),
-    },
-    conformanceStale: true,
-  })),
+  // Returns false (and toasts) if the patch would violate a relation
+  // invariant addRelation itself would have blocked at creation time — e.g.
+  // changing Kind to INHERITANCE, or reconnecting an edge endpoint, into a
+  // self-loop or a cycle. Returns true on success so callers (ModelCanvas's
+  // onReconnect) can tell whether to keep their optimistic canvas update.
+  updateRelation: (id, patch) => {
+    const { metaModel } = get();
+    const existing = metaModel.relations.find((r) => r.id === id);
+    if (!existing) return false;
+    const kind   = patch.kind   ?? existing.kind;
+    const source = patch.source ?? existing.source;
+    const target = patch.target ?? existing.target;
+    const name   = patch.name   ?? existing.name;
+    const structuralChange = patch.kind !== undefined || patch.source !== undefined
+      || patch.target !== undefined || patch.name !== undefined;
+    if (structuralChange) {
+      const err = validateRelation(metaModel, id, kind, source, target, name);
+      if (err) { get().notify(err); return false; }
+    }
+    set((s) => ({
+      metaModel: {
+        ...s.metaModel,
+        relations: s.metaModel.relations.map((r) => r.id === id ? { ...r, ...patch } : r),
+      },
+      conformanceStale: true,
+    }));
+    return true;
+  },
 
   deleteRelation: (id) => {
     set((s) => ({
       metaModel: { ...s.metaModel, relations: s.metaModel.relations.filter((r) => r.id !== id) },
+      // A link's relationId would otherwise dangle forever — same cascade
+      // deleteClass already does for links touching a deleted object.
+      instanceModels: s.instanceModels.map((im) => ({
+        ...im,
+        links: im.links.filter((l) => l.relationId !== id),
+      })),
       edges:       s.edges.filter((e) => e.id !== id),
       selectedId:  s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
@@ -688,21 +750,30 @@ export const useModelStore = create((set, get) => ({
   switchInstanceModel: (idx) => {
     set({
       currentIMIndex:   idx,
-      nodes:            [],
-      edges:            [],
       selectedId:       null,
       selectedType:     null,
       conformanceResults: [],
     });
-    get().rebuildCanvas('instance');
+    // Only Structural Modeling's canvas is keyed off currentIMIndex — skip the
+    // rebuild when it isn't actually showing instance mode (e.g. called from
+    // Behavioural Modeling's instance-model picker), or this would clobber
+    // whatever canvas Structural Modeling has on screen with instance data.
+    if (get().mode === 'instance') {
+      set({ nodes: [], edges: [] });
+      get().rebuildCanvas('instance');
+    }
     get().log(`Switched to instance model "${get().instanceModels[idx]?.name}"`);
   },
 
   deleteInstanceModel: (idx) => {
     const s = get();
     if (s.instanceModels.length <= 1) return; // keep at least one
-    const newList  = s.instanceModels.filter((_, i) => i !== idx);
-    const newIdx   = Math.min(s.currentIMIndex, newList.length - 1);
+    const newList = s.instanceModels.filter((_, i) => i !== idx);
+    // Deleting an entry before the current selection shifts it left by one;
+    // Math.min alone (the old bug) only handled deleting at/after it.
+    const newIdx = idx < s.currentIMIndex
+      ? s.currentIMIndex - 1
+      : Math.min(s.currentIMIndex, newList.length - 1);
     set({ instanceModels: newList, currentIMIndex: newIdx });
     get().rebuildCanvas('instance');
     get().log(`Deleted instance model at index ${idx}`);
@@ -939,16 +1010,47 @@ export const useModelStore = create((set, get) => ({
     }),
 
   addTransition: (classId, source, target, sourceHandle, targetHandle) => {
+    const machine  = get().metaModel.behaviours?.[classId] ?? { states: [], transitions: [] };
+    const srcState = machine.states.find((st) => st.id === source);
+    const tgtState = machine.states.find((st) => st.id === target);
+    if (srcState?.kind === 'final') {
+      get().notify('A final state cannot have outgoing transitions.');
+      return null;
+    }
+    if (tgtState?.kind === 'initial') {
+      get().notify('The initial pseudostate cannot have incoming transitions.');
+      return null;
+    }
     const id = nanoid(8);
     const transition = { id, source, target, trigger: '', guard: '', effect: '', sourceHandle: sourceHandle ?? null, targetHandle: targetHandle ?? null };
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({ ...m, transitions: [...m.transitions, transition] })) }));
     return id;
   },
 
-  updateTransition: (classId, transId, patch) =>
+  updateTransition: (classId, transId, patch) => {
+    // Reconnecting an existing transition's endpoint is the other path (besides
+    // addTransition) that can produce an outgoing-from-Final or incoming-to-Initial
+    // transition — apply the same pseudostate validation here.
+    if (patch.source !== undefined || patch.target !== undefined) {
+      const machine  = get().metaModel.behaviours?.[classId] ?? { states: [], transitions: [] };
+      const existing = machine.transitions.find((t) => t.id === transId);
+      const source   = patch.source ?? existing?.source;
+      const target   = patch.target ?? existing?.target;
+      const srcState = machine.states.find((st) => st.id === source);
+      const tgtState = machine.states.find((st) => st.id === target);
+      if (srcState?.kind === 'final') {
+        get().notify('A final state cannot have outgoing transitions.');
+        return;
+      }
+      if (tgtState?.kind === 'initial') {
+        get().notify('The initial pseudostate cannot have incoming transitions.');
+        return;
+      }
+    }
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
       ...m, transitions: m.transitions.map((t) => t.id === transId ? { ...t, ...patch } : t),
-    })) })),
+    })) }));
+  },
 
   deleteTransition: (classId, transId) =>
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
@@ -1001,7 +1103,11 @@ export const useModelStore = create((set, get) => ({
     const id = nanoid(8);
     set((s) => ({ metaModel: { ...s.metaModel, protocols: (s.metaModel.protocols ?? []).map((p) => {
       if (p.id !== protocolId) return p;
-      return { ...p, signals: [...p.signals, { id, name: `signal${p.signals.length + 1}`, direction, params: [] }] };
+      const existing = new Set(p.signals.map((sg) => sg.name));
+      let n = p.signals.length + 1;
+      let name = `signal${n}`;
+      while (existing.has(name)) name = `signal${++n}`;
+      return { ...p, signals: [...p.signals, { id, name, direction, params: [] }] };
     }) } }));
     return id;
   },
@@ -1021,7 +1127,11 @@ export const useModelStore = create((set, get) => ({
       return { ...p, signals: p.signals.map((sg) => {
         if (sg.id !== signalId) return sg;
         const params = sg.params ?? [];
-        return { ...sg, params: [...params, { id, name: `param${params.length + 1}`, type: 'STRING' }] };
+        const existing = new Set(params.map((pr) => pr.name));
+        let n = params.length + 1;
+        let name = `param${n}`;
+        while (existing.has(name)) name = `param${++n}`;
+        return { ...sg, params: [...params, { id, name, type: 'STRING' }] };
       }) };
     }) } }));
     return id;
@@ -1052,7 +1162,15 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updatePort: (classId, portId, patch) =>
+  updatePort: (classId, portId, patch) => {
+    if (patch.name !== undefined) {
+      const trimmed = String(patch.name).trim();
+      const cls = get().metaModel.classes.find((c) => c.id === classId);
+      if (cls && (cls.ports ?? []).some((p) => p.id !== portId && p.name === trimmed)) {
+        get().notify(`"${cls.name}" already has a port named "${trimmed}".`);
+        return;
+      }
+    }
     set((s) => {
       const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
         c.id === classId ? { ...c, ports: (c.ports ?? []).map((p) => p.id === portId ? { ...p, ...patch } : p) } : c) };
@@ -1061,7 +1179,8 @@ export const useModelStore = create((set, get) => ({
         ? pruneDanglingConnectors(metaModel, s.instanceModels)
         : s.instanceModels;
       return { metaModel, instanceModels };
-    }),
+    });
+  },
 
   deletePort: (classId, portId) =>
     set((s) => {

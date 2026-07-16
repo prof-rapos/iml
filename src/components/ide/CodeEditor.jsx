@@ -13,17 +13,17 @@ export default function CodeEditor({ files, activeFilePath, onContentChange }) {
   function syncModels(files, monaco) {
     const currentPaths = new Set(files.map((f) => f.path));
 
-    // Create models for new files
     for (const f of files) {
-      if (!modelsRef.current[f.path]) {
+      const existing = modelsRef.current[f.path];
+      if (!existing) {
         const uri = monaco.Uri.parse(`file:///${f.path}`);
-        const existing = monaco.editor.getModel(uri);
-        if (existing) {
-          modelsRef.current[f.path] = existing;
-        } else {
-          const model = monaco.editor.createModel(f.content, 'java', uri);
-          modelsRef.current[f.path] = model;
-        }
+        const existingMonacoModel = monaco.editor.getModel(uri);
+        modelsRef.current[f.path] = existingMonacoModel ?? monaco.editor.createModel(f.content, 'java', uri);
+      } else if (existing.getValue() !== f.content) {
+        // The path is already cached but its content changed underneath us —
+        // e.g. a reimported project reuses a path from the one just closed.
+        // Refresh the model instead of leaving the editor showing stale text.
+        existing.setValue(f.content);
       }
     }
 
