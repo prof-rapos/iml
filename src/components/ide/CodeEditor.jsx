@@ -13,16 +13,22 @@ export default function CodeEditor({ files, activeFilePath, onContentChange }) {
     const currentPaths = new Set(files.map((f) => f.path));
 
     for (const f of files) {
-      const existing = modelsRef.current[f.path];
-      if (!existing) {
+      let model = modelsRef.current[f.path];
+      if (!model) {
         const uri = monaco.Uri.parse(`file:///${f.path}`);
-        const existingMonacoModel = monaco.editor.getModel(uri);
-        modelsRef.current[f.path] = existingMonacoModel ?? monaco.editor.createModel(f.content, 'java', uri);
-      } else if (existing.getValue() !== f.content) {
-        // The path is already cached but its content changed underneath us —
-        // e.g. a reimported project reuses a path from the one just closed.
+        // A remounted CodeEditor (e.g. leaving and re-entering the IDE view)
+        // starts with an empty modelsRef, but Monaco's own model registry is
+        // global and never got disposed — it can still hold a stale model
+        // for this path from a previous generation. Reusing it without a
+        // content check silently shows old code after a regenerate.
+        model = monaco.editor.getModel(uri) ?? monaco.editor.createModel(f.content, 'java', uri);
+        modelsRef.current[f.path] = model;
+      }
+      if (model.getValue() !== f.content) {
+        // The model is already cached but its content changed underneath us —
+        // e.g. a reimported/regenerated project reuses a path from before.
         // Refresh the model instead of leaving the editor showing stale text.
-        existing.setValue(f.content);
+        model.setValue(f.content);
       }
     }
 
