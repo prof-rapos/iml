@@ -94,21 +94,21 @@ export function seedDemoModel() {
             "id": "OWZ7JALs",
             "kind": "simple",
             "name": "Red",
-            "entry": "lightColor = LightValue.RED;\noppositeOut.safe();",
+            "entry": "oppositeOut.safe();",
             "exit": ""
           },
           {
             "id": "BJRBFQI4",
             "kind": "simple",
             "name": "Green",
-            "entry": "lightColor = LightValue.GREEN;\ntimer.informIn(10000);\nlog.log(direction + \" is now Green.\");",
+            "entry": "lightColor = LightValue.GREEN;\ntimer.informIn(7000);\nlog.log(direction + \": GREEN\");",
             "exit": ""
           },
           {
             "id": "fStBoHQ5",
             "kind": "simple",
             "name": "Yellow",
-            "entry": "lightColor = LightValue.YELLOW;\ntimer.informIn(2000);\nlog.log(direction + \" is now Yellow.\");",
+            "entry": "lightColor = LightValue.YELLOW;\ntimer.informIn(2000);\nlog.log(direction + \": YELLOW\");",
             "exit": ""
           },
           {
@@ -116,6 +116,13 @@ export function seedDemoModel() {
             "kind": "initial",
             "name": "",
             "entry": "",
+            "exit": ""
+          },
+          {
+            "id": "gudAKRoO",
+            "kind": "simple",
+            "name": "All Lights Red",
+            "entry": "lightColor = LightValue.RED;\nlog.log(direction + \": RED\");\ntimer.informIn(1000);",
             "exit": ""
           }
         ],
@@ -143,22 +150,32 @@ export function seedDemoModel() {
           {
             "id": "T-EniMVd",
             "source": "fStBoHQ5",
-            "target": "OWZ7JALs",
+            "target": "gudAKRoO",
             "trigger": "timer.timeout",
             "guard": "",
             "effect": "",
             "sourceHandle": "left",
-            "targetHandle": "left"
+            "targetHandle": "bottom"
           },
           {
             "id": "-q4QLibW",
             "source": "4_72OzMo",
-            "target": "OWZ7JALs",
+            "target": "gudAKRoO",
             "trigger": "",
             "guard": "",
             "effect": "",
-            "sourceHandle": "right",
-            "targetHandle": "top"
+            "sourceHandle": "bottom",
+            "targetHandle": "left"
+          },
+          {
+            "id": "NMKzuXSv",
+            "source": "gudAKRoO",
+            "target": "OWZ7JALs",
+            "trigger": "timer.timeout",
+            "guard": "",
+            "effect": "",
+            "sourceHandle": "top",
+            "targetHandle": "left"
           }
         ]
       }
@@ -261,8 +278,8 @@ export function seedDemoModel() {
     },
     "sm-vPi3gwNf": {
       "OWZ7JALs": {
-        "x": 434,
-        "y": 152
+        "x": 470,
+        "y": 148.5
       },
       "BJRBFQI4": {
         "x": 607.5,
@@ -273,8 +290,12 @@ export function seedDemoModel() {
         "y": 451
       },
       "4_72OzMo": {
-        "x": 359,
-        "y": 104
+        "x": 287.0625,
+        "y": 115.5
+      },
+      "gudAKRoO": {
+        "x": 330.5,
+        "y": 334.5
       }
     },
     "cs--R5tzUpx": {
