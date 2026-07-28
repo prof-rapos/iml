@@ -172,3 +172,145 @@ describe('generateJavaCode — bare numeric multiplicities greater than 1 are tr
     expect(a).toContain('ArrayList<B> bs');
   });
 });
+
+// Trimmed version of the TrafficLight seed model (seedModel.js): a capsule
+// class with two user-protocol ports (base + conjugate on the same
+// bidirectional "opposite" protocol), a Timing port, a Log port, and a
+// 3-state cyclic state machine (Red -> Green -> Yellow -> Red).
+describe('generateJavaCode — behavioural codegen (capsules, ports, state machines)', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Lights',
+    classes: [
+      {
+        id: 'TL', name: 'TrafficLight', isAbstract: false,
+        attributes: [
+          { id: 'a1', name: 'direction', type: 'STRING', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 },
+        ],
+        ports: [
+          { id: 'pIn',  name: 'oppositeIn',  protocolId: 'proto1',      conjugated: false },
+          { id: 'pOut', name: 'oppositeOut', protocolId: 'proto1',      conjugated: true },
+          { id: 'pTim', name: 'timer',       protocolId: 'sys-timing',  conjugated: false },
+          { id: 'pLog', name: 'log',         protocolId: 'sys-log',     conjugated: false },
+        ],
+      },
+    ],
+    relations: [],
+    enumerations: [],
+    protocols: [
+      { id: 'proto1', name: 'opposite', signals: [{ id: 'sig1', name: 'safe', direction: 'in', params: [] }] },
+    ],
+    behaviours: {
+      TL: {
+        states: [
+          { id: 'sRed',    kind: 'simple',  name: 'Red',    entry: 'oppositeOut.safe();', exit: '' },
+          { id: 'sGreen',  kind: 'simple',  name: 'Green',  entry: 'timer.informIn(10000);', exit: '' },
+          { id: 'sYellow', kind: 'simple',  name: 'Yellow', entry: 'timer.informIn(2000);', exit: '' },
+          { id: 'sInit',   kind: 'initial', name: '',       entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 't1', source: 'sRed',    target: 'sGreen',  trigger: 'oppositeIn.safe', guard: '', effect: '' },
+          { id: 't2', source: 'sGreen',  target: 'sYellow', trigger: 'timer.timeout',   guard: '', effect: '' },
+          { id: 't3', source: 'sYellow', target: 'sRed',    trigger: 'timer.timeout',   guard: '', effect: '' },
+          { id: 't4', source: 'sInit',   target: 'sRed',    trigger: '',                guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+
+  const im = {
+    id: 'im1', kind: 'instancemodel', name: 'Intersection',
+    objects: [
+      { id: 'ns', classId: 'TL', name: 'NorthSouth', attributeValues: { a1: 'NS' } },
+      { id: 'ew', classId: 'TL', name: 'EastWest',   attributeValues: { a1: 'EW' } },
+    ],
+    links: [],
+    connectors: [
+      { id: 'c1', sourceObjectId: 'ns', sourcePortId: 'pOut', targetObjectId: 'ew', targetPortId: 'pIn' },
+      { id: 'c2', sourceObjectId: 'ns', sourcePortId: 'pIn',  targetObjectId: 'ew', targetPortId: 'pOut' },
+    ],
+  };
+
+  describe('structural scope (default) ignores ports/behaviour entirely', () => {
+    const files = generateJavaCode(metaModel, [im]);
+
+    it('emits only the plain structural class, no capsule/runtime files', () => {
+      expect(files.map(f => f.path)).not.toContain('iml/lights/Scheduler.java');
+      expect(files.map(f => f.path)).not.toContain('iml/lights/OppositeReceiver.java');
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).not.toContain('dispatch(');
+      expect(tl).not.toContain('enum Trigger');
+      expect(tl).not.toContain('TimingPort');
+    });
+  });
+
+  describe('behavioural scope', () => {
+    const files = generateJavaCode(metaModel, [im], 'behavioural');
+
+    it('emits the runtime helper files and a protocol receiver interface', () => {
+      expect(fileFor(files, 'Scheduler.java')).toContain('class Scheduler');
+      expect(fileFor(files, 'TimingPort.java')).toContain('class TimingPort');
+      expect(fileFor(files, 'LogPort.java')).toContain('class LogPort');
+      expect(fileFor(files, 'OppositeReceiver.java')).toContain('default void safe()');
+    });
+
+    it('generates a Trigger enum from the receivable port.signal messages', () => {
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).toContain('enum Trigger');
+      expect(tl).toContain('OPPOSITEIN_SAFE');
+      expect(tl).toContain('TIMER_TIMEOUT');
+    });
+
+    it('generates a State enum and enter/exit methods pasting the action code verbatim', () => {
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).toContain('enum State');
+      expect(tl).toContain('private void enterRed()');
+      expect(tl).toContain('oppositeOut.safe();');
+      expect(tl).toContain('timer.informIn(10000);');
+    });
+
+    it('dispatch() switches on currentState and guards the trigger, dropping unmatched signals', () => {
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).toContain('private void dispatch(Trigger trigger)');
+      expect(tl).toContain('if (currentState == null) return;');
+      expect(tl).toContain('case RED:');
+      expect(tl).toContain('if (trigger == Trigger.OPPOSITEIN_SAFE)');
+    });
+
+    it('gives a Timing-port capsule a Scheduler-taking constructor without a final-field violation', () => {
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).toContain('public TrafficLight(Scheduler scheduler)');
+      expect(tl).not.toContain('private final Scheduler scheduler');
+      expect(tl).not.toContain('private final TimingPort');
+    });
+
+    it('wires both directions of each connector so a send-only port on one side is never left null', () => {
+      const main = fileFor(files, 'Intersection.java');
+      // c1: ns.oppositeOut <-> ew.oppositeIn
+      expect(main).toContain('northSouth.connectOppositeOut(eastWest.getOppositeInReceiver());');
+      expect(main).toContain('eastWest.connectOppositeIn(northSouth.getOppositeOutReceiver());');
+      // c2: ns.oppositeIn <-> ew.oppositeOut — this is what makes eastWest.oppositeOut non-null
+      expect(main).toContain('northSouth.connectOppositeIn(eastWest.getOppositeOutReceiver());');
+      expect(main).toContain('eastWest.connectOppositeOut(northSouth.getOppositeInReceiver());');
+    });
+
+    it('constructs capsules with the Scheduler and starts them, but omits the structural relation/print output', () => {
+      const main = fileFor(files, 'Intersection.java');
+      expect(main).toContain('Scheduler scheduler = new Scheduler();');
+      expect(main).toContain('new TrafficLight(scheduler);');
+      expect(main).toContain('northSouth.start();');
+      expect(main).toContain('scheduler.run();');
+      expect(main).not.toContain('Print object states');
+    });
+  });
+
+  describe('all scope', () => {
+    const files = generateJavaCode(metaModel, [im], 'all');
+
+    it('includes both the structural print and the behavioural wiring/run in one main()', () => {
+      const main = fileFor(files, 'Intersection.java');
+      expect(main).toContain('Print object states');
+      expect(main).toContain('Wire capsule connectors');
+      expect(main).toContain('scheduler.run();');
+    });
+  });
+});

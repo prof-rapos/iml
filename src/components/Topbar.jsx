@@ -26,6 +26,7 @@ export default function Topbar() {
   const fileRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [codegenScope, setCodegenScope] = useState('structural');
 
   useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
@@ -62,7 +63,7 @@ export default function Topbar() {
       notify(`Cannot generate code: ${conformanceResults.length} conformance issue${conformanceResults.length > 1 ? 's' : ''} must be resolved first.`);
       return null;
     }
-    return generateJavaCode(metaModel, instanceModels);
+    return generateJavaCode(metaModel, instanceModels, codegenScope);
   };
 
   const handleExportZip = async () => {
@@ -201,6 +202,27 @@ export default function Topbar() {
             <MenuItem onClick={handleExportJpeg}>Export JPG</MenuItem>
             <MenuDivider />
             <MenuSection label="Generate" />
+            <div style={{ display: 'flex', gap: 4, padding: '2px 14px 8px' }}>
+              {[
+                { value: 'structural',   label: 'Structural' },
+                { value: 'behavioural',  label: 'Behavioural' },
+                { value: 'all',          label: 'All' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setCodegenScope(opt.value)}
+                  title={`Generate ${opt.label.toLowerCase()} code`}
+                  style={{
+                    flex: 1, padding: '4px 0', fontSize: 11, fontWeight: 600, borderRadius: 4,
+                    border: '1px solid rgba(255,255,255,0.15)', cursor: 'pointer',
+                    background: codegenScope === opt.value ? 'rgba(255,255,255,0.18)' : 'transparent',
+                    color: codegenScope === opt.value ? '#f1f5f9' : 'rgba(255,255,255,0.6)',
+                  }}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
             <MenuItem onClick={handleOpenInIDE}>Open in IDE</MenuItem>
             <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
           </div>
