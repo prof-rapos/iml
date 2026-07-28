@@ -5,6 +5,7 @@ import { useBehaviourStore } from '../../store/behaviourStore';
 import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
 import { TEXT, TEXT_DIM } from '../theme';
 import { useOutsideClick } from '../../utils/useOutsideClick';
+import { useGenerateMenu } from '../useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -51,6 +52,11 @@ export default function BehaviourTopbar() {
   const fileRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  // Defaults to 'behavioural' here (vs. 'structural' in the main Topbar) —
+  // this is the editor where the state machines/ports actually live.
+  const { menuSection: generateMenuSection, dialog: generateDialog } =
+    useGenerateMenu({ defaultScope: 'behavioural', closeMenu: () => setMenuOpen(false) });
 
   useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
@@ -101,6 +107,7 @@ export default function BehaviourTopbar() {
   };
 
   return (
+    <>
     <div style={{
       height: 48, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,
       padding: '0 16px', background: '#161b22', borderBottom: `1px solid ${BORDER}`,
@@ -182,12 +189,17 @@ export default function BehaviourTopbar() {
             <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
             <MenuDivider />
             <MenuItem onClick={handleExportJpeg} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
+            <MenuDivider />
+            {generateMenuSection}
           </div>
         )}
       </div>
 
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportIml} />
     </div>
+
+    {generateDialog}
+    </>
   );
 }
 
