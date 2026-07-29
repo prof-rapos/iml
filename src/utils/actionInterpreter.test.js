@@ -110,3 +110,35 @@ describe('applyActionCode', () => {
     expect(values.get('aCount')).toEqual({ kind: 'unknown' });
   });
 });
+
+describe('applyActionCode — conditional blocks (regression: a guarded increment must not read as unconditional)', () => {
+  it('marks count unknown for an if-guarded increment, instead of applying it unconditionally', () => {
+    const code = 'if (count < 10) {\n  count++;\n  log.log("PING " + count);\n  pinger.ping();\n}';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+
+  it('still applies an unconditional (top-level) assignment that precedes a guarded block', () => {
+    const code = 'direction = "NS";\nif (count < 10) {\n  count++;\n}';
+    const result = applyActionCode(code, attrIndex, unknownValues());
+    expect(result.get('aName')).toEqual({ kind: 'known', value: 'NS' });
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+
+  it('resumes treating lines as unconditional once the block closes', () => {
+    const code = 'if (count < 10) {\n  count++;\n}\ndirection = "EW";';
+    const result = applyActionCode(code, attrIndex, unknownValues());
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+    expect(result.get('aName')).toEqual({ kind: 'known', value: 'EW' });
+  });
+
+  it('handles nested blocks correctly', () => {
+    const code = 'if (ready) {\n  if (count < 10) {\n    count++;\n  }\n}';
+    const values = unknownValues();
+    values.set('aFlag', { kind: 'known', value: 'true' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+});

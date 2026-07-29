@@ -273,6 +273,49 @@ describe('buildSET — malformed machine', () => {
   });
 });
 
+describe('buildSET — regression: an if-guarded counter must not defeat subsumption', () => {
+  // Mirrors the reported PingPong bug: an entry action like
+  // `if (count < 10) { count++; ... }` was being read as an unconditional
+  // count++ (each line matched independently), so `count` grew forever and
+  // the cycle never subsumed, hitting the depth bound instead of the 3-node
+  // cycle it should settle into once `count` is (correctly) unknown.
+  const metaModel = {
+    ...NO_ATTRS,
+    classes: [{
+      id: 'P', name: 'Pinger',
+      attributes: [{ id: 'aCount', name: 'count', type: 'INT', lowerBound: 1, upperBound: 1, defaultValue: '0' }],
+    }],
+    behaviours: {
+      P: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sPing', kind: 'simple', name: 'Ping', entry: 'if (count < 10) {\n  count++;\n  log.log("PING " + count);\n  pinger.ping();\n}', exit: '' },
+          { id: 'sWaiting', kind: 'simple', name: 'Waiting', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sPing', trigger: '', guard: '', effect: '' },
+          { id: 't1', source: 'sPing', target: 'sWaiting', trigger: 'pinger.pong', guard: '', effect: 'timer.informIn(500);' },
+          { id: 't2', source: 'sWaiting', target: 'sPing', trigger: 'timer.timeout', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('terminates via subsumption after one cycle instead of hitting the depth bound', () => {
+    const result = buildSET('P', metaModel);
+    expect(nodesArr(result).some((n) => n.status === 'leaf-depth-bound')).toBe(false);
+    const subsumed = nodesArr(result).filter((n) => n.status === 'leaf-subsumed');
+    expect(subsumed).toHaveLength(1);
+    expect(subsumed[0].stateId).toBe('sPing');
+  });
+
+  it('leaves count unknown rather than silently applying the guarded increment', () => {
+    const result = buildSET('P', metaModel);
+    const root = result.nodesById.get(result.rootId);
+    expect(root.attrValues.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+});
+
 describe('signatureOf', () => {
   it('is order-independent across attribute insertion order', () => {
     const a = new Map([['id1', { kind: 'known', value: '1' }], ['id2', { kind: 'known', value: '2' }]]);

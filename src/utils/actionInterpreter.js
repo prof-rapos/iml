@@ -81,17 +81,38 @@ export function parseActionLine(line, attrIndex, values) {
 }
 
 // Applies a (possibly multi-line, possibly empty) action-code string to a
-// values map, returning a new map. Lines are processed in order.
+// values map, returning a new map. Lines are processed in order, tracking
+// brace depth: a line's own assignment pattern is only ever recognized as
+// UNCONDITIONAL (and its computed value applied) when that line sits at
+// depth 0. A recognized pattern found at depth > 0 (inside an if/while/for/
+// switch/etc. block — anything brace-delimited) is control-flow this
+// interpreter deliberately never evaluates (same "opaque, never solved"
+// treatment as a transition guard), so the attribute it touches becomes
+// unknown instead of silently applying a value that may not actually run.
+// Without this, e.g. a bare `count++;` one indent inside `if (count < 10) {`
+// would otherwise be read as unconditional, since each line is matched in
+// isolation — that under-counts nothing but over-applies everything.
+// (A brace-less single-statement body, e.g. `if (x)\n  count++;` with no
+// `{`, isn't caught by this — a known, accepted gap; the seed/example models
+// so far always brace their blocks.)
 export function applyActionCode(code, attrIndex, values) {
   if (!code || !code.trim()) return values;
   let next = values;
+  let depth = 0;
   for (const rawLine of code.split('\n')) {
     const line = rawLine.trim().replace(/;\s*$/, '').trim();
     if (!line) continue;
+
+    const startDepth = depth;
+    const opens = (line.match(/\{/g) || []).length;
+    const closes = (line.match(/\}/g) || []).length;
+    depth = Math.max(0, depth + opens - closes);
+
     const result = parseActionLine(line, attrIndex, next);
     if (result) {
+      const value = startDepth > 0 ? { kind: 'unknown' } : result.value;
       next = new Map(next);
-      next.set(result.attrId, result.value);
+      next.set(result.attrId, value);
     }
   }
   return next;
