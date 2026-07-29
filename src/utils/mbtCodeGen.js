@@ -264,7 +264,9 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   if (needsScheduler) files.push({ path: `${pkgDir}/TestScheduler.java`, content: generateTestSchedulerFile(pkgName) });
   files.push({ path: `${pkgDir}/MBTAssert.java`, content: generateMbtAssertFile(pkgName) });
 
-  const testClassName = `${cls.name}Test_${leafId.slice(0, 6)}`;
+  // nanoid ids can contain "-", which isn't a valid Java identifier
+  // character (unlike "_", which is fine) — sanitize before embedding.
+  const testClassName = `${cls.name}Test_${leafId.replace(/[^A-Za-z0-9_]/g, '_').slice(0, 6)}`;
   const varName = 'capsule';
   const schedulerVar = 'scheduler';
 

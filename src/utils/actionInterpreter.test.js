@@ -111,20 +111,52 @@ describe('applyActionCode', () => {
   });
 });
 
-describe('applyActionCode — conditional blocks (regression: a guarded increment must not read as unconditional)', () => {
-  it('marks count unknown for an if-guarded increment, instead of applying it unconditionally', () => {
+describe('applyActionCode — conditional blocks', () => {
+  it('evaluates a true condition and actually applies the guarded increment', () => {
     const code = 'if (count < 10) {\n  count++;\n  log.log("PING " + count);\n  pinger.ping();\n}';
     const values = unknownValues();
     values.set('aCount', { kind: 'known', value: '3' });
     const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '4' });
+  });
+
+  it('evaluates a false condition and does NOT execute the guarded block (fixed point)', () => {
+    const code = 'if (count < 10) {\n  count++;\n}';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '10' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '10' });
+  });
+
+  it('degrades to unknown when the condition itself cannot be evaluated (base value unknown)', () => {
+    const code = 'if (count < 10) {\n  count++;\n}';
+    const result = applyActionCode(code, attrIndex, unknownValues());
     expect(result.get('aCount')).toEqual({ kind: 'unknown' });
   });
 
-  it('still applies an unconditional (top-level) assignment that precedes a guarded block', () => {
+  it('takes the else branch when the condition is false', () => {
+    const code = 'if (count < 10) {\n  ready = true;\n} else {\n  ready = false;\n}';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '10' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aFlag')).toEqual({ kind: 'known', value: 'false' });
+  });
+
+  it('takes the then branch when the condition is true, leaving the else branch unapplied', () => {
+    const code = 'if (count < 10) {\n  ready = true;\n} else {\n  ready = false;\n}';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aFlag')).toEqual({ kind: 'known', value: 'true' });
+  });
+
+  it('still applies an unconditional (top-level) assignment alongside a guarded block', () => {
     const code = 'direction = "NS";\nif (count < 10) {\n  count++;\n}';
-    const result = applyActionCode(code, attrIndex, unknownValues());
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
     expect(result.get('aName')).toEqual({ kind: 'known', value: 'NS' });
-    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '4' });
   });
 
   it('resumes treating lines as unconditional once the block closes', () => {
@@ -134,11 +166,53 @@ describe('applyActionCode — conditional blocks (regression: a guarded incremen
     expect(result.get('aName')).toEqual({ kind: 'known', value: 'EW' });
   });
 
-  it('handles nested blocks correctly', () => {
+  it('evaluates nested blocks when every level is evaluable', () => {
     const code = 'if (ready) {\n  if (count < 10) {\n    count++;\n  }\n}';
     const values = unknownValues();
     values.set('aFlag', { kind: 'known', value: 'true' });
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '4' });
+  });
+
+  it('degrades only the inner attribute when an outer condition is true but the inner one cannot be evaluated', () => {
+    const code = 'if (ready) {\n  if (count < 10) {\n    count++;\n  }\n}';
+    const values = unknownValues();
+    values.set('aFlag', { kind: 'known', value: 'true' }); // outer evaluates true
+    // aCount left unknown — inner condition can't be evaluated
     const result = applyActionCode(code, attrIndex, values);
     expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+
+  it('supports a bare boolean attribute and its negation as a condition', () => {
+    const values = unknownValues();
+    values.set('aFlag', { kind: 'known', value: 'true' });
+    expect(applyActionCode('if (ready) {\n  count = 1;\n}', attrIndex, values).get('aCount'))
+      .toEqual({ kind: 'known', value: '1' });
+    expect(applyActionCode('if (!ready) {\n  count = 1;\n}', attrIndex, values).get('aCount'))
+      .toEqual({ kind: 'unknown' }); // condition false, no else — untouched (stays unknown, its starting kind)
+  });
+
+  it('falls back to the safe flat-degrade behavior for an unsupported shape (else-if chain)', () => {
+    const code = 'if (count < 5) {\n  ready = true;\n} else if (count < 10) {\n  ready = false;\n}';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
+    // Not silently misapplied either way — degrades rather than guessing which branch (if any) ran.
+    expect(result.get('aFlag')).toEqual({ kind: 'unknown' });
+  });
+
+  it('leaves a value untouched (not misapplied) for an unsupported same-line block', () => {
+    // The whole line "if (count < 10) { count++; }" doesn't match any
+    // single-statement regex as a unit, so the flat-degrade fallback's
+    // per-line scan finds nothing recognizable and treats it as a no-op —
+    // stale rather than "unknown", but never a wrongly-applied value. This
+    // shape doesn't appear in any real model seen so far (multi-line
+    // brace formatting is universal in practice); documented gap, not fixed.
+    const code = 'if (count < 10) { count++; }';
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '3' });
   });
 });

@@ -116,6 +116,19 @@ describe('generateConcreteTestFiles', () => {
     expect(test).toContain('capsule.getOppositeInReceiver().safe();');
     expect(test).toContain('MBTAssert.assertEquals("state", "GREEN", capsule.getCurrentStateName());');
   });
+
+  it('produces a valid Java identifier for the test class name even when the leaf id contains "-"', () => {
+    // nanoid ids can contain "-", which isn't a valid Java identifier
+    // character — regression for a real bug found via a hand-generated
+    // model whose leaf id happened to contain one.
+    const hyphenatedResult = { ...result, nodesById: new Map(result.nodesById) };
+    const hyphenatedNode = { ...greenNode, id: 'ab-cdef' };
+    hyphenatedResult.nodesById.set('ab-cdef', hyphenatedNode);
+    const { mainClassPath } = generateConcreteTestFiles('ab-cdef', hyphenatedResult, cls, metaModel);
+    const className = mainClassPath.split('/').pop().replace('.java', '');
+    expect(className).toMatch(/^[A-Za-z_$][\w$]*$/);
+    expect(className).not.toContain('-');
+  });
 });
 
 describe('generateAllTestsFiles', () => {

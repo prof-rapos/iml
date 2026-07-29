@@ -273,12 +273,17 @@ describe('buildSET — malformed machine', () => {
   });
 });
 
-describe('buildSET — regression: an if-guarded counter must not defeat subsumption', () => {
-  // Mirrors the reported PingPong bug: an entry action like
-  // `if (count < 10) { count++; ... }` was being read as an unconditional
-  // count++ (each line matched independently), so `count` grew forever and
-  // the cycle never subsumed, hitting the depth bound instead of the 3-node
-  // cycle it should settle into once `count` is (correctly) unknown.
+describe('buildSET — regression: an if-guarded counter must track exactly and reach its true fixed point', () => {
+  // Mirrors the reported PingPong bug and its follow-up: an entry action like
+  // `if (count < 10) { count++; ... }` was first misread as an unconditional
+  // count++ (each line matched independently, so count grew forever and hit
+  // the depth bound instead of terminating). The real desired behaviour goes
+  // further than just not-misreading it: since `count < 10` is a comparison
+  // against a literal on an attribute we track exactly, it should actually
+  // be evaluated — count increments once per cycle (1, 2, 3, ... 10), no two
+  // of those are subsumption-equivalent, and only once count reaches 10 does
+  // the guard block the increment, producing a real fixed point that
+  // subsumes on the next revisit.
   const metaModel = {
     ...NO_ATTRS,
     classes: [{
@@ -301,18 +306,30 @@ describe('buildSET — regression: an if-guarded counter must not defeat subsump
     },
   };
 
-  it('terminates via subsumption after one cycle instead of hitting the depth bound', () => {
+  it('terminates via subsumption once count reaches its fixed point, never hitting the depth bound', () => {
     const result = buildSET('P', metaModel);
     expect(nodesArr(result).some((n) => n.status === 'leaf-depth-bound')).toBe(false);
     const subsumed = nodesArr(result).filter((n) => n.status === 'leaf-subsumed');
     expect(subsumed).toHaveLength(1);
     expect(subsumed[0].stateId).toBe('sPing');
+    expect(subsumed[0].attrValues.get('aCount')).toEqual({ kind: 'known', value: '10' });
   });
 
-  it('leaves count unknown rather than silently applying the guarded increment', () => {
+  it('tracks count exactly through every cycle (1..10), never skipping or exceeding the guard', () => {
     const result = buildSET('P', metaModel);
-    const root = result.nodesById.get(result.rootId);
-    expect(root.attrValues.get('aCount')).toEqual({ kind: 'unknown' });
+    const pingCounts = nodesArr(result)
+      .filter((n) => n.stateId === 'sPing')
+      .map((n) => Number(n.attrValues.get('aCount').value))
+      .sort((a, b) => a - b);
+    expect(pingCounts).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 10]); // the 2nd "10" is the subsumed revisit
+  });
+
+  it('subsumes the revisit into the earlier count=10 node, not a fresh one', () => {
+    const result = buildSET('P', metaModel);
+    const subsumed = nodesArr(result).find((n) => n.status === 'leaf-subsumed');
+    const target = result.nodesById.get(subsumed.subsumedByNodeId);
+    expect(target.stateId).toBe('sPing');
+    expect(target.attrValues.get('aCount')).toEqual({ kind: 'known', value: '10' });
   });
 });
 
