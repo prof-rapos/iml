@@ -3,12 +3,12 @@ import { capsuleMessages, getProtocolById } from '../store/modelStore.js';
 
 // ── String / naming helpers ───────────────────────────────────────────────────
 
-function capitalize(s) {
+export function capitalize(s) {
   if (!s) return s;
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-function safeId(name) {
+export function safeId(name) {
   const sanitized = (name || 'field')
     .replace(/[^a-zA-Z0-9_$\s]/g, '')
     .trim()
@@ -263,22 +263,22 @@ function hasMetaDefault(attr) {
 // defaults, per the settled 2026-07-28 design decision.
 // ══════════════════════════════════════════════════════════════════════════════
 
-function isCapsuleClass(cls) {
+export function isCapsuleClass(cls) {
   return (cls.ports ?? []).length > 0;
 }
 
-function hasStateMachine(cls, metaModel) {
+export function hasStateMachine(cls, metaModel) {
   const m = metaModel.behaviours?.[cls.id];
   return !!m && m.states.length > 0;
 }
 
 // "port.signal" -> "PORT_SIGNAL", a valid Java enum constant.
-function triggerConstName(value) {
+export function triggerConstName(value) {
   const s = String(value).replace(/[^a-zA-Z0-9_]/g, '_').toUpperCase();
   return /^[A-Z_]/.test(s) ? s : `_${s}`;
 }
 
-function portFieldName(port) {
+export function portFieldName(port) {
   return safeId(port.name);
 }
 
@@ -465,7 +465,7 @@ function generateCapsulePorts(cls, metaModel, dispatchable) {
 }
 
 // stateId -> Java enum constant name, for every simple state.
-function stateConstMap(machine) {
+export function stateConstMap(machine) {
   const map = new Map();
   for (const st of machine.states) {
     if (st.kind === 'simple') map.set(st.id, safeEnumConst(st.name).toUpperCase());
@@ -626,6 +626,8 @@ function generateCapsuleBody(cls, metaModel) {
     lines.push(...generateTriggerEnum(cls, metaModel));
     lines.push('');
     lines.push('    private State currentState = null;');
+    lines.push('');
+    lines.push('    public String getCurrentStateName() { return currentState == null ? null : currentState.name(); }');
     lines.push('');
     lines.push(...generateStart(machine));
     lines.push('');

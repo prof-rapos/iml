@@ -36,7 +36,7 @@ const MODULES = [
     title: 'Model-Based Testing',
     description: 'Verify models and generate test cases using symbolic execution.',
     color: '#dc2626',
-    available: false,
+    available: true,
   },
 ];
 

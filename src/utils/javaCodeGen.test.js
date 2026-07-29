@@ -268,6 +268,11 @@ describe('generateJavaCode — behavioural codegen (capsules, ports, state machi
       expect(tl).toContain('timer.informIn(10000);');
     });
 
+    it('exposes the current state name via a public String getter (for Module 5 test assertions, no reflection needed)', () => {
+      const tl = fileFor(files, 'TrafficLight.java');
+      expect(tl).toContain('public String getCurrentStateName() { return currentState == null ? null : currentState.name(); }');
+    });
+
     it('dispatch() switches on currentState and guards the trigger, dropping unmatched signals', () => {
       const tl = fileFor(files, 'TrafficLight.java');
       expect(tl).toContain('private void dispatch(Trigger trigger)');

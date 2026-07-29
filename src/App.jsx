@@ -9,6 +9,7 @@ import Notification from './components/Notification';
 import IDEView from './components/ide/IDEView';
 import TransformView from './components/transform/TransformView';
 import BehaviouralView from './components/behaviour/BehaviouralView';
+import MBTView from './components/mbt/MBTView';
 import { useModelStore } from './store/modelStore';
 import { seedDemoModel } from './utils/seedModel';
 
@@ -27,6 +28,7 @@ export default function App() {
   if (appView === 'ide')             return <IDEView />;
   if (appView === 'transformations') return <TransformView />;
   if (appView === 'behavioural')     return <BehaviouralView />;
+  if (appView === 'testing')         return <MBTView />;
 
   return (
     <ReactFlowProvider>
