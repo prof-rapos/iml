@@ -1,33 +1,18 @@
 import { getAllAttributes } from './modelHelpers.js';
+import { pathToLeaf } from './symbolicExecution.js';
 import {
   generateJavaCode, toClassName, toPackageName, capitalize, safeId,
   portFieldName, stateConstMap,
 } from './javaCodeGen.js';
 import { getProtocolById } from '../store/modelStore.js';
 
-function stateName(node, machine) {
+// Exported so the SET Viewer can label a "subsumed -> X" backreference with
+// the same name/attribute summary used everywhere else, instead of an
+// opaque id fragment.
+export function stateName(node, machine) {
   if (node.status === 'leaf-final') return 'Final';
   if (!node.stateId) return '(unresolved)';
   return machine?.states.find((s) => s.id === node.stateId)?.name || '(unnamed)';
-}
-
-// Walks a leaf's parentEdgeId chain back to the root and reverses it into a
-// root-to-leaf event sequence — the SET's own path structure IS the test
-// case, this just reads it back out.
-function pathToLeaf(leafId, setResult) {
-  const { nodesById, edgesById } = setResult;
-  const leaf = nodesById.get(leafId);
-  if (!leaf) return null;
-
-  const edgeChain = [];
-  let cur = leaf;
-  while (cur.parentEdgeId) {
-    const edge = edgesById.get(cur.parentEdgeId);
-    edgeChain.push(edge);
-    cur = nodesById.get(edge.sourceNodeId);
-  }
-  edgeChain.reverse();
-  return { leaf, edgeChain };
 }
 
 // The human-readable, code-unaware test case for Panel 2: an ordered list of
@@ -286,10 +271,17 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   return { files, mainClassPath: `${pkgDir}/${testClassName}.java` };
 }
 
-// A single file whose main() runs every non-open, non-depth-bound leaf as
-// its own isolated test case in sequence (fresh capsule + scheduler each
-// time), printing PASS/FAIL per assertion and an overall summary — 100%
-// path coverage as one runnable suite, per the confirmed design.
+// A single file with one PRIVATE METHOD per non-open, non-depth-bound leaf
+// (fresh capsule + scheduler each time, returns pass/fail) and a main() that
+// just calls them in sequence and tallies the total — 100% path coverage as
+// one runnable suite, per the confirmed design. Each test's construct/wire/
+// run/assert body lives in its OWN method specifically so main() stays a
+// short, constant-size-per-call dispatch list: Java caps a single method's
+// bytecode at 64KB, and with real path-coverage suites easily reaching
+// hundreds of leaves, inlining every body directly into main() (the
+// original design) hit that limit — a call site costs a few bytes
+// regardless of how large the callee's own body is, so this scales to far
+// larger suites before running into the same wall.
 export function generateAllTestsFiles(setResult, cls, metaModel) {
   const { nodesById, classId } = setResult;
   const machine = metaModel.behaviours?.[classId];
@@ -308,27 +300,37 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
   const varName = 'capsule';
   const schedulerVar = 'scheduler';
 
-  const lines = [`package ${pkgName};`, '', `public class ${testClassName} {`, '', '    public static void main(String[] args) {'];
-  lines.push('        int total = 0, failed = 0;', '');
+  const methodLines = [];
+  const dispatchLines = [];
 
   leaves.forEach((leaf, i) => {
+    const methodName = `test${i + 1}`;
     const path = pathToLeaf(leaf.id, setResult);
-    lines.push(`        // ── Test ${i + 1} ───────────────────────────────────`);
-    lines.push('        {');
-    lines.push('            total++;');
-    lines.push(`            System.out.println("--- Test ${i + 1} of ${leaves.length} ---");`);
-    if (needsScheduler) lines.push(`            TestScheduler ${schedulerVar} = new TestScheduler();`);
-    lines.push(`            ${cls.name} ${varName} = new ${cls.name}(${needsScheduler ? schedulerVar : ''});`);
-    lines.push(...stubWireLines(cls, metaModel, varName).map((l) => '    ' + l));
-    lines.push(`            ${varName}.start();`);
-    lines.push(...testScriptLines(path.edgeChain, varName, schedulerVar).map((l) => '    ' + l));
-    lines.push(...assertionLines(leaf, machine, attrs, varName, true).map((l) => '    ' + l));
-    lines.push('            if (!ok) failed++;');
-    lines.push('        }', '');
+
+    dispatchLines.push(`        if (!${methodName}()) failed++;`);
+    dispatchLines.push('        total++;');
+
+    methodLines.push(`    private static boolean ${methodName}() {`);
+    methodLines.push(`        System.out.println("--- Test ${i + 1} of ${leaves.length} ---");`);
+    if (needsScheduler) methodLines.push(`        TestScheduler ${schedulerVar} = new TestScheduler();`);
+    methodLines.push(`        ${cls.name} ${varName} = new ${cls.name}(${needsScheduler ? schedulerVar : ''});`);
+    methodLines.push(...stubWireLines(cls, metaModel, varName));
+    methodLines.push(`        ${varName}.start();`);
+    methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar));
+    methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
+    methodLines.push('        return ok;');
+    methodLines.push('    }', '');
   });
 
+  const lines = [`package ${pkgName};`, '', `public class ${testClassName} {`, ''];
+  lines.push('    public static void main(String[] args) {');
+  lines.push('        int total = 0, failed = 0;', '');
+  lines.push(...dispatchLines);
+  lines.push('');
   lines.push('        System.out.println(total + " tests, " + (total - failed) + " passed, " + failed + " failed.");');
-  lines.push('    }', '}');
+  lines.push('    }', '');
+  lines.push(...methodLines);
+  lines.push('}');
 
   files.push({ path: `${pkgDir}/${testClassName}.java`, content: lines.join('\n') });
 

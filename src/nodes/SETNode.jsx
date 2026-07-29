@@ -2,6 +2,7 @@ import { Handle, Position } from '@xyflow/react';
 import { useModelStore } from '../store/modelStore';
 import { useMbtStore } from '../store/mbtStore';
 import { getAllAttributes } from '../utils/modelHelpers';
+import { stateName } from '../utils/mbtCodeGen';
 
 const STATUS_BORDER = {
   open:              'var(--iml-primary)',
@@ -18,6 +19,8 @@ const STATUS_LABEL = {
   'leaf-depth-bound': 'depth limit',
 };
 
+const PATH_HIGHLIGHT = '#f59e0b';
+
 const handleStyle = {
   width: 8, height: 8,
   background: '#64748b',
@@ -25,17 +28,19 @@ const handleStyle = {
   borderRadius: '50%',
 };
 
-function stateLabel(node, machine) {
-  if (node.status === 'leaf-final') return 'Final';
-  if (!node.stateId) return '(unresolved)';
-  const state = machine?.states.find((s) => s.id === node.stateId);
-  return state?.name || '(unnamed)';
-}
-
-// Shows a shortened form of a node id for the "subsumed → #X" backreference,
-// since full nanoid ids are too long to display inline.
-function shortRef(id) {
-  return id ? id.slice(0, 4) : '?';
+// "→ StateA (x=3, y=2)" instead of an opaque id fragment — names the actual
+// state (and its known attribute values) a subsumed leaf loops back into,
+// since a bare truncated node id told you nothing about what it referred to.
+function subsumedIntoLabel(node, nodesById, machine, attrs) {
+  if (!node.subsumedByNodeId) return null;
+  const target = nodesById?.get(node.subsumedByNodeId);
+  if (!target) return null;
+  const known = attrs
+    .map((a) => ({ name: a.name, v: target.attrValues.get(a.id) }))
+    .filter((a) => a.v?.kind === 'known')
+    .map((a) => `${a.name}=${a.v.value}`);
+  const attrPart = known.length ? ` (${known.join(', ')})` : '';
+  return `${stateName(target, machine)}${attrPart}`;
 }
 
 export default function SETNode({ data, selected }) {
@@ -43,24 +48,27 @@ export default function SETNode({ data, selected }) {
   const capsuleId = useMbtStore((s) => s.capsuleId);
   const selectedLeafId = useMbtStore((s) => s.selectedLeafId);
   const selectLeaf = useMbtStore((s) => s.selectLeaf);
+  const pathNodeIds = useMbtStore((s) => s.pathNodeIds);
+  const setResult = useMbtStore((s) => s.setResult);
   const metaModel = useModelStore((s) => s.metaModel);
 
   const machine = metaModel.behaviours?.[capsuleId];
   const attrs = capsuleId ? getAllAttributes(capsuleId, metaModel) : [];
   const isLeaf = node.status !== 'open';
   const isSelected = selectedLeafId === node.id;
-  const border = STATUS_BORDER[node.status] ?? STATUS_BORDER.open;
+  const onPath = pathNodeIds?.has(node.id) ?? false;
+  const border = onPath ? PATH_HIGHLIGHT : (STATUS_BORDER[node.status] ?? STATUS_BORDER.open);
 
   return (
     <div
       onClick={() => isLeaf && selectLeaf(node.id)}
       style={{
         background: 'var(--iml-node-bg)',
-        border: `2px ${node.status === 'leaf-subsumed' || node.status === 'leaf-depth-bound' ? 'dashed' : 'solid'} ${border}`,
+        border: `${onPath ? 3 : 2}px ${node.status === 'leaf-subsumed' || node.status === 'leaf-depth-bound' ? 'dashed' : 'solid'} ${border}`,
         borderRadius: 10,
         minWidth: 150,
         fontFamily: 'var(--iml-font-sans)',
-        boxShadow: isSelected ? '0 0 0 3px rgba(217,119,6,0.35)' : (selected ? '0 0 0 2px rgba(255,255,255,0.2)' : '0 2px 6px rgba(0,0,0,0.25)'),
+        boxShadow: isSelected ? '0 0 0 3px rgba(217,119,6,0.35)' : (selected ? '0 0 0 2px rgba(255,255,255,0.2)' : (onPath ? '0 0 10px rgba(245,158,11,0.45)' : '0 2px 6px rgba(0,0,0,0.25)')),
         cursor: isLeaf ? 'pointer' : 'default',
         overflow: 'hidden',
       }}
@@ -69,13 +77,17 @@ export default function SETNode({ data, selected }) {
       <div style={{
         background: border, padding: '6px 12px', color: '#fff', fontWeight: 600, fontSize: 13, textAlign: 'center',
       }}>
-        {stateLabel(node, machine)}
+        {stateName(node, machine)}
       </div>
 
       {isLeaf && (
         <div style={{ padding: '2px 12px', fontSize: 10, textAlign: 'center', color: border, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
           {STATUS_LABEL[node.status]}
-          {node.status === 'leaf-subsumed' && node.subsumedByNodeId && ` → #${shortRef(node.subsumedByNodeId)}`}
+          {node.status === 'leaf-subsumed' && (
+            <div style={{ textTransform: 'none', fontWeight: 500, fontSize: 10, opacity: 0.85, marginTop: 1 }}>
+              → {subsumedIntoLabel(node, setResult?.nodesById, machine, attrs) ?? 'unknown'}
+            </div>
+          )}
         </div>
       )}
 

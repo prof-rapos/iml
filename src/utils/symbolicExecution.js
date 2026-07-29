@@ -27,6 +27,26 @@ export function signatureOf(stateId, attrValues) {
   return `${stateId}|${known.join(',')}`;
 }
 
+// Walks a leaf's parentEdgeId chain back to the root and reverses it into a
+// root-to-leaf sequence — the SET's own path structure IS the test case /
+// the highlightable path, this just reads it back out. Shared by the
+// abstract/concrete test generators and the SET Viewer's path highlighting.
+export function pathToLeaf(leafId, setResult) {
+  const { nodesById, edgesById } = setResult;
+  const leaf = nodesById.get(leafId);
+  if (!leaf) return null;
+
+  const edgeChain = [];
+  let cur = leaf;
+  while (cur.parentEdgeId) {
+    const edge = edgesById.get(cur.parentEdgeId);
+    edgeChain.push(edge);
+    cur = nodesById.get(edge.sourceNodeId);
+  }
+  edgeChain.reverse();
+  return { leaf, root: cur, edgeChain };
+}
+
 export function buildSET(classId, metaModel) {
   const nodesById = new Map();
   const edgesById = new Map();

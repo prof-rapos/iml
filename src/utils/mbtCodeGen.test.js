@@ -132,12 +132,65 @@ describe('generateConcreteTestFiles', () => {
 });
 
 describe('generateAllTestsFiles', () => {
-  it('generates one runnable file looping over every non-open, non-depth-bound leaf', () => {
+  it('generates one runnable file with a main() that dispatches to per-test methods', () => {
     const result = buildSET('TL', metaModel);
     const { files, mainClassPath } = generateAllTestsFiles(result, cls, metaModel);
     const test = fileFor(files, mainClassPath.split('/').pop());
     expect(test).toContain('class TrafficLightAllTests');
     expect(test).toContain('total++');
     expect(test).toContain('tests, ');
+  });
+
+  it('puts each test case\'s body in its own private method, not inlined in main() (bytecode-size scaling)', () => {
+    const result = buildSET('TL', metaModel);
+    const { files, mainClassPath } = generateAllTestsFiles(result, cls, metaModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+
+    expect(test).toContain('private static boolean test1()');
+    expect(test).toContain('if (!test1()) failed++;');
+
+    // main()'s own body is just the dispatch loop — none of a test's own
+    // construct/wire/run lines should appear before the first method
+    // definition starts.
+    const mainStart = test.indexOf('public static void main');
+    const firstMethodStart = test.indexOf('private static boolean test1()');
+    const mainBody = test.slice(mainStart, firstMethodStart);
+    expect(mainBody).not.toContain('capsule.start()');
+    expect(mainBody).not.toContain('MBTAssert.assertEquals');
+  });
+
+  it('scales to many leaves without inflating any single method (synthetic large-suite check)', () => {
+    // A guard-fork chain gives one leaf per guard branch — enough distinct
+    // leaves from a small model to meaningfully exercise "many test
+    // methods" without needing a huge fixture.
+    const manyLeavesModel = {
+      ...NO_ATTRS,
+      classes: [cls],
+      protocols: metaModel.protocols,
+      behaviours: {
+        TL: {
+          states: [
+            { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+            { id: 'sA', kind: 'simple', name: 'A', entry: '', exit: '' },
+            ...Array.from({ length: 20 }, (_, i) => ({ id: `sB${i}`, kind: 'simple', name: `B${i}`, entry: '', exit: '' })),
+          ],
+          transitions: [
+            { id: 'tInit', source: 'sInit', target: 'sA', trigger: '', guard: '', effect: '' },
+            ...Array.from({ length: 20 }, (_, i) => ({
+              id: `t${i}`, source: 'sA', target: `sB${i}`, trigger: 'oppositeIn.safe', guard: `x == ${i}`, effect: '',
+            })),
+          ],
+        },
+      },
+    };
+    const result = buildSET('TL', manyLeavesModel);
+    const { files, mainClassPath } = generateAllTestsFiles(result, cls, manyLeavesModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    const methodCount = (test.match(/private static boolean test\d+\(\)/g) || []).length;
+    expect(methodCount).toBeGreaterThanOrEqual(20);
+    // Every method body should be roughly the same, bounded size — no single
+    // method accumulates other tests' content.
+    const firstMethod = test.slice(test.indexOf('test1()'), test.indexOf('test2()'));
+    expect(firstMethod.length).toBeLessThan(600);
   });
 });

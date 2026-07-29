@@ -1,4 +1,7 @@
 import { BaseEdge, EdgeLabelRenderer, getSmoothStepPath } from '@xyflow/react';
+import { useMbtStore } from '../store/mbtStore';
+
+const PATH_HIGHLIGHT = '#f59e0b';
 
 function eventLabel(event) {
   if (!event) return '';
@@ -15,9 +18,11 @@ function branchLabel(branch) {
 }
 
 export default function SETEdge({
-  sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data,
+  id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, data,
 }) {
   const { edge } = data;
+  const pathEdgeIds = useMbtStore((s) => s.pathEdgeIds);
+  const onPath = pathEdgeIds?.has(id) ?? false;
 
   const [edgePath, labelX, labelY] = getSmoothStepPath({
     sourceX, sourceY, sourcePosition,
@@ -26,6 +31,7 @@ export default function SETEdge({
   });
 
   const bLabel = branchLabel(edge.branch);
+  const stroke = onPath ? PATH_HIGHLIGHT : (edge.guardFork ? '#d97706' : '#111827');
 
   return (
     <>
@@ -33,8 +39,8 @@ export default function SETEdge({
         path={edgePath}
         markerEnd={'url(#arrow-open)'}
         style={{
-          stroke: edge.guardFork ? '#d97706' : '#111827',
-          strokeWidth: 2.25,
+          stroke,
+          strokeWidth: onPath ? 3.5 : 2.25,
           strokeDasharray: edge.branch === 'all-guards-false' ? '5,4' : undefined,
         }}
         interactionWidth={14}
@@ -49,7 +55,7 @@ export default function SETEdge({
             fontSize: 11, fontWeight: 600,
             background: 'var(--iml-node-bg)',
             padding: '2px 7px', borderRadius: 4,
-            border: `1px solid ${edge.guardFork ? '#d97706' : 'var(--iml-border)'}`,
+            border: `1px solid ${onPath ? PATH_HIGHLIGHT : (edge.guardFork ? '#d97706' : 'var(--iml-border)')}`,
             color: '#e2e8f0',
             whiteSpace: 'nowrap',
             display: 'inline-flex', alignItems: 'center', gap: 5,
