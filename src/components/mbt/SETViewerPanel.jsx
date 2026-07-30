@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { ReactFlow, ReactFlowProvider, Background, Controls, useReactFlow, useStore, getViewportForBounds } from '@xyflow/react';
+import { ReactFlow, ReactFlowProvider, Background, Controls, useReactFlow, useStore, useStoreApi, getViewportForBounds } from '@xyflow/react';
 import { useModelStore } from '../../store/modelStore';
 import { useMbtStore } from '../../store/mbtStore';
 import { hasStateMachine } from '../../utils/javaCodeGen';
@@ -16,7 +16,7 @@ const TOP_MARGIN = 70; // px the root sits below the pane's top edge once center
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2; // matches ReactFlow's own un-overridden defaults
 
-const MAX_MEASURE_RETRIES = 30; // ~0.5s at 60fps — generous for even a large tree's first measurement pass
+const MAX_MEASURE_RETRIES = 120; // ~2s at 60fps — a several-hundred-node tree's measurement pass can take a while to fully settle
 
 // Runs once per fresh build (keyed off buildToken, not `nodes` itself — the
 // store's nodes array mutates repeatedly during React Flow's own per-node
@@ -25,27 +25,38 @@ const MAX_MEASURE_RETRIES = 30; // ~0.5s at 60fps — generous for even a large 
 // asynchronously (even with duration:0), so a follow-up getViewport()/
 // setViewport() pair in the same tick can read stale values and then get
 // clobbered when fitView's own update lands after ours. Computing the
-// target viewport in one pure pass with getViewportForBounds() and calling
-// setViewport() exactly once removes that race: x/zoom center+fit the
-// whole tree horizontally (same math fitView uses internally), and y is
-// overridden so the root sits near the TOP of the pane instead of
-// vertically centered — large trees otherwise bury the root (the point
-// you'd actually start reading from) off-screen.
+// target viewport in one pure pass and calling setViewport() exactly once
+// removes that race.
 //
-// A second, separate race: on the very first frame after a build, React
-// Flow's nodes haven't been measured yet (ResizeObserver hasn't reported
-// their real width/height back through onNodesChange), so getNodesBounds()
-// can return a degenerate zero-size box — computing a garbage viewport from
-// that and committing it immediately (with no later correction, since only
-// buildToken/pane-size changes re-run this effect, not every nodes update)
-// is what actually left the root sitting wherever the tree's un-fitted
-// default viewport happened to put it. Retrying on the next frame until the
-// bounds are real (capped, so a pane that genuinely never measures doesn't
-// spin forever) fixes this without depending on `nodes` in the effect
-// itself, which would re-center on every unrelated nodes change (e.g.
-// clicking a leaf toggles its selection state, changing the array).
+// A second, separate race: on the very first frames after a build, React
+// Flow's nodes haven't all been measured yet (ResizeObserver reports each
+// node's real width/height back through onNodesChange progressively, not
+// atomically) — computing bounds from a mix of measured and not-yet-
+// measured nodes produces a PARTIAL bounding box, not a zero-size one, so
+// merely checking "is width/height nonzero" isn't enough. Now waits for
+// every node in this build to actually be measured (checked directly
+// against React Flow's internal nodeLookup via useStoreApi) before
+// computing anything, retrying on the next frame until then (capped).
+//
+// A THIRD bug, found via a real large/asymmetric tree (TreeDemo.iml.json,
+// 1261 nodes): treeLayout.js's root x is "the average of its children's
+// slots, recursively" — for a genuinely lopsided tree this can land far
+// from the tree's overall bounding-box CENTER (observed: root at x=127258
+// while the tree's bounds spanned 0..138600 — nowhere near the midpoint).
+// Centering the viewport on the whole tree's bounding box (matching what
+// fitView itself does, and what this component did through both earlier
+// fix attempts) put the ROOT itself thousands of pixels outside the
+// visible pane, even though its OWN y was correctly placed near the top —
+// it was just off-screen sideways. The fix is to stop centering the tree's
+// bounding box at all: zoom still comes from fitting the whole tree's
+// width/height into the pane (so the initial view is still a sensible,
+// zoomed-out "here's how big this is"), but x/y are computed directly from
+// the ROOT's own position, not the box's center — that's what "center the
+// root" actually means, and it holds regardless of how asymmetric the tree
+// is.
 function SETViewportController({ buildToken, rootId, nodes }) {
   const { setViewport, getNodesBounds } = useReactFlow();
+  const store = useStoreApi();
   const paneWidth = useStore((s) => s.width);
   const paneHeight = useStore((s) => s.height);
 
@@ -53,16 +64,28 @@ function SETViewportController({ buildToken, rootId, nodes }) {
     if (!rootId || nodes.length === 0 || !paneWidth || !paneHeight) return;
     let raf;
 
+    function allMeasured() {
+      const { nodeLookup } = store.getState();
+      for (const n of nodes) {
+        const internal = nodeLookup.get(n.id);
+        if (!internal?.measured?.width || !internal?.measured?.height) return false;
+      }
+      return true;
+    }
+
     function attempt(retriesLeft) {
       const root = nodes.find((n) => n.id === rootId);
       if (!root) return;
-      const bounds = getNodesBounds(nodes);
-      if ((!bounds.width || !bounds.height) && retriesLeft > 0) {
+      if (!allMeasured() && retriesLeft > 0) {
         raf = requestAnimationFrame(() => attempt(retriesLeft - 1));
         return;
       }
-      const { x, zoom } = getViewportForBounds(bounds, paneWidth, paneHeight, MIN_ZOOM, MAX_ZOOM, 0.15);
-      setViewport({ x, y: TOP_MARGIN - root.position.y * zoom, zoom }, { duration: 250 });
+      const bounds = getNodesBounds(nodes);
+      const { zoom } = getViewportForBounds(bounds, paneWidth, paneHeight, MIN_ZOOM, MAX_ZOOM, 0.15);
+      const rootWidth = root.measured?.width ?? 150;
+      const x = paneWidth / 2 - (root.position.x + rootWidth / 2) * zoom;
+      const y = TOP_MARGIN - root.position.y * zoom;
+      setViewport({ x, y, zoom }, { duration: 250 });
     }
 
     raf = requestAnimationFrame(() => attempt(MAX_MEASURE_RETRIES));
