@@ -40,7 +40,7 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
 
   let outcome;
   if (leaf.status === 'leaf-depth-bound') {
-    outcome = { kind: 'depth-bound', label: 'Path continues beyond the exploration depth limit — no fixed endpoint to assert.' };
+    outcome = { kind: 'depth-bound', label: 'Path continues beyond the exploration depth limit — no fixed endpoint to assert, but the steps above are still exercised by the generated test.' };
   } else if (leaf.status === 'leaf-subsumed') {
     const target = nodesById.get(leaf.subsumedByNodeId);
     outcome = {
@@ -227,11 +227,14 @@ function assertionLines(leaf, machine, attrs, varName, trackOk) {
 // One runnable test file for a single leaf: constructs the capsule under
 // test in isolation (stub peers on every port), drives it through the
 // leaf's event sequence, then asserts the expected end state/attributes.
-// Returns null for a depth-bound leaf (no fixed endpoint — visualization
-// only, per the confirmed design) or an unknown leaf id.
+// A depth-bound leaf still gets a real test that drives the full path up to
+// the depth limit — there's no fixed endpoint to assert there (the path
+// keeps going), but skipping the path entirely would mean never exercising
+// it at all, so assertionLines() just contributes no assertions for it.
+// Returns null only for an unknown leaf id.
 export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   const path = pathToLeaf(leafId, setResult);
-  if (!path || path.leaf.status === 'leaf-depth-bound') return null;
+  if (!path) return null;
   const { leaf, edgeChain } = path;
   const { classId } = setResult;
 
@@ -263,7 +266,11 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   lines.push('');
   lines.push(...testScriptLines(edgeChain, varName, schedulerVar));
   lines.push('');
-  lines.push(...assertionLines(leaf, machine, attrs, varName, false));
+  if (leaf.status === 'leaf-depth-bound') {
+    lines.push('        System.out.println("(depth limit reached — path continues beyond this point, no fixed endpoint to assert)");');
+  } else {
+    lines.push(...assertionLines(leaf, machine, attrs, varName, false));
+  }
   lines.push('    }', '}');
 
   files.push({ path: `${pkgDir}/${testClassName}.java`, content: lines.join('\n') });
@@ -271,15 +278,18 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   return { files, mainClassPath: `${pkgDir}/${testClassName}.java` };
 }
 
-// A single file with one PRIVATE METHOD per non-open, non-depth-bound leaf
-// (fresh capsule + scheduler each time, returns pass/fail) and a main() that
-// just calls them in sequence and tallies the total — 100% path coverage as
-// one runnable suite, per the confirmed design. Each test's construct/wire/
-// run/assert body lives in its OWN method specifically so main() stays a
-// short, constant-size-per-call dispatch list: Java caps a single method's
-// bytecode at 64KB, and with real path-coverage suites easily reaching
-// hundreds of leaves, inlining every body directly into main() (the
-// original design) hit that limit — a call site costs a few bytes
+// A single file with one PRIVATE METHOD per non-open leaf (fresh capsule +
+// scheduler each time, returns pass/fail) and a main() that just calls them
+// in sequence and tallies the total — 100% path coverage as one runnable
+// suite, per the confirmed design. Depth-bound leaves are included too (the
+// path still gets exercised up to the limit), but their method always
+// returns true — there's no fixed endpoint to assert there, so "passing"
+// just means the driven steps ran without throwing. Each test's construct/
+// wire/run/assert body lives in its OWN method specifically so main() stays
+// a short, constant-size-per-call dispatch list: Java caps a single
+// method's bytecode at 64KB, and with real path-coverage suites easily
+// reaching hundreds of leaves, inlining every body directly into main()
+// (the original design) hit that limit — a call site costs a few bytes
 // regardless of how large the callee's own body is, so this scales to far
 // larger suites before running into the same wall.
 export function generateAllTestsFiles(setResult, cls, metaModel) {
@@ -294,21 +304,17 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
   if (needsScheduler) files.push({ path: `${pkgDir}/TestScheduler.java`, content: generateTestSchedulerFile(pkgName) });
   files.push({ path: `${pkgDir}/MBTAssert.java`, content: generateMbtAssertFile(pkgName) });
 
-  const leaves = [...nodesById.values()].filter((n) => n.status !== 'open' && n.status !== 'leaf-depth-bound');
+  const leaves = [...nodesById.values()].filter((n) => n.status !== 'open');
 
   const testClassName = `${cls.name}AllTests`;
   const varName = 'capsule';
   const schedulerVar = 'scheduler';
 
   const methodLines = [];
-  const dispatchLines = [];
 
   leaves.forEach((leaf, i) => {
     const methodName = `test${i + 1}`;
     const path = pathToLeaf(leaf.id, setResult);
-
-    dispatchLines.push(`        if (!${methodName}()) failed++;`);
-    dispatchLines.push('        total++;');
 
     methodLines.push(`    private static boolean ${methodName}() {`);
     methodLines.push(`        System.out.println("--- Test ${i + 1} of ${leaves.length} ---");`);
@@ -317,15 +323,32 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
     methodLines.push(...stubWireLines(cls, metaModel, varName));
     methodLines.push(`        ${varName}.start();`);
     methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar));
-    methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
-    methodLines.push('        return ok;');
+    if (leaf.status === 'leaf-depth-bound') {
+      methodLines.push('        System.out.println("(depth limit reached — path continues beyond this point, no fixed endpoint to assert)");');
+      methodLines.push('        return true;');
+    } else {
+      methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
+      methodLines.push('        return ok;');
+    }
     methodLines.push('    }', '');
   });
 
+  // main() looks up and calls test1()..testN() by name via reflection
+  // instead of listing a call site per test — a constant-size loop no
+  // matter how many leaves the suite has, rather than 2 lines of dispatch
+  // code per test (which itself was already a fix for the same 64KB limit
+  // the per-test-method split addresses — see the comment above).
   const lines = [`package ${pkgName};`, '', `public class ${testClassName} {`, ''];
-  lines.push('    public static void main(String[] args) {');
-  lines.push('        int total = 0, failed = 0;', '');
-  lines.push(...dispatchLines);
+  lines.push('    public static void main(String[] args) throws Exception {');
+  lines.push('        int total = 0, failed = 0;');
+  lines.push(`        int testCount = ${leaves.length};`, '');
+  lines.push('        for (int i = 1; i <= testCount; i++) {');
+  lines.push(`            java.lang.reflect.Method m = ${testClassName}.class.getDeclaredMethod("test" + i);`);
+  lines.push('            m.setAccessible(true);');
+  lines.push('            boolean ok = (boolean) m.invoke(null);');
+  lines.push('            if (!ok) failed++;');
+  lines.push('            total++;');
+  lines.push('        }');
   lines.push('');
   lines.push('        System.out.println(total + " tests, " + (total - failed) + " passed, " + failed + " failed.");');
   lines.push('    }', '');

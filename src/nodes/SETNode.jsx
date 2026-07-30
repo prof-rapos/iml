@@ -3,21 +3,7 @@ import { useModelStore } from '../store/modelStore';
 import { useMbtStore } from '../store/mbtStore';
 import { getAllAttributes } from '../utils/modelHelpers';
 import { stateName } from '../utils/mbtCodeGen';
-
-const STATUS_BORDER = {
-  open:              'var(--iml-primary)',
-  'leaf-deadend':    '#64748b',
-  'leaf-final':      '#dc2626',
-  'leaf-subsumed':   '#7c3aed',
-  'leaf-depth-bound': '#d97706',
-};
-
-const STATUS_LABEL = {
-  'leaf-deadend': 'dead end',
-  'leaf-final': 'final',
-  'leaf-subsumed': 'subsumed',
-  'leaf-depth-bound': 'depth limit',
-};
+import { STATUS_BORDER, STATUS_LABEL } from '../utils/setNodeStatus';
 
 const PATH_HIGHLIGHT = '#f59e0b';
 

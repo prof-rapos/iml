@@ -21,7 +21,7 @@ function StepBlock({ step, index }) {
       background: '#161b22', border: `1px solid ${step.guardFork ? '#d97706' : BORDER}`,
     }}>
       <span style={{ fontSize: 11, color: TEXT_DIM, fontFamily: 'var(--iml-font-mono)', minWidth: 16 }}>{index + 1}.</span>
-      <span style={{ fontSize: 13 }}>{STEP_ICON[step.kind] ?? '•'}</span>
+      <span style={{ fontSize: 13, color: TEXT }}>{STEP_ICON[step.kind] ?? '•'}</span>
       <span style={{ fontSize: 12.5, color: TEXT, flex: 1 }}>{step.label}</span>
       {step.guardFork && <span title="Best-effort — guard outcome not guaranteed" style={{ color: '#d97706', fontSize: 12 }}>⚠</span>}
     </div>

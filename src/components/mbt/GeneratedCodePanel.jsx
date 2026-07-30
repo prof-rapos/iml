@@ -21,11 +21,7 @@ function GeneratedTestEditor({ selectedLeafId, setResult, cls, metaModel }) {
   const [files, setFiles] = useState(() => generated?.files ?? []);
 
   if (!generated) {
-    return (
-      <div style={EMPTY_STATE_STYLE}>
-        This path hit the exploration depth limit and has no fixed endpoint, so no concrete test is generated for it — still browsable in the SET Viewer.
-      </div>
-    );
+    return <div style={EMPTY_STATE_STYLE}>Couldn't generate a test for this leaf.</div>;
   }
 
   const handleContentChange = (path, content) => {

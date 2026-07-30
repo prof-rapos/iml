@@ -1,41 +1,53 @@
 import { useEffect } from 'react';
-import { ReactFlow, ReactFlowProvider, Background, Controls, useReactFlow } from '@xyflow/react';
+import { ReactFlow, ReactFlowProvider, Background, Controls, useReactFlow, useStore, getViewportForBounds } from '@xyflow/react';
 import { useModelStore } from '../../store/modelStore';
 import { useMbtStore } from '../../store/mbtStore';
 import { hasStateMachine } from '../../utils/javaCodeGen';
 import SETNode from '../../nodes/SETNode';
 import SETEdge from '../../edges/SETEdge';
 import SvgMarkers from '../SvgMarkers';
+import SETLegend from './SETLegend';
 import { TEXT_DIM } from '../theme';
 
 const nodeTypes = { setNode: SETNode };
 const edgeTypes = { setEdge: SETEdge };
 const BORDER = 'rgba(255,255,255,0.10)';
 const TOP_MARGIN = 70; // px the root sits below the pane's top edge once centered
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 2; // matches ReactFlow's own un-overridden defaults
 
 // Runs once per fresh build (keyed off buildToken, not `nodes` itself — the
 // store's nodes array mutates repeatedly during React Flow's own per-node
 // measurement pass, which isn't a new build and shouldn't re-trigger this).
-// fitView first for a sensible zoom/horizontal centering across the whole
-// tree's width, then overrides just the vertical offset so the root sits
-// near the TOP of the pane instead of vertically centered — large trees
-// otherwise bury the root (and the point you'd actually start reading from)
-// off-screen.
+// Deliberately does NOT call fitView(): fitView commits its own viewport
+// asynchronously (even with duration:0), so a follow-up getViewport()/
+// setViewport() pair in the same tick can read stale values and then get
+// clobbered when fitView's own update lands after ours — this is why the
+// root kept ending up back at the tree's vertical center instead of the
+// top. Computing the target viewport in one pure pass with
+// getViewportForBounds() and calling setViewport() exactly once removes
+// that race entirely: x/zoom center+fit the whole tree horizontally
+// (same math fitView uses internally), and y is overridden so the root
+// sits near the TOP of the pane instead of vertically centered — large
+// trees otherwise bury the root (the point you'd actually start reading
+// from) off-screen.
 function SETViewportController({ buildToken, rootId, nodes }) {
-  const { fitView, setViewport, getViewport } = useReactFlow();
+  const { setViewport, getNodesBounds } = useReactFlow();
+  const paneWidth = useStore((s) => s.width);
+  const paneHeight = useStore((s) => s.height);
 
   useEffect(() => {
-    if (!rootId || nodes.length === 0) return;
+    if (!rootId || nodes.length === 0 || !paneWidth || !paneHeight) return;
     const raf = requestAnimationFrame(() => {
-      fitView({ duration: 0, padding: 0.15 });
       const root = nodes.find((n) => n.id === rootId);
       if (!root) return;
-      const { x, zoom } = getViewport();
+      const bounds = getNodesBounds(nodes);
+      const { x, zoom } = getViewportForBounds(bounds, paneWidth, paneHeight, MIN_ZOOM, MAX_ZOOM, 0.15);
       setViewport({ x, y: TOP_MARGIN - root.position.y * zoom, zoom }, { duration: 250 });
     });
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [buildToken]);
+  }, [buildToken, paneWidth, paneHeight]);
 
   return null;
 }
@@ -125,13 +137,13 @@ export default function SETViewerPanel() {
               nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable
-              fitView
             >
               <SETViewportController buildToken={buildToken} rootId={setResult?.rootId} nodes={nodes} />
               <SvgMarkers />
               <Background color="var(--iml-grid-color)" gap={20} />
               <Controls showInteractive={false} />
             </ReactFlow>
+            <SETLegend />
           </ReactFlowProvider>
         ) : (
           <div style={{

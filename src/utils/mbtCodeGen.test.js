@@ -91,10 +91,14 @@ describe('generateConcreteTestFiles', () => {
   const result = buildSET('TL', metaModel);
   const greenNode = [...result.nodesById.values()].find((n) => n.stateId === 'sGreen');
 
-  it('returns null for a depth-bound leaf', () => {
+  it('still generates a runnable test for a depth-bound leaf, driving the path but asserting nothing', () => {
     const depthBoundResult = { ...result, nodesById: new Map(result.nodesById) };
     depthBoundResult.nodesById.set(greenNode.id, { ...greenNode, status: 'leaf-depth-bound' });
-    expect(generateConcreteTestFiles(greenNode.id, depthBoundResult, cls, metaModel)).toBeNull();
+    const { files, mainClassPath } = generateConcreteTestFiles(greenNode.id, depthBoundResult, cls, metaModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('capsule.getOppositeInReceiver().safe();'); // path still driven
+    expect(test).not.toContain('MBTAssert.assertEquals'); // no fixed endpoint to assert
+    expect(test).toContain('depth limit reached');
   });
 
   it('returns null for an unknown leaf id', () => {
@@ -147,11 +151,10 @@ describe('generateAllTestsFiles', () => {
     const test = fileFor(files, mainClassPath.split('/').pop());
 
     expect(test).toContain('private static boolean test1()');
-    expect(test).toContain('if (!test1()) failed++;');
 
-    // main()'s own body is just the dispatch loop — none of a test's own
-    // construct/wire/run lines should appear before the first method
-    // definition starts.
+    // main()'s own body is just the reflection dispatch loop — none of a
+    // test's own construct/wire/run lines should appear before the first
+    // method definition starts.
     const mainStart = test.indexOf('public static void main');
     const firstMethodStart = test.indexOf('private static boolean test1()');
     const mainBody = test.slice(mainStart, firstMethodStart);
@@ -190,7 +193,45 @@ describe('generateAllTestsFiles', () => {
     expect(methodCount).toBeGreaterThanOrEqual(20);
     // Every method body should be roughly the same, bounded size — no single
     // method accumulates other tests' content.
-    const firstMethod = test.slice(test.indexOf('test1()'), test.indexOf('test2()'));
-    expect(firstMethod.length).toBeLessThan(600);
+    const firstMethod = test.slice(test.indexOf('private static boolean test1()'), test.indexOf('private static boolean test2()'));
+    expect(firstMethod.length).toBeLessThan(800);
+
+    // main()'s own body (the reflection dispatch loop) stays constant-size
+    // regardless of leaf count — the whole point of looking test methods up
+    // by name in a loop instead of listing one call site per test.
+    const mainStart = test.indexOf('public static void main');
+    const firstMethodStart = test.indexOf('private static boolean test1()');
+    const mainBody = test.slice(mainStart, firstMethodStart);
+    expect(mainBody).toContain('getDeclaredMethod("test" + i)');
+    expect(mainBody.length).toBeLessThan(700);
+  });
+
+  it('includes depth-bound leaves too, driving the path and vacuously returning true (no fixed endpoint to fail on)', () => {
+    const loopModel = {
+      ...NO_ATTRS,
+      classes: [{ id: 'C', name: 'C', attributes: [{ id: 'aX', name: 'x', type: 'INT', lowerBound: 1, upperBound: 1 }] }],
+      protocols: [{ id: 'proto1', name: 'p', signals: [{ id: 'sig1', name: 'tick', direction: 'in', params: [] }] }],
+      behaviours: {
+        C: {
+          states: [
+            { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+            { id: 'sA', kind: 'simple', name: 'A', entry: '', exit: '' },
+          ],
+          transitions: [
+            { id: 'tInit', source: 'sInit', target: 'sA', trigger: '', guard: '', effect: 'x = 0;' },
+            { id: 'tLoop', source: 'sA', target: 'sA', trigger: 'p.tick', guard: '', effect: 'x = x + 1;' },
+          ],
+        },
+      },
+    };
+    const loopCls = { id: 'C', name: 'C', attributes: loopModel.classes[0].attributes, ports: [{ id: 'pP', name: 'p', protocolId: 'proto1', conjugated: false }] };
+    loopModel.classes = [loopCls];
+    const result = buildSET('C', loopModel);
+    expect([...result.nodesById.values()].some((n) => n.status === 'leaf-depth-bound')).toBe(true);
+
+    const { files, mainClassPath } = generateAllTestsFiles(result, loopCls, loopModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('depth limit reached');
+    expect(test).toContain('return true;');
   });
 });
