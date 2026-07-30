@@ -1,17 +1,21 @@
 import { nanoid } from 'nanoid';
 import { getAllAttributes } from './modelHelpers.js';
 import { safeId } from './javaCodeGen.js';
-import { applyActionCode } from './actionInterpreter.js';
+import { applyActionCode, evaluateCondition } from './actionInterpreter.js';
 
 // Subsumption-based symbolic execution over one capsule class's state
 // machine, producing a Symbolic Execution Tree (SET): a node = (FSM state,
-// tracked attribute values); a guarded transition splits into one edge per
-// guard ("this fires given every earlier guard in the chain was false") plus,
-// if no unconditional catch-all exists, a trailing "all guards false, signal
-// dropped" edge. A path that reaches a node whose (state, known attribute
-// values) exactly matches an already-visited node stops there (subsumption)
-// — this is what makes a cyclic machine's exploration terminate. A depth
-// bound is a backstop for genuinely-unbounded branches only.
+// tracked attribute values). A guard that's a simple comparison against a
+// KNOWN tracked attribute (same grammar as an action-code if-condition) is
+// actually EVALUATED against the node's current values — a guard that's
+// definitely true fires deterministically (one edge, no fork); one that's
+// definitely false is skipped entirely (no edge, no impossible branch);
+// only a guard we genuinely can't evaluate (references an unknown/untracked
+// value) falls back to forking both possibilities, same as before. A path
+// that reaches a node whose (state, known attribute values) exactly matches
+// an already-visited node stops there (subsumption) — this is what makes a
+// cyclic machine's exploration terminate. A depth bound is a backstop for
+// genuinely-unbounded branches only.
 
 const MAX_DEPTH = 40;
 
@@ -144,13 +148,16 @@ export function buildSET(classId, metaModel) {
 
   // The "all guards false, signal dropped" outcome: a leaf that subsumes
   // straight back into the source node (nothing changed) — reuses the
-  // subsumption machinery instead of special-casing "no-op" edges.
-  function fireDropped(node, trigger) {
+  // subsumption machinery instead of special-casing "no-op" edges. guardFork
+  // is false when every member's guard was fully evaluated to false (the
+  // drop is certain), true when at least one member couldn't be evaluated
+  // (the drop is only one of the possible outcomes).
+  function fireDropped(node, trigger, guardFork) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
     const droppedId = makeNode(node.stateId, node.attrValues, node.depth + 1, null, 'leaf-subsumed');
     nodesById.get(droppedId).subsumedByNodeId = node.id;
-    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', true, event);
+    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', guardFork, event);
     nodesById.get(droppedId).parentEdgeId = edgeId;
   }
 
@@ -169,16 +176,27 @@ export function buildSET(classId, metaModel) {
     }
 
     for (const [trigger, group] of groups) {
-      let hitUnconditional = false;
+      let stopped = false;   // an unconditional or a fully-evaluated-true guard fired for certain — matches dispatch()'s if/else-if: nothing after it can run
+      let anyUnknown = false; // at least one member's guard couldn't be evaluated, so "none of them fired" is only a possible outcome, not certain
       for (let i = 0; i < group.length; i++) {
         const t = group[i];
         const guardText = t.guard && t.guard.trim();
-        const branch = guardText ? `guard-${i}-true` : 'unconditional';
-        const guardFork = group.length > 1 || !!guardText;
-        fireTransition(node, t, trigger, branch, guardFork);
-        if (!guardText) { hitUnconditional = true; break; } // matches dispatch()'s if/else-if: an unconditional match makes later members dead code
+        if (!guardText) {
+          fireTransition(node, t, trigger, 'unconditional', false);
+          stopped = true;
+          break;
+        }
+        const evaluated = evaluateCondition(guardText, attrIndex, node.attrValues);
+        if (evaluated === true) {
+          fireTransition(node, t, trigger, `guard-${i}-true`, false); // certain, given every earlier member was false
+          stopped = true;
+          break;
+        }
+        if (evaluated === false) continue; // certainly does not fire — no edge, no impossible branch
+        anyUnknown = true;
+        fireTransition(node, t, trigger, `guard-${i}-true`, true); // can't rule in or out — fork, same as before
       }
-      if (!hitUnconditional) fireDropped(node, trigger); // every member in the chain was guarded — a real "all false" outcome exists
+      if (!stopped) fireDropped(node, trigger, anyUnknown);
     }
   }
 

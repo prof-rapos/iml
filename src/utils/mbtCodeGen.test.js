@@ -91,13 +91,13 @@ describe('generateConcreteTestFiles', () => {
   const result = buildSET('TL', metaModel);
   const greenNode = [...result.nodesById.values()].find((n) => n.stateId === 'sGreen');
 
-  it('still generates a runnable test for a depth-bound leaf, driving the path but asserting nothing', () => {
+  it('generates a runnable test for a depth-bound leaf that drives the path AND asserts the state reached so far', () => {
     const depthBoundResult = { ...result, nodesById: new Map(result.nodesById) };
     depthBoundResult.nodesById.set(greenNode.id, { ...greenNode, status: 'leaf-depth-bound' });
     const { files, mainClassPath } = generateConcreteTestFiles(greenNode.id, depthBoundResult, cls, metaModel);
     const test = fileFor(files, mainClassPath.split('/').pop());
     expect(test).toContain('capsule.getOppositeInReceiver().safe();'); // path still driven
-    expect(test).not.toContain('MBTAssert.assertEquals'); // no fixed endpoint to assert
+    expect(test).toContain('MBTAssert.assertEquals("state", "GREEN", capsule.getCurrentStateName());'); // the leaf itself is a real, known point — assert it
     expect(test).toContain('depth limit reached');
   });
 
@@ -206,7 +206,7 @@ describe('generateAllTestsFiles', () => {
     expect(mainBody.length).toBeLessThan(700);
   });
 
-  it('includes depth-bound leaves too, driving the path and vacuously returning true (no fixed endpoint to fail on)', () => {
+  it('includes depth-bound leaves too, driving the path and asserting the state/attributes reached so far', () => {
     const loopModel = {
       ...NO_ATTRS,
       classes: [{ id: 'C', name: 'C', attributes: [{ id: 'aX', name: 'x', type: 'INT', lowerBound: 1, upperBound: 1 }] }],
@@ -232,6 +232,9 @@ describe('generateAllTestsFiles', () => {
     const { files, mainClassPath } = generateAllTestsFiles(result, loopCls, loopModel);
     const test = fileFor(files, mainClassPath.split('/').pop());
     expect(test).toContain('depth limit reached');
-    expect(test).toContain('return true;');
+    // The depth-bound leaf's own method should assert the state/attribute
+    // values actually reached (e.g. x=40 after 40 loop iterations) — a real,
+    // useful assertion, not a vacuous "return true" with nothing checked.
+    expect(test).toMatch(/MBTAssert\.assertEquals\("x", \d+, capsule\.getX\(\)\)/);
   });
 });

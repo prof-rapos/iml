@@ -95,7 +95,11 @@ export function parseActionLine(line, attrIndex, values) {
 // against a literal (or a bare/negated boolean attribute) — deliberately not
 // attr-vs-attr or anything more elaborate, matching the same
 // simple/self-contained philosophy as the arithmetic support above.
-function evaluateCondition(condRaw, attrIndex, values) {
+// Exported so symbolicExecution.js can reuse the exact same grammar for
+// transition GUARDS, not just action-code if-conditions — a guard that's a
+// simple comparison against a known tracked attribute (e.g. "val < 10") is
+// just as evaluable as an if-condition with the same shape.
+export function evaluateCondition(condRaw, attrIndex, values) {
   const cond = condRaw.trim();
 
   let m = cond.match(RE_COMPARISON);

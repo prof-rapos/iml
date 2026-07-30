@@ -16,21 +16,34 @@ const TOP_MARGIN = 70; // px the root sits below the pane's top edge once center
 const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2; // matches ReactFlow's own un-overridden defaults
 
+const MAX_MEASURE_RETRIES = 30; // ~0.5s at 60fps — generous for even a large tree's first measurement pass
+
 // Runs once per fresh build (keyed off buildToken, not `nodes` itself — the
 // store's nodes array mutates repeatedly during React Flow's own per-node
 // measurement pass, which isn't a new build and shouldn't re-trigger this).
 // Deliberately does NOT call fitView(): fitView commits its own viewport
 // asynchronously (even with duration:0), so a follow-up getViewport()/
 // setViewport() pair in the same tick can read stale values and then get
-// clobbered when fitView's own update lands after ours — this is why the
-// root kept ending up back at the tree's vertical center instead of the
-// top. Computing the target viewport in one pure pass with
-// getViewportForBounds() and calling setViewport() exactly once removes
-// that race entirely: x/zoom center+fit the whole tree horizontally
-// (same math fitView uses internally), and y is overridden so the root
-// sits near the TOP of the pane instead of vertically centered — large
-// trees otherwise bury the root (the point you'd actually start reading
-// from) off-screen.
+// clobbered when fitView's own update lands after ours. Computing the
+// target viewport in one pure pass with getViewportForBounds() and calling
+// setViewport() exactly once removes that race: x/zoom center+fit the
+// whole tree horizontally (same math fitView uses internally), and y is
+// overridden so the root sits near the TOP of the pane instead of
+// vertically centered — large trees otherwise bury the root (the point
+// you'd actually start reading from) off-screen.
+//
+// A second, separate race: on the very first frame after a build, React
+// Flow's nodes haven't been measured yet (ResizeObserver hasn't reported
+// their real width/height back through onNodesChange), so getNodesBounds()
+// can return a degenerate zero-size box — computing a garbage viewport from
+// that and committing it immediately (with no later correction, since only
+// buildToken/pane-size changes re-run this effect, not every nodes update)
+// is what actually left the root sitting wherever the tree's un-fitted
+// default viewport happened to put it. Retrying on the next frame until the
+// bounds are real (capped, so a pane that genuinely never measures doesn't
+// spin forever) fixes this without depending on `nodes` in the effect
+// itself, which would re-center on every unrelated nodes change (e.g.
+// clicking a leaf toggles its selection state, changing the array).
 function SETViewportController({ buildToken, rootId, nodes }) {
   const { setViewport, getNodesBounds } = useReactFlow();
   const paneWidth = useStore((s) => s.width);
@@ -38,13 +51,21 @@ function SETViewportController({ buildToken, rootId, nodes }) {
 
   useEffect(() => {
     if (!rootId || nodes.length === 0 || !paneWidth || !paneHeight) return;
-    const raf = requestAnimationFrame(() => {
+    let raf;
+
+    function attempt(retriesLeft) {
       const root = nodes.find((n) => n.id === rootId);
       if (!root) return;
       const bounds = getNodesBounds(nodes);
+      if ((!bounds.width || !bounds.height) && retriesLeft > 0) {
+        raf = requestAnimationFrame(() => attempt(retriesLeft - 1));
+        return;
+      }
       const { x, zoom } = getViewportForBounds(bounds, paneWidth, paneHeight, MIN_ZOOM, MAX_ZOOM, 0.15);
       setViewport({ x, y: TOP_MARGIN - root.position.y * zoom, zoom }, { duration: 250 });
-    });
+    }
+
+    raf = requestAnimationFrame(() => attempt(MAX_MEASURE_RETRIES));
     return () => cancelAnimationFrame(raf);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [buildToken, paneWidth, paneHeight]);
@@ -151,7 +172,7 @@ export default function SETViewerPanel() {
             justifyContent: 'center', textAlign: 'center', padding: 24,
             color: TEXT_DIM, fontSize: 13, fontFamily: 'var(--iml-font-sans)',
           }}>
-            Select a <strong>capsule</strong> (class) above to build its symbolic execution tree.
+            Select a capsule (class) above to build its symbolic execution tree.
           </div>
         )}
       </div>

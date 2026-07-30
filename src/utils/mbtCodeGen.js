@@ -38,9 +38,18 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
 
   const guardForkPresent = steps.some((s) => s.guardFork);
 
+  const knownAttrs = attrs
+    .map((a) => ({ name: a.name, v: leaf.attrValues.get(a.id) }))
+    .filter((a) => a.v?.kind === 'known');
+  const attrPart = knownAttrs.length ? `, ${knownAttrs.map((a) => `${a.name}=${a.v.value}`).join(', ')}` : '';
+
   let outcome;
   if (leaf.status === 'leaf-depth-bound') {
-    outcome = { kind: 'depth-bound', label: 'Path continues beyond the exploration depth limit — no fixed endpoint to assert, but the steps above are still exercised by the generated test.' };
+    // The leaf itself is a real, well-defined point (state + whatever
+    // attribute values are known there) — exploration just didn't continue
+    // past it. That's asserted exactly like any other leaf; only the label
+    // differs, to disclose that the path isn't fully explored beyond here.
+    outcome = { kind: 'depth-bound', label: `Depth limit reached — asserting the state reached so far: ${stateName(leaf, machine)}${attrPart}. The path continues beyond this point (not fully explored).` };
   } else if (leaf.status === 'leaf-subsumed') {
     const target = nodesById.get(leaf.subsumedByNodeId);
     outcome = {
@@ -50,10 +59,6 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
   } else if (leaf.status === 'leaf-final') {
     outcome = { kind: 'final', label: 'Capsule reaches its Final state.' };
   } else {
-    const knownAttrs = attrs
-      .map((a) => ({ name: a.name, v: leaf.attrValues.get(a.id) }))
-      .filter((a) => a.v?.kind === 'known');
-    const attrPart = knownAttrs.length ? `, ${knownAttrs.map((a) => `${a.name}=${a.v.value}`).join(', ')}` : '';
     outcome = { kind: 'assert', label: `Expect state: ${stateName(leaf, machine)}${attrPart}` };
   }
 
@@ -196,9 +201,10 @@ function attrLiteralForAssert(value, attr) {
 // trackOk: when true (the "Generate All Tests" case), each assertion updates
 // a running `ok` local instead of asserting standalone — lets the caller
 // aggregate a per-test pass/fail without short-circuiting past later checks.
+// A depth-bound leaf asserts exactly like any other leaf — it's still a
+// real, well-defined (state, known attributes) point, exploration just
+// didn't continue past it.
 function assertionLines(leaf, machine, attrs, varName, trackOk) {
-  if (leaf.status === 'leaf-depth-bound') return []; // no fixed endpoint to assert
-
   const lines = [];
   const stateConsts = stateConstMap(machine);
   // A Final-state leaf has no State enum constant (Final isn't a simple
@@ -227,11 +233,11 @@ function assertionLines(leaf, machine, attrs, varName, trackOk) {
 // One runnable test file for a single leaf: constructs the capsule under
 // test in isolation (stub peers on every port), drives it through the
 // leaf's event sequence, then asserts the expected end state/attributes.
-// A depth-bound leaf still gets a real test that drives the full path up to
-// the depth limit — there's no fixed endpoint to assert there (the path
-// keeps going), but skipping the path entirely would mean never exercising
-// it at all, so assertionLines() just contributes no assertions for it.
-// Returns null only for an unknown leaf id.
+// A depth-bound leaf gets the same treatment — it's still a real,
+// well-defined (state, known attributes) point, just one exploration didn't
+// continue past; only the leading println differs, disclosing that the
+// path isn't fully explored beyond this point. Returns null only for an
+// unknown leaf id.
 export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   const path = pathToLeaf(leafId, setResult);
   if (!path) return null;
@@ -267,10 +273,9 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   lines.push(...testScriptLines(edgeChain, varName, schedulerVar));
   lines.push('');
   if (leaf.status === 'leaf-depth-bound') {
-    lines.push('        System.out.println("(depth limit reached — path continues beyond this point, no fixed endpoint to assert)");');
-  } else {
-    lines.push(...assertionLines(leaf, machine, attrs, varName, false));
+    lines.push('        System.out.println("(depth limit reached — asserting the state reached so far; path continues beyond this point)");');
   }
+  lines.push(...assertionLines(leaf, machine, attrs, varName, false));
   lines.push('    }', '}');
 
   files.push({ path: `${pkgDir}/${testClassName}.java`, content: lines.join('\n') });
@@ -281,12 +286,12 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
 // A single file with one PRIVATE METHOD per non-open leaf (fresh capsule +
 // scheduler each time, returns pass/fail) and a main() that just calls them
 // in sequence and tallies the total — 100% path coverage as one runnable
-// suite, per the confirmed design. Depth-bound leaves are included too (the
-// path still gets exercised up to the limit), but their method always
-// returns true — there's no fixed endpoint to assert there, so "passing"
-// just means the driven steps ran without throwing. Each test's construct/
-// wire/run/assert body lives in its OWN method specifically so main() stays
-// a short, constant-size-per-call dispatch list: Java caps a single
+// suite, per the confirmed design. Depth-bound leaves are included too and
+// asserted exactly like any other leaf — the leaf itself is still a real,
+// well-defined (state, known attributes) point, exploration just didn't
+// continue past it. Each test's construct/wire/run/assert body lives in its
+// OWN method specifically so main() stays a short, constant-size-per-call
+// dispatch list: Java caps a single
 // method's bytecode at 64KB, and with real path-coverage suites easily
 // reaching hundreds of leaves, inlining every body directly into main()
 // (the original design) hit that limit — a call site costs a few bytes
@@ -324,12 +329,10 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
     methodLines.push(`        ${varName}.start();`);
     methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar));
     if (leaf.status === 'leaf-depth-bound') {
-      methodLines.push('        System.out.println("(depth limit reached — path continues beyond this point, no fixed endpoint to assert)");');
-      methodLines.push('        return true;');
-    } else {
-      methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
-      methodLines.push('        return ok;');
+      methodLines.push('        System.out.println("(depth limit reached — asserting the state reached so far; path continues beyond this point)");');
     }
+    methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
+    methodLines.push('        return ok;');
     methodLines.push('    }', '');
   });
 

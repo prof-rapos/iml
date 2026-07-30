@@ -181,6 +181,74 @@ describe('buildSET — guard chains', () => {
   });
 });
 
+describe('buildSET — guard evaluation against a known tracked attribute', () => {
+  // Regression for a real reported model (Done.iml): two complementary
+  // guards on the same trigger ("val < 10" / "val >= 10"), both referencing
+  // a tracked attribute whose value is exactly known at every step. Guards
+  // were previously NEVER evaluated (always forked both ways, same as an
+  // unknown guard) — so the tree explored both "val < 10 fired" AND
+  // "val >= 10 fired" at every single step, including impossible ones (e.g.
+  // "val < 10" firing when val is already known to be 10). Guards with this
+  // exact shape use the same evaluable grammar as an action-code
+  // if-condition, so they're now actually evaluated: exactly one branch is
+  // taken at each step, deterministically, with no impossible sibling edge.
+  const metaModel = {
+    ...NO_ATTRS,
+    classes: [{
+      id: 'C', name: 'C',
+      attributes: [{ id: 'aVal', name: 'val', type: 'INT', lowerBound: 1, upperBound: 1, defaultValue: '0' }],
+    }],
+    behaviours: {
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sCounting', kind: 'simple', name: 'Counting', entry: 'val++;', exit: '' },
+          { id: 'sFinal', kind: 'final', name: '', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sCounting', trigger: '', guard: '', effect: '' },
+          { id: 'tLoop', source: 'sCounting', target: 'sCounting', trigger: 'timer.timeout', guard: 'val < 3', effect: '' },
+          { id: 'tDone', source: 'sCounting', target: 'sFinal', trigger: 'timer.timeout', guard: 'val >= 3', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('takes exactly one deterministic branch per step — no impossible/forked sibling edges', () => {
+    const result = buildSET('C', metaModel);
+    for (const node of nodesArr(result)) {
+      if (node.status !== 'open') continue;
+      const outgoingEdges = edgesArr(result).filter((e) => e.sourceNodeId === node.id);
+      expect(outgoingEdges).toHaveLength(1);
+      expect(outgoingEdges[0].guardFork).toBe(false);
+    }
+  });
+
+  it('reaches Final exactly once val hits the crossover value, via the correct guard', () => {
+    const result = buildSET('C', metaModel);
+    const finalNode = nodesArr(result).find((n) => n.status === 'leaf-final');
+    expect(finalNode).toBeDefined();
+    expect(finalNode.attrValues.get('aVal')).toEqual({ kind: 'known', value: '3' });
+
+    const finalEdge = edgesArr(result).find((e) => e.targetNodeId === finalNode.id);
+    expect(finalEdge.transitionId).toBe('tDone');
+  });
+
+  it('never produces a dropped ("all guards false") leaf — the guards are complementary and fully evaluable', () => {
+    const result = buildSET('C', metaModel);
+    const dropped = edgesArr(result).filter((e) => e.branch === 'all-guards-false');
+    expect(dropped).toHaveLength(0);
+  });
+
+  it('produces a small, linear tree (no combinatorial blow-up from forking both guard outcomes at every step)', () => {
+    const result = buildSET('C', metaModel);
+    // 3 loop-back steps (val=1,2,3) reaching Final at val=3 (Counting is
+    // entered once per loop, plus once for the initial transition) — a
+    // handful of nodes, not a fork-doubling explosion.
+    expect(nodesArr(result).length).toBeLessThan(10);
+  });
+});
+
 describe('buildSET — final state and dead ends', () => {
   it('marks a transition into the Final pseudostate as leaf-final, never expanded', () => {
     const metaModel = {
