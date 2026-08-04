@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
 import { BORDER, TEXT, TEXT_MUTED, panelStyle, headerStyle } from './panelShellTokens';
 import { DeleteBtn } from './panelShell';
+import ConfirmModal from './ConfirmModal';
 
 // ── Local-only tokens (not shared — these three are unique to this panel) ──
 const INPUT_BG   = 'rgba(255,255,255,0.07)';
@@ -215,6 +216,7 @@ export default function PropertiesPanel() {
 function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteAttribute }) {
   const isSingle = attr.upperBound === 1;
   const enumDef  = attr.type === 'ENUM' ? enumerations.find((e) => e.id === attr.enumId) : null;
+  const [pendingNarrow, setPendingNarrow] = useState(null); // { n } while confirming
 
   // Selecting a primitive sets { type }; selecting an enum sets { type:'ENUM', enumId }.
   const onTypeChange = (raw) => {
@@ -225,6 +227,17 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
     }
   };
   const typeValue = attr.type === 'ENUM' ? `enum:${attr.enumId}` : attr.type;
+
+  // Narrowing multi- to single-valued keeps only the first array element on
+  // every affected object across every instance model — silently, with no
+  // undo. Confirm first if there's actually anything to lose.
+  const applyUpperBound = (n) => {
+    if (n === 1 && attr.upperBound !== 1 && useModelStore.getState().wouldNarrowingLoseData(classId, attr.id)) {
+      setPendingNarrow({ n });
+      return;
+    }
+    updateAttribute(classId, attr.id, { upperBound: n });
+  };
 
   return (
     <div style={{ background: CARD_BG, borderRadius: 6, padding: '10px', marginBottom: 8, border: `1px solid ${BORDER}` }}>
@@ -266,7 +279,7 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
             // Ignore non-numeric input rather than committing NaN — conformance's
             // `count > upperBound` check silently treats NaN as "no limit".
             const n = Number(raw);
-            if (Number.isFinite(n) && n >= 1) updateAttribute(classId, attr.id, { upperBound: n });
+            if (Number.isFinite(n) && n >= 1) applyUpperBound(n);
           }}
           title="Upper bound — * = many"
         />
@@ -279,6 +292,14 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
           <span style={{ fontSize: 10, color: TEXT_MUTED, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', flexShrink: 0 }}>Default</span>
           <div style={{ flex: 1 }}><DefaultInput attr={attr} classId={classId} enumDef={enumDef} updateAttribute={updateAttribute} /></div>
         </div>
+      )}
+      {pendingNarrow && (
+        <ConfirmModal
+          message={`"${attr.name}" holds more than one value on some objects. Narrowing it to a single value will keep only the first and permanently discard the rest — this cannot be undone. Continue?`}
+          confirmLabel="Discard extra values"
+          onConfirm={() => { updateAttribute(classId, attr.id, { upperBound: pendingNarrow.n }); setPendingNarrow(null); }}
+          onCancel={() => setPendingNarrow(null)}
+        />
       )}
     </div>
   );

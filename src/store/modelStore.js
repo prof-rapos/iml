@@ -5,6 +5,7 @@ import {
   getAllAttributes as _getAllAttributes,
   getAllRelations as _getAllRelations,
   convertAttrValue,
+  validateModelShape,
 } from '../utils/modelHelpers.js';
 import { validateConformance } from '../utils/conformance.js';
 import { selectionPatch } from './selectionChanges.js';
@@ -426,6 +427,23 @@ export const useModelStore = create((set, get) => ({
       };
     });
     return attrId;
+  },
+
+  // Narrowing an attribute from multi- to single-valued (upperBound -> 1)
+  // keeps only the first array element for every affected object — callers
+  // (PropertiesPanel) should check this BEFORE calling updateAttribute with
+  // a narrowing patch and confirm with the user if it's true, since the
+  // rest of the values are otherwise dropped silently and there's no undo.
+  wouldNarrowingLoseData: (classId, attrId) => {
+    const { metaModel, instanceModels } = get();
+    const affected = new Set([classId, ...getSubclassIds(classId, metaModel)]);
+    return instanceModels.some((im) =>
+      im.objects.some((o) => {
+        if (!affected.has(o.classId)) return false;
+        const v = o.attributeValues[attrId];
+        return Array.isArray(v) && v.length > 1;
+      })
+    );
   },
 
   updateAttribute: (classId, attrId, patch) => {
@@ -1178,8 +1196,16 @@ export const useModelStore = create((set, get) => ({
   },
 
   loadFromJSON: (data) => {
+    // A syntactically-valid-JSON-but-wrong-shaped file (old schema, an
+    // unrelated file, a hand-edit gone wrong) used to pass straight through
+    // and crash the first time something downstream did an unconditional
+    // array access — with no error boundary anywhere, that's a blank white
+    // screen. Refuse up front instead, with a message naming what's wrong.
+    const shapeError = validateModelShape(data);
+    if (shapeError) { get().notify(`Couldn't load file: ${shapeError}`); return; }
+
     // Backfill enumerations / behaviours / protocols for older models.
-    if (data.metaModel) set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {}, protocols: data.metaModel.protocols ?? [] } });
+    set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {}, protocols: data.metaModel.protocols ?? [] } });
 
     const normalizeIM = (im) => ({
       ...im,
@@ -1206,9 +1232,9 @@ export const useModelStore = create((set, get) => ({
       connectors: im.connectors ?? [],
     });
 
-    if (data.instanceModels) {
+    if (Array.isArray(data.instanceModels)) {
       set({ instanceModels: data.instanceModels.map(normalizeIM), currentIMIndex: 0 });
-    } else if (data.instanceModel) {
+    } else if (data.instanceModel && typeof data.instanceModel === 'object') {
       set({ instanceModels: [normalizeIM(data.instanceModel)], currentIMIndex: 0 });
     }
 

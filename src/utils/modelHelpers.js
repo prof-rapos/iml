@@ -1,5 +1,35 @@
 // Shared model utilities used by modelStore, runTransform, and javaCodeGen.
 
+// ── Import shape validation ────────────────────────────────────────────────────
+// A syntactically-valid JSON file that's the wrong shape (missing/renamed
+// fields, an old/incompatible schema, a completely unrelated file that
+// happens to have a top-level "metaModel" key) used to pass straight
+// through into the store, then crash somewhere downstream the first time
+// something did metaModel.classes.map(...) — with no error boundary
+// anywhere in the app, that's a blank white screen. This checks just enough
+// structure that every existing consumer's unconditional array/field
+// access (getAllAttributes, rebuildCanvas, conformance, codegen, ...) is
+// safe, without being so strict that a genuinely valid file from an older
+// export gets rejected. Returns null when valid, or a user-facing message
+// naming what's wrong.
+export function validateModelShape(data) {
+  if (!data || typeof data !== 'object') return 'Not a valid model file.';
+  const mm = data.metaModel;
+  if (!mm || typeof mm !== 'object') return 'Missing "metaModel" — this doesn\'t look like an .iml.json file.';
+  if (!Array.isArray(mm.classes)) return 'metaModel.classes is missing or not a list.';
+  if (!Array.isArray(mm.relations)) return 'metaModel.relations is missing or not a list.';
+  for (const cls of mm.classes) {
+    if (!cls || typeof cls.id !== 'string') return 'One of the meta-model\'s classes is missing an id.';
+    if (!Array.isArray(cls.attributes)) return `Class "${cls.name ?? cls.id}" is missing its attributes list.`;
+  }
+  for (const rel of mm.relations) {
+    if (!rel || typeof rel.source !== 'string' || typeof rel.target !== 'string' || typeof rel.kind !== 'string') {
+      return 'One of the meta-model\'s relations is missing a source, target, or kind.';
+    }
+  }
+  return null;
+}
+
 // ── Attribute collection (inheritance-aware) ──────────────────────────────────
 // Returns all attributes visible on classId: parent attributes first, then own.
 export function getAllAttributes(classId, metaModel) {

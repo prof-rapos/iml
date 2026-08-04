@@ -1,6 +1,7 @@
 import { useState, useRef, useMemo } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
 import { useOutsideClick } from '../utils/useOutsideClick';
+import ConfirmModal from './ConfirmModal';
 
 
 const EDGE_TYPES  = ['INHERITANCE', 'REFERENCE', 'COMPOSITION'];
@@ -345,45 +346,6 @@ export default function Sidebar() {
           onCancel={dismiss}
         />
       )}
-    </div>
-  );
-}
-
-function ConfirmModal({ message, onConfirm, onCancel }) {
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 1000,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: 'rgba(0,0,0,0.55)',
-    }}
-      onClick={onCancel}
-    >
-      <div style={{
-        background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
-        borderRadius: 10, padding: '24px 28px', maxWidth: 340, width: '90%',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
-        color: '#f1f5f9', fontFamily: 'var(--iml-font-sans)',
-      }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>{message}</div>
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-          <button onClick={onCancel} style={{
-            padding: '7px 18px', borderRadius: 5, cursor: 'pointer', fontSize: 13,
-            border: '1px solid rgba(255,255,255,0.2)', background: 'rgba(255,255,255,0.07)',
-            color: '#f1f5f9', fontWeight: 600,
-          }}>
-            Cancel
-          </button>
-          <button onClick={onConfirm} style={{
-            padding: '7px 18px', borderRadius: 5, cursor: 'pointer', fontSize: 13,
-            border: 'none', background: '#dc2626',
-            color: '#fff', fontWeight: 600,
-          }}>
-            Confirm
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

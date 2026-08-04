@@ -6,6 +6,7 @@ import {
   convertAttrValue,
   getEnum,
   isEnumValueValid,
+  validateModelShape,
 } from './modelHelpers.js';
 
 // A tiny meta-model: Dog extends Animal.
@@ -185,5 +186,59 @@ describe('convertAttrValue', () => {
 
   it('converts a single scalar value', () => {
     expect(convertAttrValue('true', 'BOOLEAN', 'INT')).toBe('1');
+  });
+});
+
+// Regression: a syntactically-valid-JSON-but-wrong-shaped import (missing
+// classes/relations arrays, an unrelated file with a top-level "metaModel"
+// key) used to pass straight through into the store and crash the first
+// time something downstream did an unconditional array access — with no
+// error boundary anywhere in the app at the time, that was a blank white
+// screen with no recovery. validateModelShape() is the up-front check both
+// the main app's Import IML and the Transformations module's Load
+// Source/Target now run before committing an import.
+describe('validateModelShape', () => {
+  const valid = {
+    metaModel: {
+      classes: [{ id: 'A', name: 'A', attributes: [] }],
+      relations: [{ id: 'r1', source: 'A', target: 'A', kind: 'REFERENCE' }],
+    },
+  };
+
+  it('accepts a well-shaped model', () => {
+    expect(validateModelShape(valid)).toBeNull();
+  });
+
+  it('rejects a completely unrelated JSON file', () => {
+    expect(validateModelShape({ foo: 'bar' })).toMatch(/metaModel/);
+  });
+
+  it('rejects null/non-object input without throwing', () => {
+    expect(validateModelShape(null)).toMatch(/not a valid/i);
+    expect(validateModelShape('a string')).toMatch(/not a valid/i);
+  });
+
+  it('rejects a metaModel whose classes field is missing or not a list', () => {
+    expect(validateModelShape({ metaModel: {} })).toMatch(/classes/);
+    expect(validateModelShape({ metaModel: { classes: {}, relations: [] } })).toMatch(/classes/);
+  });
+
+  it('rejects a metaModel whose relations field is missing or not a list', () => {
+    expect(validateModelShape({ metaModel: { classes: [] } })).toMatch(/relations/);
+  });
+
+  it('rejects a class with no id or no attributes list', () => {
+    expect(validateModelShape({
+      metaModel: { classes: [{ name: 'A' }], relations: [] },
+    })).toMatch(/id/);
+    expect(validateModelShape({
+      metaModel: { classes: [{ id: 'A', name: 'A' }], relations: [] },
+    })).toMatch(/attributes/);
+  });
+
+  it('rejects a relation missing source/target/kind', () => {
+    expect(validateModelShape({
+      metaModel: { classes: [], relations: [{ id: 'r1' }] },
+    })).toMatch(/source, target, or kind/);
   });
 });

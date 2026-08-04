@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
 import { useModelStore } from '../../store/modelStore';
 import { runTransform } from '../../utils/runTransform';
+import { validateModelShape } from '../../utils/modelHelpers';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -17,7 +18,12 @@ function loadJsonFile(onLoad, onError) {
     try {
       const text = await file.text();
       const data = JSON.parse(text);
-      if (!data.metaModel) throw new Error('Missing metaModel field');
+      // Only checked "does metaModel exist" before — a wrong-shaped-but-
+      // present metaModel (missing classes/relations arrays, an old schema)
+      // passed straight through and crashed downstream instead, with no
+      // error boundary anywhere in the app to catch it.
+      const shapeError = validateModelShape(data);
+      if (shapeError) throw new Error(shapeError);
       onLoad(data);
     } catch (err) {
       onError(err.message || 'Invalid file');
