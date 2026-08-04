@@ -319,3 +319,73 @@ describe('generateJavaCode — behavioural codegen (capsules, ports, state machi
     });
   });
 });
+
+// Regression: a received signal's parameter was declared in the generated
+// receiver method's signature but its value was never stored or passed
+// anywhere — any guard/effect referencing it (the normal way to model an
+// event carrying data) failed to compile with "cannot find symbol".
+describe('generateJavaCode — signal parameters reach guards and effects', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Bank',
+    classes: [{
+      id: 'AC', name: 'Account', isAbstract: false,
+      attributes: [{ id: 'aBal', name: 'balance', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1, defaultValue: '0' }],
+      ports: [{ id: 'pIn', name: 'ops', protocolId: 'proto1', conjugated: false }],
+    }],
+    relations: [], enumerations: [],
+    protocols: [{
+      id: 'proto1', name: 'banking',
+      signals: [{ id: 'sig1', name: 'deposit', direction: 'in', params: [{ id: 'p1', name: 'amount', type: 'INT' }] }],
+    }],
+    behaviours: {
+      AC: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sOpen', kind: 'simple', name: 'Open', entry: '', exit: '' },
+          { id: 'sFlush', kind: 'simple', name: 'Flush', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sOpen', trigger: '', guard: '', effect: '' },
+          // Guard AND effect both reference the signal's own param name directly.
+          { id: 't1', source: 'sOpen', target: 'sFlush', trigger: 'ops.deposit', guard: 'amount >= 100', effect: 'balance += amount;' },
+        ],
+      },
+    },
+  };
+  const files = generateJavaCode(metaModel, [], 'behavioural');
+  const src = fileFor(files, 'Account.java');
+
+  it('stores the parameter into a capsule field before calling dispatch', () => {
+    expect(src).toMatch(/private int _arg_OPS_DEPOSIT_amount;/);
+    expect(src).toMatch(/public void deposit\(int amount\) \{ _arg_OPS_DEPOSIT_amount = amount; dispatch\(Trigger\.OPS_DEPOSIT\); \}/);
+  });
+
+  it('declares a same-named local in dispatch() before the guard/effect that reference it', () => {
+    const dispatchStart = src.indexOf('private void dispatch');
+    const guardIdx  = src.indexOf('amount >= 100');
+    const effectIdx = src.indexOf('balance += amount;');
+    const localDeclIdx = src.indexOf('int amount = _arg_OPS_DEPOSIT_amount;');
+    expect(localDeclIdx).toBeGreaterThan(dispatchStart);
+    expect(localDeclIdx).toBeLessThan(guardIdx);
+    expect(localDeclIdx).toBeLessThan(effectIdx);
+  });
+
+  it('does not declare a param field/local when a signal has no params (no regression on the common case)', () => {
+    const noParamModel = {
+      ...metaModel,
+      protocols: [{ id: 'proto1', name: 'banking', signals: [{ id: 'sig1', name: 'deposit', direction: 'in', params: [] }] }],
+      behaviours: {
+        AC: {
+          ...metaModel.behaviours.AC,
+          transitions: metaModel.behaviours.AC.transitions.map((t) =>
+            t.id === 't1' ? { ...t, guard: '', effect: '' } : t
+          ),
+        },
+      },
+    };
+    const noParamFiles = generateJavaCode(noParamModel, [], 'behavioural');
+    const noParamSrc = fileFor(noParamFiles, 'Account.java');
+    expect(noParamSrc).not.toContain('_arg_');
+    expect(noParamSrc).toContain('public void deposit() { dispatch(Trigger.OPS_DEPOSIT); }');
+  });
+});

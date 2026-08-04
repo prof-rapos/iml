@@ -282,6 +282,32 @@ export function portFieldName(port) {
   return safeId(port.name);
 }
 
+// A received signal's parameter values need to survive from the receiver
+// method call into the dispatch() call it triggers — dispatch() itself
+// only ever gets a bare Trigger, never the signal's arguments — so each
+// param gets its own capsule-level field the receiver assigns into right
+// before calling dispatch(), and dispatch() copies back out into a local
+// variable (named exactly as modeled) at the top of that trigger's block,
+// where a guard/effect referencing it resolves through normal Java scoping.
+function argFieldName(portName, sigName, paramName) {
+  return `_arg_${triggerConstName(`${portName}.${sigName}`)}_${safeId(paramName)}`;
+}
+
+// Resolves a transition's stored "port.signal" trigger string back to that
+// signal's declared params, so generateDispatch can declare the right
+// local variables. Returns [] for anything that doesn't resolve (a stale
+// trigger after a rename/delete, a system port) — same graceful-drop
+// posture as the rest of dispatch generation.
+function resolveSignalParams(triggerVal, cls, metaModel) {
+  const [portName, sigName] = String(triggerVal).split('.');
+  const port = (cls.ports ?? []).find((p) => p.name === portName);
+  if (!port) return [];
+  const proto = getProtocolById(port.protocolId, metaModel);
+  if (!proto) return [];
+  const sig = (proto.signals ?? []).find((s) => s.name === sigName);
+  return sig?.params ?? [];
+}
+
 // One receiver interface per user-defined protocol, with a no-op default
 // method per signal (both directions) — a class implementing it only ever
 // overrides the signals it actually receives; everything else is a safe
@@ -448,12 +474,28 @@ function generateCapsulePorts(cls, metaModel, dispatchable) {
 
       const wanted   = port.conjugated ? 'out' : 'in';
       const received = (proto.signals ?? []).filter((sg) => sg.direction === wanted);
+
+      // Param-holding fields declared as fields of the CAPSULE itself, not
+      // of the anonymous receiver below — dispatch() (a capsule method)
+      // needs to read them back out, and a field declared inside the
+      // anonymous class body wouldn't be visible there.
+      if (dispatchable) {
+        for (const sig of received) {
+          for (const p of sig.params ?? []) {
+            fieldLines.push(`    private ${javaType(p.type)} ${argFieldName(port.name, sig.name, p.name)};`);
+          }
+        }
+      }
+
       fieldLines.push(`    private final ${iface} ${field}Receiver = new ${iface}() {`);
       if (dispatchable) {
         for (const sig of received) {
           const params    = (sig.params ?? []).map((p) => `${javaType(p.type)} ${safeId(p.name)}`).join(', ');
           const constName = triggerConstName(`${port.name}.${sig.name}`);
-          fieldLines.push(`        @Override public void ${safeId(sig.name)}(${params}) { dispatch(Trigger.${constName}); }`);
+          const assigns   = (sig.params ?? [])
+            .map((p) => `${argFieldName(port.name, sig.name, p.name)} = ${safeId(p.name)}; `)
+            .join('');
+          fieldLines.push(`        @Override public void ${safeId(sig.name)}(${params}) { ${assigns}dispatch(Trigger.${constName}); }`);
         }
       }
       fieldLines.push('    };');
@@ -545,7 +587,7 @@ function generateEnterExitMethods(machine, stateConsts) {
 // the signal is silently dropped (matches the currentState==null drop
 // precedent for bootstrap safety). A transition into a Final state clears
 // currentState instead of calling a (nonexistent) enter method.
-function generateDispatch(machine, stateConsts) {
+function generateDispatch(machine, stateConsts, cls, metaModel) {
   const lines = [];
   lines.push('    private void dispatch(Trigger trigger) {');
   lines.push('        if (currentState == null) return;');
@@ -564,6 +606,15 @@ function generateDispatch(machine, stateConsts) {
     }
     for (const [triggerVal, transitions] of byTrigger) {
       lines.push(`                if (trigger == Trigger.${triggerConstName(triggerVal)}) {`);
+      // A guard/effect on any of this trigger's transitions may reference
+      // the signal's own parameter names directly (e.g. "amount >= 100" for
+      // a deposit(int amount) signal) — copy each param field back out into
+      // a same-named local right up front so that resolves via ordinary
+      // Java scoping, regardless of which guard branch below ends up firing.
+      const [portName, sigName] = triggerVal.split('.');
+      for (const p of resolveSignalParams(triggerVal, cls, metaModel)) {
+        lines.push(`                    ${javaType(p.type)} ${safeId(p.name)} = ${argFieldName(portName, sigName, p.name)};`);
+      }
       transitions.forEach((t, i) => {
         const guardText = (t.guard && t.guard.trim()) ? t.guard : 'true';
         const kw        = i === 0 ? 'if' : 'else if';
@@ -632,7 +683,7 @@ function generateCapsuleBody(cls, metaModel) {
     lines.push(...generateStart(machine));
     lines.push('');
     lines.push(...generateEnterExitMethods(machine, stateConsts));
-    lines.push(...generateDispatch(machine, stateConsts));
+    lines.push(...generateDispatch(machine, stateConsts, cls, metaModel));
   }
 
   return lines;
