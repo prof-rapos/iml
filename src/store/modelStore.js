@@ -645,7 +645,6 @@ export const useModelStore = create((set, get) => ({
           e.id === enumId ? { ...e, literals: e.literals.map((l, i) => i === index ? val : l) } : e
         ),
       },
-      conformanceStale: true,
     }));
   },
 
@@ -656,7 +655,6 @@ export const useModelStore = create((set, get) => ({
         e.id === enumId ? { ...e, literals: e.literals.filter((_, i) => i !== index) } : e
       ),
     },
-    conformanceStale: true,
   })),
 
   addRelation: (kind, source, target, sourceHandle, targetHandle) => {
@@ -697,7 +695,6 @@ export const useModelStore = create((set, get) => ({
         ...s.metaModel,
         relations: s.metaModel.relations.map((r) => r.id === id ? { ...r, ...patch } : r),
       },
-      conformanceStale: true,
     }));
     return true;
   },
@@ -749,9 +746,6 @@ export const useModelStore = create((set, get) => ({
   // ══════════════════════════════════════════════════════════════════
   instanceModels: [mkIM('InstanceModel1')],
   currentIMIndex: 0,
-
-  // Convenience selector — use in components: s.instanceModels[s.currentIMIndex]
-  _currIM: (s) => s.instanceModels[s.currentIMIndex],
 
   addInstanceModel: () => {
     const newIM = mkIM(`InstanceModel${get().instanceModels.length + 1}`);
@@ -825,7 +819,6 @@ export const useModelStore = create((set, get) => ({
     instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
       objects: im.objects.map((o) => o.id === id ? { ...o, ...patch } : o),
     })),
-    conformanceStale: true,
   })),
 
   updateSlotValues: (objId, attrId, values) => set((s) => ({
@@ -834,7 +827,6 @@ export const useModelStore = create((set, get) => ({
         o.id === objId ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: values } } : o
       ),
     })),
-    conformanceStale: true,
   })),
 
   updateSlot: (objId, attrId, value) => set((s) => ({
@@ -843,7 +835,6 @@ export const useModelStore = create((set, get) => ({
         o.id === objId ? { ...o, attributeValues: { ...o.attributeValues, [attrId]: value } } : o
       ),
     })),
-    conformanceStale: true,
   })),
 
   deleteObject: (id) => {

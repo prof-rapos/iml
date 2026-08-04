@@ -49,7 +49,6 @@ src/
     mbtStore.js              — Model-Based Testing view state (builds/holds the Symbolic Execution Tree)
   utils/
     javaCodeGen.js      — generates Java source from the model (structural/behavioural/all scopes)
-    javaRunner.js       — small fetch-based helper that pings/calls iml-java-runner
     conformance.js      — model conformance/validation checks
     modelHelpers.js     — shared model utility functions
     runTransform.js     — executes model transformations
@@ -60,7 +59,7 @@ src/
 ```
 
 ## Important notes
-- The Java execution backend is a **separate service**: `iml-java-runner` (deployed on Fly.io). The IDE's terminal (`src/components/ide/IDETerminal.jsx`) is the actual WebSocket client that streams compile/run output from it — `javaRunner.js` is a separate, smaller fetch-based helper
+- The Java execution backend is a **separate service**: `iml-java-runner` (deployed on Fly.io). The IDE's terminal (`src/components/ide/IDETerminal.jsx`) is the actual WebSocket client that streams compile/run output from it
 - Deployed as a **static site** on GitHub Pages (`https://prof-rapos.github.io`)
 - Tests (`.test.js` files) live alongside the source files they test
 - ES modules throughout (`"type": "module"` in package.json)

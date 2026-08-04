@@ -135,6 +135,49 @@ describe('generateConcreteTestFiles', () => {
   });
 });
 
+describe('generateConcreteTestFiles — DOUBLE attribute assertions', () => {
+  // Regression: a whole-number DOUBLE value (e.g. a default of "20") was
+  // previously emitted as a bare literal `20`, an int autoboxed to
+  // Integer("20") — MBTAssert's string comparison against the real getter's
+  // Double("20.0") then spuriously failed even though the value was
+  // correct. A `(double)` cast forces Java to see a double regardless of
+  // whether the tracked value string has a decimal point.
+  const doubleModel = {
+    ...NO_ATTRS,
+    classes: [{
+      id: 'TH', name: 'Thermostat',
+      attributes: [{ id: 'aTemp', name: 'temperature', type: 'DOUBLE', lowerBound: 1, upperBound: 1, defaultValue: '20' }],
+      // Needs at least one port — a state machine on a class with none
+      // doesn't get a generated capsule body at all (isCapsuleClass gates
+      // purely on ports.length, a separate real bug found in this same
+      // review), which would make this fixture's generated bundle not
+      // actually compile.
+      ports: [{ id: 'pLog', name: 'log', protocolId: 'sys-log', conjugated: false }],
+    }],
+    behaviours: {
+      TH: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sIdle', kind: 'simple', name: 'Idle', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sIdle', trigger: '', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+  const doubleCls = doubleModel.classes[0];
+
+  it('casts a whole-number DOUBLE literal to (double) instead of emitting a bare int literal', () => {
+    const result = buildSET('TH', doubleModel);
+    const idleNode = [...result.nodesById.values()].find((n) => n.stateId === 'sIdle');
+    const { files, mainClassPath } = generateConcreteTestFiles(idleNode.id, result, doubleCls, doubleModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('MBTAssert.assertEquals("temperature", (double) 20, capsule.getTemperature());');
+    expect(test).not.toMatch(/"temperature", 20,/); // the old, spuriously-failing bare-int form
+  });
+});
+
 describe('generateAllTestsFiles', () => {
   it('generates one runnable file with a main() that dispatches to per-test methods', () => {
     const result = buildSET('TL', metaModel);

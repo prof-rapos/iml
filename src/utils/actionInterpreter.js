@@ -45,7 +45,13 @@ function arithResult(ident, op, numStr, attrIndex, values) {
     case '+': result = base + delta; break;
     case '-': result = base - delta; break;
     case '*': result = base * delta; break;
-    case '/': result = base / delta; break;
+    // Java's `/` on two ints truncates toward zero rather than producing a
+    // fraction — plain JS division would track a value real generated code
+    // never actually computes (e.g. 5/2 tracked as 2.5, but the real int
+    // field ends up 2), silently wrong in the SET display and in any
+    // assertion generated against it. + - * can't produce a fraction from
+    // two ints, so only division needs this.
+    case '/': result = attr.type === 'INT' ? Math.trunc(base / delta) : base / delta; break;
     default:  return { attrId: attr.id, value: { kind: 'unknown' } };
   }
   return { attrId: attr.id, value: { kind: 'known', value: String(result) } };

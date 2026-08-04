@@ -54,6 +54,15 @@ const MAX_MEASURE_RETRIES = 120; // ~2s at 60fps — a several-hundred-node tree
 // the ROOT's own position, not the box's center — that's what "center the
 // root" actually means, and it holds regardless of how asymmetric the tree
 // is.
+//
+// A FOURTH bug, from a pre-alpha code review: `root` itself is read from
+// the closure-captured `nodes` snapshot (necessarily from before this
+// build's measurement pass, per the second bug above), so `root.measured`
+// is permanently undefined even after `allMeasured()` confirms every node
+// IS measured — silently falling back to the hardcoded 150px default width
+// for every real node instead. Fixed by reading the root's width from the
+// live nodeLookup (the same source allMeasured() already uses), not from
+// the stale snapshot.
 function SETViewportController({ buildToken, rootId, nodes }) {
   const { setViewport, getNodesBounds } = useReactFlow();
   const store = useStoreApi();
@@ -82,7 +91,13 @@ function SETViewportController({ buildToken, rootId, nodes }) {
       }
       const bounds = getNodesBounds(nodes);
       const { zoom } = getViewportForBounds(bounds, paneWidth, paneHeight, MIN_ZOOM, MAX_ZOOM, 0.15);
-      const rootWidth = root.measured?.width ?? 150;
+      // root itself comes from the closure-captured `nodes` snapshot (see
+      // the comment above), which is always from BEFORE measurement — its
+      // own .measured is permanently undefined even once allMeasured() is
+      // true. Read the width from the live nodeLookup instead, the same
+      // source allMeasured() already uses, so this doesn't silently fall
+      // back to the 150px default for every real (usually wider) node.
+      const rootWidth = store.getState().nodeLookup.get(rootId)?.measured?.width ?? 150;
       const x = paneWidth / 2 - (root.position.x + rootWidth / 2) * zoom;
       const y = TOP_MARGIN - root.position.y * zoom;
       setViewport({ x, y, zoom }, { duration: 250 });

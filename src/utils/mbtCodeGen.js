@@ -192,9 +192,16 @@ function testScriptLines(edgeChain, varName, schedulerVar) {
 // Renders a tracked value as a Java expression matching the getter's return
 // type, so MBTAssert.assertEquals's String-normalized comparison lines up
 // (an enum getter's value stringifies to its bare constant name via the
-// default Enum.toString(), same as how the value is tracked here).
+// default Enum.toString(), same as how the value is tracked here). DOUBLE
+// needs a `(double)` cast, not a bare literal: a whole-number tracked value
+// like "20" would otherwise emit as the int literal `20`, which autoboxes
+// to Integer("20") and never string-equals the getter's real Double("20.0")
+// — a guaranteed spurious FAIL for any whole-number double value. The cast
+// forces Java to see a double regardless of whether the source string has a
+// decimal point.
 function attrLiteralForAssert(value, attr) {
-  if (attr.type === 'BOOLEAN' || attr.type === 'INT' || attr.type === 'DOUBLE') return value;
+  if (attr.type === 'DOUBLE') return `(double) ${value}`;
+  if (attr.type === 'BOOLEAN' || attr.type === 'INT') return value;
   return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 

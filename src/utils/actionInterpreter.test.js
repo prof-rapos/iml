@@ -6,6 +6,7 @@ const attrs = [
   { id: 'aCount', name: 'count', type: 'INT' },
   { id: 'aName', name: 'direction', type: 'STRING' },
   { id: 'aFlag', name: 'ready', type: 'BOOLEAN' },
+  { id: 'aPrice', name: 'price', type: 'DOUBLE' },
 ];
 const attrIndex = new Map(attrs.map((a) => [a.name, a]));
 
@@ -67,6 +68,34 @@ describe('parseActionLine — self-referential arithmetic', () => {
     values.set('aCount', { kind: 'known', value: '3' });
     const r = parseActionLine('count = otherAttr + 1', attrIndex, values);
     expect(r).toEqual({ attrId: 'aCount', value: { kind: 'unknown' } });
+  });
+
+  // Regression: division on an INT attribute previously tracked plain JS
+  // float division (5/2 -> 2.5), but real generated Java does integer
+  // division on an `int` field (5/2 -> 2, truncated toward zero) — the
+  // tracked value silently diverged from what the actual capsule would
+  // compute, misleading both the SET display and any generated assertion.
+  it('truncates INT division toward zero, matching Java int division', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '5' });
+    const r = parseActionLine('count = count / 2', attrIndex, values);
+    expect(r).toEqual({ attrId: 'aCount', value: { kind: 'known', value: '2' } });
+  });
+
+  it('truncates negative INT division toward zero (not floor)', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '-5' });
+    const r = parseActionLine('count = count / 2', attrIndex, values);
+    // Math.trunc(-2.5) === -2 (toward zero); Math.floor(-2.5) would be -3 and
+    // would be wrong here — Java's `/` truncates toward zero too.
+    expect(r).toEqual({ attrId: 'aCount', value: { kind: 'known', value: '-2' } });
+  });
+
+  it('does NOT truncate division on a DOUBLE attribute', () => {
+    const values = unknownValues();
+    values.set('aPrice', { kind: 'known', value: '5' });
+    const r = parseActionLine('price = price / 2', attrIndex, values);
+    expect(r).toEqual({ attrId: 'aPrice', value: { kind: 'known', value: '2.5' } });
   });
 });
 
