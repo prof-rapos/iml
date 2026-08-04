@@ -273,10 +273,27 @@ export function linkToEdge(link, metaModel) {
   };
 }
 
+// Not store state on purpose — a deliberate fresh load/clear needs to
+// suppress the dirty-tracking subscribe handler (below) for the ENTIRE
+// duration of the action, across every one of its internal set() calls,
+// not just the first. Making it part of the store's own state would mean
+// the subscribe handler firing on ITS OWN set({dirty:false}) call could
+// race against later set() calls in the same action.
+let suppressDirty = false;
+
 export const useModelStore = create((set, get) => ({
   // ── App-level navigation ──────────────────────────────────────────
   appView: 'home',
   setAppView: (view) => set({ appView: view }),
+
+  // ── Unsaved-work tracking (beforeunload guard) ─────────────────────
+  // Flips true the moment metaModel/instanceModels changes for any reason
+  // OTHER than a deliberate fresh load/clear (see the `suppressDirty`
+  // module flag below) — App.jsx's beforeunload handler reads this to
+  // decide whether to warn before an accidental refresh/close. There's no
+  // autosave (see project backlog), so this is the only guard against
+  // silently losing a whole session's work to one stray keystroke.
+  dirty: false,
 
   // ── Toast notifications ───────────────────────────────────────────
   notification: null,
@@ -736,6 +753,7 @@ export const useModelStore = create((set, get) => ({
   updateMetaModelName: (name) => set((s) => ({ metaModel: { ...s.metaModel, name } })),
 
   clearMetaModel: () => {
+    suppressDirty = true;
     const name = get().metaModel.name;
     set({
       metaModel: { ...EMPTY_MM, name },
@@ -745,17 +763,22 @@ export const useModelStore = create((set, get) => ({
       selectedId: null, selectedType: null,
       conformanceResults: [],
       layouts: {},
+      dirty: false,
     });
+    suppressDirty = false;
     get().log('Meta-model cleared.');
   },
 
   clearInstanceModel: () => {
+    suppressDirty = true;
     set((s) => ({
       instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, () => ({ objects: [], links: [], connectors: [] })),
       nodes: [], edges: [],
       selectedId: null, selectedType: null,
       conformanceResults: [],
+      dirty: false,
     }));
+    suppressDirty = false;
     get().log('Instance model cleared.');
   },
 
@@ -1204,6 +1227,12 @@ export const useModelStore = create((set, get) => ({
     const shapeError = validateModelShape(data);
     if (shapeError) { get().notify(`Couldn't load file: ${shapeError}`); return; }
 
+    // Loading a file is itself the "save point" — suppressed for the whole
+    // function (not just one set() call) since this makes several separate
+    // set() calls below, each of which would otherwise re-mark the session
+    // dirty via the module-level subscribe handler.
+    suppressDirty = true;
+
     // Backfill enumerations / behaviours / protocols for older models.
     set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {}, protocols: data.metaModel.protocols ?? [] } });
 
@@ -1239,7 +1268,8 @@ export const useModelStore = create((set, get) => ({
     }
 
     if (data.layouts) set({ layouts: data.layouts });
-    set({ nodes: [], edges: [], selectedId: null, conformanceResults: [] });
+    set({ nodes: [], edges: [], selectedId: null, conformanceResults: [], dirty: false });
+    suppressDirty = false;
     get().log('Model loaded.');
     get().rebuildCanvas(get().mode);
   },
@@ -1298,5 +1328,17 @@ useModelStore.subscribe((state, prevState) => {
   ) {
     clearTimeout(validateTimer);
     validateTimer = setTimeout(() => useModelStore.getState()._runValidate(), 250);
+  }
+});
+
+// Unsaved-work tracking: any metaModel/instanceModels change marks the
+// session dirty, UNLESS it came from a deliberate fresh load/clear action
+// (which sets suppressDirty for its own duration — see the flag's own
+// comment above). Deliberately does NOT also watch currentIMIndex — just
+// switching which instance model tab you're looking at isn't work you'd be
+// upset to lose.
+useModelStore.subscribe((state, prevState) => {
+  if (state.metaModel !== prevState.metaModel || state.instanceModels !== prevState.instanceModels) {
+    if (!suppressDirty && !state.dirty) useModelStore.setState({ dirty: true });
   }
 });

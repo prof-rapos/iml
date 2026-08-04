@@ -19,10 +19,30 @@ export default function App() {
 
   useEffect(() => {
     seedDemoModel();
+    // seedDemoModel sets state directly (not through loadFromJSON), so it
+    // doesn't get the dirty-suppression that action's own callers do —
+    // reset explicitly so the demo model itself doesn't immediately read
+    // as "unsaved work" the moment the app opens.
+    useModelStore.setState({ dirty: false });
     setTimeout(() => rebuildCanvas('metamodel'), 50);
     // rebuildCanvas is a Zustand action (stable reference) — this still
     // only runs once, on mount.
   }, [rebuildCanvas]);
+
+  // No autosave anywhere in the app (a known, deliberate gap — see project
+  // backlog) — an accidental refresh/close otherwise silently destroys the
+  // whole in-progress session with zero warning, since seedDemoModel above
+  // runs unconditionally on every mount. Only warn once there's actually
+  // something at risk (see the `dirty` flag's own comment in modelStore.js).
+  useEffect(() => {
+    const handler = (e) => {
+      if (!useModelStore.getState().dirty) return;
+      e.preventDefault();
+      e.returnValue = ''; // required for the native confirmation prompt in most browsers
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, []);
 
   if (appView === 'home')            return <LandingPage />;
   if (appView === 'ide')             return <IDEView />;
