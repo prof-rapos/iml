@@ -145,7 +145,30 @@ export default function IDETerminal({ files }) {
     };
 
     ws.onmessage = (e) => {
-      const msg = JSON.parse(e.data);
+      // A stale socket from a PREVIOUS run can still have this handler
+      // registered if its close event was still in flight when a new Run
+      // started (handleRun closes the old socket but that's async — the
+      // browser doesn't tear down the listener synchronously). Without this
+      // check, a message that arrives after wsRef.current has already moved
+      // on to a new, unrelated run gets written into a terminal that's now
+      // showing that DIFFERENT run's output.
+      if (wsRef.current !== ws) return;
+
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        // A non-JSON frame (a proxy error page during a runner restart, a
+        // truncated frame from a network blip) used to throw here silently
+        // — the exception is swallowed by the browser's event dispatch, so
+        // status/running never update and the UI looks permanently stuck
+        // with no explanation. Surface it instead.
+        term.writeln('\r\n\x1b[31m[Received an unreadable response from the runner — it may be restarting. Try again in a moment.]\x1b[0m');
+        setRunning(false);
+        setStatus('error');
+        return;
+      }
+
       switch (msg.type) {
         case 'data':
           term.write(msg.data);
@@ -175,12 +198,14 @@ export default function IDETerminal({ files }) {
     };
 
     ws.onerror = () => {
+      if (wsRef.current !== ws) return; // see onmessage — a stale socket's own error, not the active run's
       term.writeln('\x1b[31mConnection error — is the runner service up?\x1b[0m');
       setRunning(false);
       setStatus('error');
     };
 
     ws.onclose = () => {
+      if (wsRef.current !== ws) return; // see onmessage — otherwise a stale socket's delayed close can stamp "[Connection closed unexpectedly]" over a healthy new run
       // A close with no prior 'error'/'exit' message (network drop, server
       // restart) would otherwise leave the UI stuck showing "Running" forever.
       if (runningRef.current) {
