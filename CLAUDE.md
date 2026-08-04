@@ -4,7 +4,7 @@
 IML Studio — a browser-based visual modeling and IDE tool for teaching Model-Driven Engineering (MDE) in UML-RT style. It lets users build class/capsule/state-machine diagrams on a canvas, generate real Java from those models, run the code in an embedded terminal, and generate model-based tests via symbolic execution over a capsule's state machine.
 
 ## Status
-Feature-complete across all 5 planned modules as of 2026-07-28, with several rounds of real-use polish since (most recently 2026-07-30): Structural Modeling, Model Transformations, Behavioural Modeling (+ Java codegen), Code Explorer/IDE, and Model-Based Testing. 234 Vitest tests. Ongoing work from here is quality-of-life and bugfixes, not new modules.
+Feature-complete across all 5 planned modules as of 2026-07-28, with several rounds of real-use polish since: Structural Modeling, Model Transformations, Behavioural Modeling (+ Java codegen), Code Explorer/IDE, and Model-Based Testing. A full pre-alpha code review (2026-07-30) read every file across 5 focused passes and found 43 issues; all 12 high-severity ones (data-loss bugs, a crash-on-malformed-import gap, a real codegen correctness gap around signal parameters, a WebSocket race, a missing size cap on tree building, a missing warning before an accidental refresh destroys unsaved work) are fixed and verified — 31 medium/low findings remain open, logged for later triage. 267 Vitest tests. Ongoing work from here is quality-of-life, bugfixes, and working through that remaining list — not new modules.
 
 ## Tech stack
 - **Framework:** React 19 + Vite
@@ -28,12 +28,14 @@ npm run lint      # ESLint
 ## Key structure
 ```
 src/
-  App.jsx               — root component, switches between views
+  App.jsx               — root component, switches between views; also owns the beforeunload guard
   components/
     ModelCanvas.jsx     — React Flow canvas (main diagram view)
     Sidebar.jsx         — node palette / toolbox
     Topbar.jsx          — toolbar actions
     PropertiesPanel.jsx — selected node/edge properties
+    ConfirmModal.jsx    — shared confirmation dialog (Clear Meta-Model, data-losing attribute narrowing)
+    ErrorBoundary.jsx   — top-level React error boundary (wraps <App/> in main.jsx)
     ide/                — IDE view (code editor + terminal)
     transform/          — model transform view
     behaviour/          — behavioural view (state machines + capsule structure diagrams)
@@ -41,7 +43,7 @@ src/
   nodes/                — custom React Flow node types (Class, Enum, State, Object, Part, SETNode, etc.)
   edges/                — custom React Flow edge types (Link, Relation, Transition, Connector, SETEdge)
   store/
-    modelStore.js            — main diagram model state (meta-model, instances, protocols/ports)
+    modelStore.js            — main diagram model state (meta-model, instances, protocols/ports); also tracks `dirty` for the beforeunload guard
     behaviourStore.js        — state machine editor view state
     capsuleStructureStore.js — capsule structure (parts + connectors) editor view state
     ideStore.js              — IDE/code editor state
@@ -49,8 +51,8 @@ src/
     mbtStore.js              — Model-Based Testing view state (builds/holds the Symbolic Execution Tree)
   utils/
     javaCodeGen.js      — generates Java source from the model (structural/behavioural/all scopes)
-    conformance.js      — model conformance/validation checks
-    modelHelpers.js     — shared model utility functions
+    conformance.js      — model conformance/validation checks, incl. behavioural (stale triggers, duplicate state names)
+    modelHelpers.js     — shared model utility functions, incl. validateModelShape() for import safety
     runTransform.js     — executes model transformations
     symbolicExecution.js — subsumption-based symbolic execution engine (builds the SET)
     actionInterpreter.js — interprets a small subset of action code / guards for attribute tracking
@@ -63,3 +65,4 @@ src/
 - Deployed as a **static site** on GitHub Pages (`https://prof-rapos.github.io`)
 - Tests (`.test.js` files) live alongside the source files they test
 - ES modules throughout (`"type": "module"` in package.json)
+- No autosave anywhere — a `dirty` flag on `modelStore.js` backs a `beforeunload` warning (App.jsx) as the only guard against silently losing unsaved work; a `localStorage`-based autosave is a still-open, deliberately-deferred idea

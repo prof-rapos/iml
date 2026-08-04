@@ -6,7 +6,7 @@ Live at **https://prof-rapos.github.io/iml/**
 
 ## Status
 
-Feature-complete across all five planned modules (2026-07-28), with several rounds of real-use fixes and polish since (latest: 2026-07-30). See `CLAUDE.md` for architecture notes.
+Feature-complete across all five planned modules (2026-07-28), with several rounds of real-use fixes and polish since. A full pre-alpha code review (2026-07-30) found 43 issues across the codebase — all 12 high-severity ones are fixed and verified; 31 medium/low findings remain logged for later triage. See `CLAUDE.md` for architecture notes.
 
 - **Module 1 — Structural Modeling**: meta-model editor (classes, attributes, relations, enumerations), instance models, live conformance checking, `.iml.json` export/import, Java codegen.
 - **Module 2 — Model Transformations**: rule-based model-to-model transformations, including expression mappings.
@@ -23,7 +23,7 @@ npm run dev       # Vite dev server
 
 ```bash
 npm run build     # production build to dist/
-npm run test:run  # Vitest, single run (234 tests)
+npm run test:run  # Vitest, single run (267 tests)
 npm run lint      # ESLint
 ```
 
