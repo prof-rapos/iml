@@ -9,7 +9,7 @@ const ROWS = [
   { status: 'leaf-deadend', desc: 'no outgoing trigger from here' },
   { status: 'leaf-final', desc: 'capsule reaches its Final state' },
   { status: 'leaf-subsumed', desc: 'loops back to an already-explored state', dashed: true },
-  { status: 'leaf-depth-bound', desc: 'exploration depth limit reached', dashed: true },
+  { status: 'leaf-depth-bound', desc: 'path too deep or tree too large to explore further', dashed: true },
 ];
 
 export default function SETLegend() {

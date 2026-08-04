@@ -325,6 +325,50 @@ describe('buildSET — depth bound backstop', () => {
     expect(depthBound[0].depth).toBe(40);
     expect(nodesArr(result).every((n) => n.depth <= 40)).toBe(true);
   });
+
+  // Regression: MAX_DEPTH alone only bounds a single PATH — a machine with
+  // several genuinely-unresolvable guard forks chained together can branch
+  // combinatorially and blow well past a reasonable node count long before
+  // any one path is 40 steps deep (found during a pre-alpha review; this
+  // fixture is a synthetic full binary tree of DISTINCT states specifically
+  // so every node gets a unique signature and nothing subsumes away the
+  // branching — a worst-case stand-in for real unresolvable-guard blowup).
+  it('stops a wide (but shallow) combinatorial explosion via the whole-tree node cap, before the depth cap would ever apply', () => {
+    const DEPTH = 13; // 2^13 - 1 = 8191 possible states — comfortably over any reasonable node cap, at depth 13 << 40
+    const states = [
+      { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+      { id: 's0', kind: 'simple', name: 'S0', entry: '', exit: '' },
+    ];
+    const transitions = [{ id: 'tInit', source: 'sInit', target: 's0', trigger: '', guard: '', effect: '' }];
+    let frontier = ['s0'];
+    for (let d = 0; d < DEPTH; d++) {
+      const next = [];
+      for (const parentId of frontier) {
+        for (const branch of ['L', 'R']) {
+          const childId = `${parentId}${branch}`;
+          states.push({ id: childId, kind: 'simple', name: childId, entry: '', exit: '' });
+          transitions.push({
+            id: `t_${parentId}_${branch}`, source: parentId, target: childId, trigger: 'p.go',
+            // References an attribute this class doesn't declare — always
+            // evaluates 'unknown', so both branches genuinely fork instead
+            // of one being pruned as provably-false.
+            guard: branch === 'L' ? 'untracked == 1' : 'untracked == 0', effect: '',
+          });
+          next.push(childId);
+        }
+      }
+      frontier = next;
+    }
+    const metaModel = { ...NO_ATTRS, classes: [{ id: 'C', name: 'C', attributes: [] }], behaviours: { C: { states, transitions } } };
+
+    const result = buildSET('C', metaModel);
+    const sizeBound = nodesArr(result).filter((n) => n.status === 'leaf-depth-bound');
+    expect(sizeBound.length).toBeGreaterThan(0);
+    // The whole point: the cap fired from sheer node count, not because any
+    // individual path actually reached the 40-step depth cap.
+    expect(sizeBound.every((n) => n.depth < 40)).toBe(true);
+    expect(nodesArr(result).length).toBeLessThan(10000); // bounded, not the full 16383-node tree
+  });
 });
 
 describe('buildSET — malformed machine', () => {

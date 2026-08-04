@@ -49,7 +49,7 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
     // attribute values are known there) — exploration just didn't continue
     // past it. That's asserted exactly like any other leaf; only the label
     // differs, to disclose that the path isn't fully explored beyond here.
-    outcome = { kind: 'depth-bound', label: `Depth limit reached — asserting the state reached so far: ${stateName(leaf, machine)}${attrPart}. The path continues beyond this point (not fully explored).` };
+    outcome = { kind: 'depth-bound', label: `Exploration limit reached — asserting the state reached so far: ${stateName(leaf, machine)}${attrPart}. The path continues beyond this point (not fully explored).` };
   } else if (leaf.status === 'leaf-subsumed') {
     const target = nodesById.get(leaf.subsumedByNodeId);
     outcome = {
@@ -280,7 +280,7 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   lines.push(...testScriptLines(edgeChain, varName, schedulerVar));
   lines.push('');
   if (leaf.status === 'leaf-depth-bound') {
-    lines.push('        System.out.println("(depth limit reached — asserting the state reached so far; path continues beyond this point)");');
+    lines.push('        System.out.println("(exploration limit reached — asserting the state reached so far; path continues beyond this point)");');
   }
   lines.push(...assertionLines(leaf, machine, attrs, varName, false));
   lines.push('    }', '}');
@@ -336,7 +336,7 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
     methodLines.push(`        ${varName}.start();`);
     methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar));
     if (leaf.status === 'leaf-depth-bound') {
-      methodLines.push('        System.out.println("(depth limit reached — asserting the state reached so far; path continues beyond this point)");');
+      methodLines.push('        System.out.println("(exploration limit reached — asserting the state reached so far; path continues beyond this point)");');
     }
     methodLines.push(...assertionLines(leaf, machine, attrs, varName, true));
     methodLines.push('        return ok;');

@@ -14,5 +14,8 @@ export const STATUS_LABEL = {
   'leaf-deadend': 'dead end',
   'leaf-final': 'final',
   'leaf-subsumed': 'subsumed',
-  'leaf-depth-bound': 'depth limit',
+  // Covers two distinct backstops (a single path going too deep, or the
+  // whole tree growing too large) — worded generically since either one
+  // means the same thing to the user: exploration stopped here, not fully.
+  'leaf-depth-bound': 'exploration limit',
 };

@@ -98,7 +98,7 @@ describe('generateConcreteTestFiles', () => {
     const test = fileFor(files, mainClassPath.split('/').pop());
     expect(test).toContain('capsule.getOppositeInReceiver().safe();'); // path still driven
     expect(test).toContain('MBTAssert.assertEquals("state", "GREEN", capsule.getCurrentStateName());'); // the leaf itself is a real, known point — assert it
-    expect(test).toContain('depth limit reached');
+    expect(test).toContain('exploration limit reached');
   });
 
   it('returns null for an unknown leaf id', () => {
@@ -274,7 +274,7 @@ describe('generateAllTestsFiles', () => {
 
     const { files, mainClassPath } = generateAllTestsFiles(result, loopCls, loopModel);
     const test = fileFor(files, mainClassPath.split('/').pop());
-    expect(test).toContain('depth limit reached');
+    expect(test).toContain('exploration limit reached');
     // The depth-bound leaf's own method should assert the state/attribute
     // values actually reached (e.g. x=40 after 40 loop iterations) — a real,
     // useful assertion, not a vacuous "return true" with nothing checked.

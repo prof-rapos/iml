@@ -16,8 +16,19 @@ import { applyActionCode, evaluateCondition } from './actionInterpreter.js';
 // an already-visited node stops there (subsumption) — this is what makes a
 // cyclic machine's exploration terminate. A depth bound is a backstop for
 // genuinely-unbounded branches only.
+//
+// MAX_DEPTH alone only bounds a single PATH's length — it does nothing
+// against a machine with several genuinely-unresolvable guard forks (an
+// attribute-vs-attribute comparison, a guard on an untracked value, ...)
+// chained together: branching factor >=2 at up to 40 steps combines well
+// before any one path hits the depth cap, and buildSET runs fully
+// synchronously on the main thread, so that's a hung "Building…" spinner
+// with no warning and no cancel. MAX_NODES is the matching whole-TREE
+// backstop, checked once per node expansion — found during a pre-alpha
+// code review, before it had ever actually been hit by a real model.
 
 const MAX_DEPTH = 40;
+const MAX_NODES = 4000; // generous for any real teaching model; still finishes in well under a second
 
 // stateId + every KNOWN attribute's id/value, sorted for order-independence.
 // Two nodes are equivalent iff this string matches exactly (strict subsumption:
@@ -163,6 +174,15 @@ export function buildSET(classId, metaModel) {
 
   function expand(node) {
     if (node.depth >= MAX_DEPTH) { node.status = 'leaf-depth-bound'; return; }
+    // Whole-tree backstop — see the MAX_NODES comment above. Reuses the same
+    // 'leaf-depth-bound' status as the per-path cap: from the leaf's own
+    // perspective it's the same situation either way (a real, well-defined
+    // point that exploration just didn't continue past), so it gets the
+    // same assertable-but-disclosed treatment everywhere that status is
+    // handled, without needing a second status threaded through the UI/
+    // codegen. The user-facing wording says "exploration limit", not
+    // "depth limit", so it reads correctly for both reasons.
+    if (nodesById.size >= MAX_NODES) { node.status = 'leaf-depth-bound'; return; }
 
     const outgoing = machine.transitions.filter((t) => t.source === node.stateId && t.trigger && t.trigger.trim());
     if (outgoing.length === 0) { node.status = 'leaf-deadend'; return; }

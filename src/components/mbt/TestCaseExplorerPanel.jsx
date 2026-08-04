@@ -10,7 +10,7 @@ const OUTCOME_STYLE = {
   assert:      { color: '#3fb950', label: 'Expected outcome' },
   final:       { color: '#dc2626', label: 'Reaches Final' },
   subsumed:    { color: '#7c3aed', label: 'Already explored' },
-  'depth-bound': { color: '#d97706', label: 'Depth limit reached' },
+  'depth-bound': { color: '#d97706', label: 'Exploration limit reached' },
 };
 
 function StepBlock({ step, index }) {
