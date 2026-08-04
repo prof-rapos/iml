@@ -50,6 +50,117 @@ describe('validateConformance — meta-model level', () => {
   });
 });
 
+// Regression: nothing validated state-machine content before this — a
+// duplicate state name or a transition whose trigger had gone stale after
+// a port/signal rename or delete both produced Java that failed to compile,
+// with no warning anywhere pointing back at the real cause.
+describe('validateConformance — behavioural (state machines)', () => {
+  const baseCls = (behaviours) => ({
+    name: 'M', enumerations: [],
+    classes: [{
+      id: 'C', name: 'Account', attributes: [],
+      ports: [{ id: 'pOps', name: 'ops', protocolId: 'proto1', conjugated: false }],
+    }],
+    relations: [],
+    protocols: [{ id: 'proto1', name: 'banking', signals: [{ id: 's1', name: 'deposit', direction: 'in', params: [] }] }],
+    behaviours,
+  });
+
+  it('flags two simple states with the same name', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 's1', kind: 'simple', name: 'Open', entry: '', exit: '' },
+          { id: 's2', kind: 'simple', name: 'Open', entry: '', exit: '' },
+        ],
+        transitions: [],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] });
+    expect(errors).toContainEqual(expect.objectContaining({ kind: 'state', id: 's2' }));
+  });
+
+  it('does not flag Initial/Final pseudostates sharing an empty name', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sFinal', kind: 'final', name: '', entry: '', exit: '' },
+        ],
+        transitions: [],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.kind === 'state')).toEqual([]);
+  });
+
+  it('flags a transition whose trigger does not resolve to any current port/signal', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 's1', kind: 'simple', name: 'Open', entry: '', exit: '' },
+          { id: 's2', kind: 'simple', name: 'Closed', entry: '', exit: '' },
+        ],
+        // "ops.withdraw" doesn't exist on the "banking" protocol — e.g. the
+        // signal was renamed to "deposit" after this transition was drawn.
+        transitions: [{ id: 't1', source: 's1', target: 's2', trigger: 'ops.withdraw', guard: '', effect: '' }],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] });
+    expect(errors).toContainEqual(expect.objectContaining({ kind: 'transition', id: 't1' }));
+  });
+
+  it('accepts a transition whose trigger resolves to a real signal', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 's1', kind: 'simple', name: 'Open', entry: '', exit: '' },
+          { id: 's2', kind: 'simple', name: 'Closed', entry: '', exit: '' },
+        ],
+        transitions: [{ id: 't1', source: 's1', target: 's2', trigger: 'ops.deposit', guard: '', effect: '' }],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.kind === 'transition')).toEqual([]);
+  });
+
+  it('accepts a system-protocol trigger (timer.timeout) without flagging it as unresolved', () => {
+    const mm = {
+      name: 'M', enumerations: [],
+      classes: [{
+        id: 'C', name: 'Blinker', attributes: [],
+        ports: [{ id: 'pTim', name: 'timer', protocolId: 'sys-timing', conjugated: false }],
+      }],
+      relations: [], protocols: [],
+      behaviours: {
+        C: {
+          states: [
+            { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+            { id: 's1', kind: 'simple', name: 'On', entry: '', exit: '' },
+            { id: 's2', kind: 'simple', name: 'Off', entry: '', exit: '' },
+          ],
+          transitions: [{ id: 't1', source: 's1', target: 's2', trigger: 'timer.timeout', guard: '', effect: '' }],
+        },
+      },
+    };
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.kind === 'transition')).toEqual([]);
+  });
+
+  it('ignores an untriggered transition (e.g. the initial pseudostate\'s own transition)', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 's1', kind: 'simple', name: 'Open', entry: '', exit: '' },
+        ],
+        transitions: [{ id: 't1', source: 'sInit', target: 's1', trigger: '', guard: '', effect: '' }],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.kind === 'transition')).toEqual([]);
+  });
+});
+
 describe('validateConformance — object & attribute rules', () => {
   it('flags an object of an unknown class', () => {
     const mm = { name: 'M', enumerations: [], classes: [], relations: [] };

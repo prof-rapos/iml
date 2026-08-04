@@ -2,6 +2,14 @@
 // Extracted from the store so every rule is unit-testable in isolation.
 
 import { getAllAttributes, getEnum, isEnumValueValid } from './modelHelpers.js';
+// getProtocolById also resolves the built-in Timing/Log system protocols
+// (not just metaModel.protocols) — needed so a transition triggered by
+// timer.timeout doesn't get flagged as unresolvable. modelStore.js imports
+// validateConformance from this file too, so this is a circular import —
+// safe here because both sides only reference the other's export from
+// inside a function body (called well after both modules have finished
+// loading), never at module top level.
+import { getProtocolById } from '../store/modelStore.js';
 
 // ── Inheritance-aware class conformance ──────────────────────────────────────
 // True if classId equals expectedId or is a (transitive) subclass of it.
@@ -59,6 +67,54 @@ export function validateConformance(metaModel, instanceModel) {
       const srcCls = metaModel.classes.find((c) => c.id === rel.source);
       const tgtCls = metaModel.classes.find((c) => c.id === rel.target);
       errors.push({ kind: 'relation', id: rel.id, msg: `${rel.kind.charAt(0) + rel.kind.slice(1).toLowerCase()} from "${srcCls?.name ?? '?'}" to "${tgtCls?.name ?? '?'}" has no name — required for code generation` });
+    }
+  }
+
+  // Meta-model level: behavioural — each of these produces Java that fails
+  // to compile with no earlier warning otherwise, since nothing validated
+  // state-machine content before this. Both checks are pure metaModel
+  // concerns (not instance-model-dependent), so they run every time,
+  // mirroring the single-inheritance/unnamed-relation checks above.
+  for (const cls of metaModel.classes) {
+    const machine = metaModel.behaviours?.[cls.id];
+    if (!machine) continue;
+
+    // Two states with the same name (or the initial/entry transition into
+    // one of them being ambiguous) become a duplicate Java enum constant —
+    // only 'simple' states have a modeled name (Initial/Final don't).
+    const seenNames = new Map(); // trimmed name -> first state's id
+    for (const st of machine.states) {
+      if (st.kind !== 'simple') continue;
+      const name = (st.name ?? '').trim();
+      if (!name) continue; // caught implicitly — an unnamed simple state still sanitizes to *something*, but that's a separate, pre-existing concern
+      if (seenNames.has(name)) {
+        errors.push({ kind: 'state', id: st.id, msg: `"${cls.name}": two states are both named "${name}" — would generate a duplicate Java enum constant` });
+      } else {
+        seenNames.set(name, st.id);
+      }
+    }
+
+    // A transition's trigger is a frozen "port.signal" string, independent
+    // of whatever the port/signal are named NOW — renaming or deleting
+    // either doesn't cascade-update it, so it can silently go stale.
+    const validTriggers = new Set();
+    for (const port of cls.ports ?? []) {
+      const proto = getProtocolById(port.protocolId, metaModel);
+      if (!proto) continue;
+      const wanted = port.conjugated ? 'out' : 'in';
+      for (const sig of proto.signals ?? []) {
+        if (sig.direction === wanted) validTriggers.add(`${port.name}.${sig.name}`);
+      }
+    }
+    for (const t of machine.transitions ?? []) {
+      if (!t.trigger || !t.trigger.trim()) continue; // untriggered (e.g. the initial transition) — nothing to resolve
+      if (!validTriggers.has(t.trigger)) {
+        const srcState = machine.states.find((s) => s.id === t.source);
+        errors.push({
+          kind: 'transition', id: t.id,
+          msg: `"${cls.name}": a transition from "${srcState?.name || '(unnamed)'}" has trigger "${t.trigger}", which doesn't match any current port/signal — likely stale after a rename or delete`,
+        });
+      }
     }
   }
 
