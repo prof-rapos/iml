@@ -243,6 +243,17 @@ function isJavaKeyword(name) {
 const mmKey  = () => 'mm';
 const imKey  = (imId) => `im-${imId}`;
 
+// Drops one node id's saved position from a given layouts key, leaving the
+// rest of that key's entries (and every other key) untouched. Used on node
+// delete so `layouts` doesn't accumulate stale entries for ids that no
+// longer exist anywhere in the model.
+function withoutLayoutEntry(layouts, key, nodeId) {
+  const entries = layouts[key];
+  if (!entries || !(nodeId in entries)) return layouts;
+  const { [nodeId]: _dropped, ...rest } = entries;
+  return { ...layouts, [key]: rest };
+}
+
 // Canonical relationEdge/linkEdge shapes — the single source of truth used by
 // both rebuildCanvas's initial build and ModelCanvas's onConnect, so a new
 // edge appended live can't drift out of sync with a freshly-rebuilt one.
@@ -548,7 +559,7 @@ export const useModelStore = create((set, get) => ({
   deleteClass: (id) => {
     set((s) => {
       const { [id]: _dropped, ...behaviours } = s.metaModel.behaviours ?? {};
-      const { [`sm-${id}`]: _droppedLayout, ...layouts } = s.layouts;
+      const { [`sm-${id}`]: _droppedLayout, ...layouts } = withoutLayoutEntry(s.layouts, mmKey(), id);
       return {
         metaModel: {
           ...s.metaModel,
@@ -639,6 +650,7 @@ export const useModelStore = create((set, get) => ({
         })),
       },
       nodes:        s.nodes.filter((n) => n.id !== id),
+      layouts:      withoutLayoutEntry(s.layouts, mmKey(), id),
       selectedId:   s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
     }));
@@ -887,6 +899,13 @@ export const useModelStore = create((set, get) => ({
       })),
       nodes:       s.nodes.filter((n) => n.id !== id),
       edges:       s.edges.filter((e) => e.source !== id && e.target !== id),
+      // Parts (capsule-structure canvas) reuse the object's own id, so its
+      // position can be saved under either layout key depending on which
+      // canvas the drag happened on — prune both.
+      layouts:     withoutLayoutEntry(
+        withoutLayoutEntry(s.layouts, imKey(s.instanceModels[s.currentIMIndex]?.id), id),
+        `cs-${s.instanceModels[s.currentIMIndex]?.id}`, id,
+      ),
       selectedId:  s.selectedId === id ? null : s.selectedId,
       selectedType: s.selectedId === id ? null : s.selectedType,
     }));
@@ -1100,8 +1119,22 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updateProtocol: (id, patch) =>
-    set((s) => ({ metaModel: withProtocol(s.metaModel, id, (p) => ({ ...p, ...patch })) })),
+  updateProtocol: (id, patch) => {
+    if (patch.name !== undefined) {
+      const trimmed = String(patch.name).trim();
+      if (isJavaKeyword(trimmed)) {
+        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a protocol name.`);
+        return;
+      }
+      const duplicate = allProtocols(get().metaModel).some((p) => p.id !== id && p.name === trimmed);
+      if (duplicate) {
+        get().notify(`A protocol named "${trimmed}" already exists. Protocol names must be unique.`);
+        return;
+      }
+      patch = { ...patch, name: trimmed };
+    }
+    set((s) => ({ metaModel: withProtocol(s.metaModel, id, (p) => ({ ...p, ...patch })) }));
+  },
 
   deleteProtocol: (id) =>
     set((s) => {
@@ -1126,9 +1159,24 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updateSignal: (protocolId, signalId, patch) =>
+  updateSignal: (protocolId, signalId, patch) => {
+    if (patch.name !== undefined) {
+      const trimmed = String(patch.name).trim();
+      if (isJavaKeyword(trimmed)) {
+        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a signal name.`);
+        return;
+      }
+      const protocol = allProtocols(get().metaModel).find((p) => p.id === protocolId);
+      const duplicate = (protocol?.signals ?? []).some((sg) => sg.id !== signalId && sg.name === trimmed);
+      if (duplicate) {
+        get().notify(`"${protocol?.name}" already has a signal named "${trimmed}".`);
+        return;
+      }
+      patch = { ...patch, name: trimmed };
+    }
     set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
-      withSignal(p, signalId, (sg) => ({ ...sg, ...patch }))) })),
+      withSignal(p, signalId, (sg) => ({ ...sg, ...patch }))) }));
+  },
 
   deleteSignal: (protocolId, signalId) =>
     set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) => ({
@@ -1149,11 +1197,27 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updateParam: (protocolId, signalId, paramId, patch) =>
+  updateParam: (protocolId, signalId, paramId, patch) => {
+    if (patch.name !== undefined) {
+      const trimmed = String(patch.name).trim();
+      if (isJavaKeyword(trimmed)) {
+        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a parameter name.`);
+        return;
+      }
+      const protocol = allProtocols(get().metaModel).find((p) => p.id === protocolId);
+      const signal = protocol?.signals.find((sg) => sg.id === signalId);
+      const duplicate = (signal?.params ?? []).some((pr) => pr.id !== paramId && pr.name === trimmed);
+      if (duplicate) {
+        get().notify(`"${signal?.name}" already has a parameter named "${trimmed}".`);
+        return;
+      }
+      patch = { ...patch, name: trimmed };
+    }
     set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
       withSignal(p, signalId, (sg) => ({
         ...sg, params: (sg.params ?? []).map((pr) => pr.id === paramId ? { ...pr, ...patch } : pr),
-      }))) })),
+      }))) }));
+  },
 
   deleteParam: (protocolId, signalId, paramId) =>
     set((s) => ({ metaModel: withProtocol(s.metaModel, protocolId, (p) =>
@@ -1182,6 +1246,7 @@ export const useModelStore = create((set, get) => ({
         get().notify(`"${cls.name}" already has a port named "${trimmed}".`);
         return;
       }
+      patch = { ...patch, name: trimmed };
     }
     set((s) => {
       const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) =>

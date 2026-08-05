@@ -55,8 +55,8 @@ export default function ModelCanvas() {
       if (relId !== null) {
         const rel = useModelStore.getState().metaModel.relations.find((r) => r.id === relId);
         useModelStore.setState((s) => ({ edges: [...s.edges, relationToEdge(rel)] }));
+        setPendingEdgeType(null);
       }
-      setPendingEdgeType(null);
     } else {
       if (!pendingRelationId) return;
       const rel = metaModel.relations.find((r) => r.id === pendingRelationId);
