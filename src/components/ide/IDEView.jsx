@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useIdeStore } from '../../store/ideStore';
+import { useModelStore } from '../../store/modelStore';
 import Notification from '../Notification';
 import IDETopbar from './IDETopbar';
 import FileTree from './FileTree';
@@ -23,6 +24,7 @@ export default function IDEView() {
     openFile, closeTab, setActiveFile, updateContent,
     addFile, deleteFile, renameFile, loadFiles, setProjectPackage,
   } = useIdeStore();
+  const notify = useModelStore((s) => s.notify);
 
   const [newFileDialogOpen, setNewFileDialogOpen] = useState(false);
   const [newProjectOpen, setNewProjectOpen]       = useState(false);
@@ -37,14 +39,22 @@ export default function IDEView() {
     input.onchange = async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      const JSZip = (await import('jszip')).default;
-      const zip = await JSZip.loadAsync(file);
-      const loaded = [];
-      for (const [path, entry] of Object.entries(zip.files)) {
-        if (!entry.dir && path.endsWith('.java'))
-          loaded.push({ path, content: await entry.async('string') });
+      try {
+        const JSZip = (await import('jszip')).default;
+        const zip = await JSZip.loadAsync(file);
+        const loaded = [];
+        for (const [path, entry] of Object.entries(zip.files)) {
+          if (!entry.dir && path.endsWith('.java'))
+            loaded.push({ path, content: await entry.async('string') });
+        }
+        // A corrupted/non-zip file throws inside loadAsync (caught below); a
+        // valid zip with no .java files inside (a non-Java zip, or an empty
+        // one) used to just do nothing with no indication anything happened.
+        if (loaded.length > 0) loadFiles(loaded, loaded[0].path);
+        else notify(`"${file.name}" doesn't contain any .java files.`);
+      } catch (err) {
+        notify(`Couldn't read "${file.name}" as a zip file: ${err.message}`);
       }
-      if (loaded.length > 0) loadFiles(loaded, loaded[0].path);
     };
     input.click();
   };

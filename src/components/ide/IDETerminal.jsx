@@ -127,14 +127,27 @@ export default function IDETerminal({ files }) {
     term.writeln(`\x1b[2m▶  ${selectedMain}\x1b[0m`);
     setCollapsed(false);
     setRunning(true);
-    setStatus('compiling');
+    setStatus('connecting');
     term.focus();
 
     const { cols, rows } = term;
     const ws = new WebSocket(`${WS_URL}/terminal`);
     wsRef.current = ws;
 
+    // A cold-starting runner (Fly.io scaled to zero) can take 20-30s for the
+    // WebSocket to even open — that used to look identical to a genuinely
+    // hung connection, since status stayed on one label the whole time with
+    // no indication anything was still happening.
+    const coldStartTimer = setTimeout(() => {
+      if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) {
+        term.write('\x1b[2m[Still connecting — the runner may be cold-starting, this can take up to ~30s…]\x1b[0m\r\n');
+      }
+    }, 8000);
+
     ws.onopen = () => {
+      clearTimeout(coldStartTimer);
+      if (wsRef.current !== ws) return;
+      setStatus('compiling');
       ws.send(JSON.stringify({
         type: 'run',
         files: files.map((f) => ({ name: f.path, content: f.content })),
@@ -198,6 +211,7 @@ export default function IDETerminal({ files }) {
     };
 
     ws.onerror = () => {
+      clearTimeout(coldStartTimer);
       if (wsRef.current !== ws) return; // see onmessage — a stale socket's own error, not the active run's
       term.writeln('\x1b[31mConnection error — is the runner service up?\x1b[0m');
       setRunning(false);
@@ -205,6 +219,7 @@ export default function IDETerminal({ files }) {
     };
 
     ws.onclose = () => {
+      clearTimeout(coldStartTimer);
       if (wsRef.current !== ws) return; // see onmessage — otherwise a stale socket's delayed close can stamp "[Connection closed unexpectedly]" over a healthy new run
       // A close with no prior 'error'/'exit' message (network drop, server
       // restart) would otherwise leave the UI stuck showing "Running" forever.
@@ -250,10 +265,11 @@ export default function IDETerminal({ files }) {
     status === 'error' ? '#f85149' :
     TEXT_DIM;
   const statusLabel =
-    status === 'compiling' ? 'Compiling…' :
-    status === 'running'   ? 'Running' :
-    status === 'done'      ? 'Done' :
-    status === 'error'     ? 'Error' :
+    status === 'connecting' ? 'Connecting…' :
+    status === 'compiling'  ? 'Compiling…' :
+    status === 'running'    ? 'Running' :
+    status === 'done'       ? 'Done' :
+    status === 'error'      ? 'Error' :
     'Ready';
 
   return (

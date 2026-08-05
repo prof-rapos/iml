@@ -77,6 +77,19 @@ export default function CodeEditor({ files, activeFilePath, onContentChange }) {
     }
   }, [activeFilePath]);
 
+  // Dispose every accumulated model when the editor itself unmounts (leaving
+  // the IDE view entirely) — Monaco's model registry is global, so without
+  // this every file ever opened across the session stays registered there
+  // forever, independent of this component's own lifetime.
+  useEffect(() => {
+    return () => {
+      for (const model of Object.values(modelsRef.current)) {
+        model?.dispose();
+      }
+      modelsRef.current = {};
+    };
+  }, []);
+
   if (!activeFile) {
     return (
       <div style={{
