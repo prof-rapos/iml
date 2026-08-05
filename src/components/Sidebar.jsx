@@ -1,7 +1,7 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useModelStore, getAllAttributes } from '../store/modelStore';
-import { useOutsideClick } from '../utils/useOutsideClick';
 import ConfirmModal from './ConfirmModal';
+import ConformanceBadge from './ConformanceBadge';
 
 
 const EDGE_TYPES  = ['INHERITANCE', 'REFERENCE', 'COMPOSITION'];
@@ -33,7 +33,6 @@ export default function Sidebar() {
   const clearMetaModel      = useModelStore((s) => s.clearMetaModel);
   const clearInstanceModel  = useModelStore((s) => s.clearInstanceModel);
   const instanceModel       = useModelStore((s) => s.instanceModels[s.currentIMIndex]);
-  const conformanceResults  = useModelStore((s) => s.conformanceResults);
   // Recomputed only when the current instance model's objects or the
   // meta-model's classes/relations (what getAllAttributes reads) actually
   // change, instead of on every render of the sidebar.
@@ -83,10 +82,6 @@ export default function Sidebar() {
     spawnNode(id, 'objectNode', 'objectId');
   };
 
-  const [issueOpen, setIssueOpen] = useState(false);
-  const issueRef = useRef(null);
-  useOutsideClick(issueRef, () => setIssueOpen(false), issueOpen);
-
   const [confirm, setConfirm] = useState(null); // { message, onConfirm }
   const ask = (message, onConfirm) => setConfirm({ message, onConfirm });
   const dismiss = () => setConfirm(null);
@@ -111,58 +106,8 @@ export default function Sidebar() {
       display: 'flex', flexDirection: 'column',
       flexShrink: 0,
     }}>
-	  {/* Conformance badge + popover */}
-      <div ref={issueRef} style={{ borderTop: '1px solid rgba(255,255,255,0.1)', padding: '8px', position: 'relative', flexShrink: 0 }}>
-        {(() => {
-          const hasIssues = conformanceResults.length > 0 || coEvoWarnings.length > 0;
-          const totalCount = conformanceResults.length + coEvoWarnings.length;
-          const badge = hasIssues
-            ? { bg: 'rgba(245,158,11,0.2)', color: '#fcd34d', border: 'rgba(245,158,11,0.5)' }
-            : { bg: 'rgba(34,197,94,0.15)', color: '#4ade80', border: 'rgba(34,197,94,0.4)' };
-          return (
-            <>
-              <button
-                onClick={() => hasIssues && setIssueOpen((o) => !o)}
-                style={{
-                  width: '100%', padding: '6px 10px', borderRadius: 20,
-                  border: `1px solid ${badge.border}`,
-                  background: badge.bg, color: badge.color,
-                  fontSize: 12, fontWeight: 700, cursor: hasIssues ? 'pointer' : 'default',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  letterSpacing: '0.03em',
-                }}
-              >
-                {hasIssues
-                  ? <><span>⚠ {totalCount} Conformance Issue{totalCount > 1 ? 's' : ''}</span><span style={{ opacity: 0.7, fontSize: 11 }}>›</span></>
-                  : <span>✓ Valid Conformance</span>
-                }
-              </button>
+      <ConformanceBadge extraWarnings={coEvoWarnings} />
 
-              {issueOpen && hasIssues && (
-                <div style={{
-                  position: 'absolute', top: 'calc(100% + 4px)', left: 8, right: 8, zIndex: 300,
-                  background: '#0f172a', border: '1px solid rgba(255,255,255,0.12)',
-                  borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-                  overflow: 'hidden',
-                }}>
-                  <div style={{ padding: '8px 12px 6px', fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', color: 'rgba(255,255,255,0.4)', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
-                    Conformance Issues
-                  </div>
-                  <div style={{ maxHeight: 220, overflowY: 'auto', padding: '6px 12px 10px', fontFamily: 'var(--iml-font-mono)', fontSize: 11, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                    {coEvoWarnings.map((w, i) => (
-                      <div key={`ce-${i}`} style={{ color: '#93c5fd' }}>↳ {w}</div>
-                    ))}
-                    {conformanceResults.map((r, i) => (
-                      <div key={i} style={{ color: '#fca5a5' }}>⚠ {r.msg}</div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
-          );
-        })()}
-      </div>
-	  
       {/* Mode tabs */}
       <div style={{ display: 'flex', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
         {['metamodel', 'instance'].map((m) => (

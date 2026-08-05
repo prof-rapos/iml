@@ -16,12 +16,13 @@ export function MenuDivider() {
   return <div style={{ height: 1, background: 'rgba(255,255,255,0.1)', margin: '2px 0' }} />;
 }
 
-export function MenuItem({ children, onClick, disabled }) {
+export function MenuItem({ children, onClick, disabled, title }) {
   const [hover, setHover] = useState(false);
   return (
     <button
       onClick={onClick}
       disabled={disabled}
+      title={title}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       style={{

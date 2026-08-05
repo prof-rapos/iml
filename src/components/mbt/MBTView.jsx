@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import Notification from '../Notification';
 import MBTTopbar from './MBTTopbar';
 import SETViewerPanel from './SETViewerPanel';
 import TestCaseExplorerPanel from './TestCaseExplorerPanel';
@@ -22,6 +23,7 @@ export default function MBTView() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+      <Notification />
       <MBTTopbar />
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
         <div style={{ width: setViewerWidth, flexShrink: 0, overflow: 'hidden' }}>

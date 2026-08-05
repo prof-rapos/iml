@@ -164,6 +164,109 @@ describe('validateConformance — behavioural (state machines)', () => {
   });
 });
 
+// Regression: a transition's trigger was the only port/signal reference ever
+// validated — action code (entry/exit/effect) calling a port send directly
+// (e.g. `oppositeOut.safe();`) went just as stale on a port/signal rename,
+// with nothing catching it before codegen emitted it verbatim into Java that
+// then failed to compile.
+describe('validateConformance — behavioural (action-code port sends)', () => {
+  // "notify" is receivable ('in', usable as a trigger) AND has an 'out'
+  // signal ("ping") sendable from action code — mirrors the seed model's
+  // Timing/Log ports having both directions in one protocol.
+  const baseCls = (behaviours) => ({
+    name: 'M', enumerations: [],
+    classes: [{
+      id: 'C', name: 'Widget', attributes: [],
+      ports: [{ id: 'pOps', name: 'ops', protocolId: 'proto1', conjugated: false }],
+    }],
+    relations: [],
+    protocols: [{ id: 'proto1', name: 'signaling', signals: [
+      { id: 's1', name: 'notify', direction: 'in', params: [] },
+      { id: 's2', name: 'ping', direction: 'out', params: [] },
+    ] }],
+    behaviours,
+  });
+
+  it('flags an entry action sending through a port name that no longer exists', () => {
+    const mm = baseCls({
+      C: {
+        // "oldOps" doesn't exist — e.g. the port was renamed to "ops".
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'oldOps.ping();', exit: '' }],
+        transitions: [],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] });
+    expect(errors).toContainEqual(expect.objectContaining({ kind: 'state', id: 's1' }));
+  });
+
+  it('flags an exit action calling a signal the port can no longer send', () => {
+    const mm = baseCls({
+      C: {
+        // "notify" exists on "ops" but is 'in' (receivable), not sendable —
+        // e.g. the signal used to be 'out' before a direction change.
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: '', exit: 'ops.notify();' }],
+        transitions: [],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] });
+    expect(errors).toContainEqual(expect.objectContaining({ kind: 'state', id: 's1' }));
+  });
+
+  it('flags a transition effect with a stale port send', () => {
+    const mm = baseCls({
+      C: {
+        states: [
+          { id: 's1', kind: 'simple', name: 'Open', entry: '', exit: '' },
+          { id: 's2', kind: 'simple', name: 'Closed', entry: '', exit: '' },
+        ],
+        transitions: [{ id: 't1', source: 's1', target: 's2', trigger: '', guard: '', effect: 'oldOps.ping();' }],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] });
+    expect(errors).toContainEqual(expect.objectContaining({ kind: 'transition', id: 't1' }));
+  });
+
+  it('accepts a valid port send', () => {
+    const mm = baseCls({
+      C: {
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'ops.ping();', exit: '' }],
+        transitions: [],
+      },
+    });
+    // Filtered to 'class'/'state' kinds specifically about the port-send
+    // check — this fixture has no initial pseudostate, which is a separate,
+    // already-covered concern not relevant to what's being tested here.
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+
+  it('does not false-positive on a dot-paren pattern inside a string literal', () => {
+    const mm = baseCls({
+      C: {
+        // Only "ops.ping(...)" is a real call here; the quoted message text
+        // itself must not be parsed as one.
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'ops.ping("see foo.bar() for details");', exit: '' }],
+        transitions: [],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+
+  it('does not check action code at all for a portless class', () => {
+    const mm = {
+      name: 'M', enumerations: [],
+      classes: [{ id: 'C', name: 'Widget', attributes: [] }],
+      relations: [], protocols: [],
+      behaviours: {
+        C: {
+          states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'whatever.thing();', exit: '' }],
+          transitions: [],
+        },
+      },
+    };
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+});
+
 describe('validateConformance — object & attribute rules', () => {
   it('flags an object of an unknown class', () => {
     const mm = { name: 'M', enumerations: [], classes: [], relations: [] };

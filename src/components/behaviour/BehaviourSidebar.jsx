@@ -3,6 +3,7 @@ import { Settings2 } from 'lucide-react';
 import { useModelStore, allProtocols } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import ProtocolManager from './ProtocolManager';
+import ConformanceBadge from '../ConformanceBadge';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -92,6 +93,8 @@ export default function BehaviourSidebar() {
       width: 200, flexShrink: 0, background: '#1e293b', borderRight: `1px solid ${BORDER}`,
       display: 'flex', flexDirection: 'column', fontFamily: 'var(--iml-font-sans)', overflowY: 'auto',
     }}>
+      <ConformanceBadge />
+
       <div style={{ padding: '10px 12px 6px', fontSize: 10, fontWeight: 700, color: TEXT_DIM, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Palette
       </div>

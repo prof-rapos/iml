@@ -117,6 +117,55 @@ export function validateConformance(metaModel, instanceModel) {
       }
     }
 
+    // A transition's trigger is the only port/signal reference validated
+    // above — but action code (state entry/exit, transition effect) can
+    // just as easily call a port send directly, e.g. `oppositeOut.safe();`,
+    // and that reference goes stale exactly the same way on a port/signal
+    // rename with nothing catching it before codegen emits it verbatim into
+    // Java that then fails to compile. Only meaningful for a class that has
+    // ports at all — a portless class's action code has no port vocabulary
+    // to check against, so nothing here would be a port-send in the first
+    // place.
+    if ((cls.ports ?? []).length > 0) {
+      const sendableSignals = new Map(); // port name -> Set(signal names sendable through it)
+      for (const port of cls.ports) {
+        const proto = getProtocolById(port.protocolId, metaModel);
+        if (!proto) continue;
+        // Opposite of the trigger-side "wanted" direction above: a signal
+        // this capsule *sends* through the port, not one it receives.
+        const sentDir = port.conjugated ? 'in' : 'out';
+        sendableSignals.set(port.name, new Set((proto.signals ?? []).filter((sg) => sg.direction === sentDir).map((sg) => sg.name)));
+      }
+
+      // Regex-based, not a parser — same tradeoff as findMainClasses/
+      // stripComments elsewhere. Strip quoted strings first so a log
+      // message like `log.log("call foo.bar()")` doesn't spuriously match
+      // on its own text content.
+      const CALL_RE = /([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/g;
+      const stripStrings = (s) => s.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+
+      const checkActionCode = (text, kind, id, label) => {
+        if (!text) return;
+        for (const m of stripStrings(text).matchAll(CALL_RE)) {
+          const [, portRef, sigRef] = m;
+          const validSigs = sendableSignals.get(portRef);
+          if (!validSigs) {
+            errors.push({ kind, id, msg: `"${cls.name}": ${label} sends through "${portRef}", which isn't a port on this class — likely stale after a rename or delete` });
+          } else if (!validSigs.has(sigRef)) {
+            errors.push({ kind, id, msg: `"${cls.name}": ${label} calls "${portRef}.${sigRef}(...)", which isn't a signal "${portRef}" can currently send — likely stale after a rename` });
+          }
+        }
+      };
+
+      for (const st of machine.states ?? []) {
+        checkActionCode(st.entry, 'state', st.id, `"${st.name || '(unnamed)'}"'s entry action`);
+        checkActionCode(st.exit, 'state', st.id, `"${st.name || '(unnamed)'}"'s exit action`);
+      }
+      for (const t of machine.transitions ?? []) {
+        checkActionCode(t.effect, 'transition', t.id, 'a transition effect');
+      }
+    }
+
     // A machine with no (or a duplicate) outgoing transition from its initial
     // pseudostate used to fail silently at runtime instead of at generation
     // time: generateStart() finds nothing (or just the first match) to enter,

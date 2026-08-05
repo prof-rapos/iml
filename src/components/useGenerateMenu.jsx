@@ -29,6 +29,16 @@ export function useGenerateMenu({ defaultScope = 'structural', closeMenu } = {})
   const [scope, setScope] = useState(defaultScope);
   const [overwriteDialog, setOverwriteDialog] = useState(null); // null | { generatedFiles, activePath }
 
+  // Blocking only inside the click handler (as before) meant the menu items
+  // looked identically clickable whether or not Generate would actually do
+  // anything — and in the Behavioural/MBT views specifically, the resulting
+  // notify() had nowhere to render at all (no <Notification/> was mounted
+  // there), so a blocked Generate looked exactly like a silent no-op.
+  const blocked = conformanceResults.length > 0;
+  const blockedTitle = blocked
+    ? `${conformanceResults.length} conformance issue${conformanceResults.length > 1 ? 's' : ''} must be resolved first — see the Conformance badge.`
+    : undefined;
+
   const getGeneratedFiles = () => {
     if (conformanceResults.length > 0) {
       notify(`Cannot generate code: ${conformanceResults.length} conformance issue${conformanceResults.length > 1 ? 's' : ''} must be resolved first.`);
@@ -105,8 +115,13 @@ export function useGenerateMenu({ defaultScope = 'structural', closeMenu } = {})
           </button>
         ))}
       </div>
-      <MenuItem onClick={handleOpenInIDE}>Open in IDE</MenuItem>
-      <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
+      <MenuItem onClick={handleOpenInIDE} disabled={blocked} title={blockedTitle}>Open in IDE</MenuItem>
+      <MenuItem onClick={handleExportZip} disabled={blocked} title={blockedTitle}>Export as ZIP</MenuItem>
+      {blocked && (
+        <div style={{ padding: '2px 14px 8px', fontSize: 11, color: '#fca5a5', lineHeight: 1.5 }}>
+          ⚠ {conformanceResults.length} conformance issue{conformanceResults.length > 1 ? 's' : ''} must be resolved first.
+        </div>
+      )}
     </>
   );
 
