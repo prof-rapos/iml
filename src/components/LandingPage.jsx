@@ -1,52 +1,6 @@
 import { useState } from 'react';
 import { useModelStore } from '../store/modelStore';
-import { Network, FileSliders, Workflow, Code2, ShieldCheck } from 'lucide-react';
-
-const MODULES = [
-  {
-    id: 'structural',
-    title: 'Structural Modeling',
-    description: 'Define meta-models, create object instances, and validate conformance.',
-    color: '#0077CA',
-    available: true,
-  },
-  {
-    id: 'transformations',
-    title: 'Model Transformations',
-    description: 'Define and apply model-to-model transformations between meta-models.',
-    color: '#7c3aed',
-    available: true,
-  },
-  {
-    id: 'behavioural',
-    title: 'Behavioural Modeling',
-    description: 'Model capsules, protocols, and state machines in UML-RT style.',
-    color: '#d97706',
-    available: true,
-  },
-  {
-    id: 'ide',
-    title: 'Code Explorer',
-    description: 'Edit, run, and debug generated code in an integrated development environment.',
-    color: '#059669',
-    available: true,
-  },
-  {
-    id: 'testing',
-    title: 'Model-Based Testing',
-    description: 'Verify models and generate test cases using symbolic execution.',
-    color: '#dc2626',
-    available: true,
-  },
-];
-
-const ICONS = {
-  structural:      <Network      size={26} strokeWidth={1.6} />,
-  transformations: <FileSliders  size={26} strokeWidth={1.6} />,
-  behavioural:     <Workflow     size={26} strokeWidth={1.6} />,
-  ide:             <Code2        size={26} strokeWidth={1.6} />,
-  testing:         <ShieldCheck  size={26} strokeWidth={1.6} />,
-};
+import { GROUPS, moduleIcon } from '../utils/moduleGroups.jsx';
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 function ModuleCard({ mod, onSelect, onComingSoon }) {
@@ -76,7 +30,7 @@ function ModuleCard({ mod, onSelect, onComingSoon }) {
         color: '#fff',
         opacity: mod.available ? 1 : 0.5,
       }}>
-        {ICONS[mod.id]}
+        {moduleIcon(mod.id)}
       </div>
 
       {/* Text */}
@@ -135,7 +89,7 @@ function ComingSoonModal({ mod, onClose }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: '#fff', marginBottom: 16,
         }}>
-          {ICONS[mod.id]}
+          {moduleIcon(mod.id)}
         </div>
         <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 8 }}>{mod.title}</div>
         <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.5)', lineHeight: 1.6, marginBottom: 24 }}>
@@ -194,15 +148,27 @@ export default function LandingPage() {
         Select a module to get started
       </div>
 
-      {/* Module cards */}
-      <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {MODULES.map((mod) => (
-          <ModuleCard
-            key={mod.id}
-            mod={mod}
-            onSelect={(id) => setAppView(id)}
-            onComingSoon={setComingSoon}
-          />
+      {/* Module cards, grouped by actual dependency shape */}
+      <div style={{ width: '100%', maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 26 }}>
+        {GROUPS.map((group) => (
+          <div key={group.id}>
+            <div style={{
+              fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+              color: 'rgba(255,255,255,0.32)', marginBottom: 10, paddingLeft: 2,
+            }}>
+              {group.label}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {group.modules.map((mod) => (
+                <ModuleCard
+                  key={mod.id}
+                  mod={mod}
+                  onSelect={(id) => setAppView(id)}
+                  onComingSoon={setComingSoon}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </div>
 

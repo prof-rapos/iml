@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import NewProjectWizard from './NewProjectWizard';
 import { useOutsideClick } from '../../utils/useOutsideClick';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
+import ModuleSwitcher from '../ModuleSwitcher';
 
 async function exportZip(files, name = 'project') {
   const zip = new JSZip();
@@ -109,6 +110,8 @@ export default function IDETopbar() {
         </div>
 
         <div style={{ flex: 1 }} />
+
+        <ModuleSwitcher current="ide" />
 
         {/* Home button */}
         <HomeButton onClick={() => setAppView('home')} />

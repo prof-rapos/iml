@@ -4,6 +4,7 @@ import { toJpeg } from 'html-to-image';
 import { useOutsideClick } from '../utils/useOutsideClick';
 import { useGenerateMenu } from './useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from './topbarMenu';
+import ModuleSwitcher from './ModuleSwitcher';
 
 export default function Topbar() {
   const mode = useModelStore((s) => s.mode);
@@ -102,6 +103,8 @@ export default function Topbar() {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      <ModuleSwitcher current="structural" />
 
       {/* Home button */}
       <HomeButton onClick={() => setAppView('home')} />

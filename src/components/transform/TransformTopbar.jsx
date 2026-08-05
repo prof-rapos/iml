@@ -4,6 +4,7 @@ import { useModelStore } from '../../store/modelStore';
 import { runTransform } from '../../utils/runTransform';
 import { validateModelShape } from '../../utils/modelHelpers';
 import { TEXT, TEXT_DIM } from '../theme';
+import ModuleSwitcher from '../ModuleSwitcher';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#7c3aed';
@@ -140,6 +141,8 @@ export default function TransformTopbar() {
       </button>
 
       <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
+
+      <ModuleSwitcher current="transformations" size={28} borderColor={BORDER} color={TEXT_DIM} />
 
       {/* Home */}
       <button

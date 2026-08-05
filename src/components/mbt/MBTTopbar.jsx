@@ -6,6 +6,7 @@ import { useMbtStore } from '../../store/mbtStore';
 import { generateAllTestsFiles } from '../../utils/mbtCodeGen';
 import { useOutsideClick } from '../../utils/useOutsideClick';
 import { MenuSection, MenuItem, HomeButton } from '../topbarMenu';
+import ModuleSwitcher from '../ModuleSwitcher';
 import { TEXT } from '../theme';
 
 const BORDER = 'rgba(255,255,255,0.10)';
@@ -71,6 +72,8 @@ export default function MBTTopbar() {
       </div>
 
       <div style={{ flex: 1 }} />
+
+      <ModuleSwitcher current="testing" size={34} borderColor={BORDER} color={TEXT} />
 
       <HomeButton onClick={() => setAppView('home')} size={34} borderColor={BORDER} color={TEXT} />
 

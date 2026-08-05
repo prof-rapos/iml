@@ -7,6 +7,7 @@ import { TEXT, TEXT_DIM } from '../theme';
 import { useOutsideClick } from '../../utils/useOutsideClick';
 import { useGenerateMenu } from '../useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
+import ModuleSwitcher from '../ModuleSwitcher';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
 
@@ -123,7 +124,7 @@ export default function BehaviourTopbar() {
       <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
 
       <div style={{ display: 'flex', background: '#0d1117', border: `1px solid ${BORDER}`, borderRadius: 6, padding: 2 }}>
-        {[['statemachine', 'State Machine'], ['structure', 'Structure']].map(([v, label]) => (
+        {[['statemachine', 'State Machine'], ['structure', 'Composite Structure']].map(([v, label]) => (
           <button
             key={v}
             onClick={() => handleSubViewChange(v)}
@@ -170,6 +171,8 @@ export default function BehaviourTopbar() {
       )}
 
       <div style={{ flex: 1 }} />
+
+      <ModuleSwitcher current="behavioural" size={34} borderColor={BORDER} color={TEXT} />
 
       <HomeButton onClick={() => setAppView('home')} size={34} borderColor={BORDER} color={TEXT} />
 
