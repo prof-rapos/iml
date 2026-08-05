@@ -7,6 +7,8 @@ import { useOutsideClick } from '../../utils/useOutsideClick';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 import ModuleSwitcher from '../ModuleSwitcher';
 
+const BORDER = 'rgba(255,255,255,0.10)';
+
 async function exportZip(files, name = 'project') {
   const zip = new JSZip();
   for (const f of files) zip.file(f.path, f.content);
@@ -97,14 +99,14 @@ export default function IDETopbar() {
   return (
     <>
       <div style={{
-        height: 52, background: '#0f172a', color: '#f1f5f9',
+        height: 48, background: '#161b22', color: '#f1f5f9',
         display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
-        borderBottom: '1px solid rgba(255,255,255,0.08)', flexShrink: 0,
+        borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
       }}>
         {/* Logo + title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ width: 60, height: 36, background: '#fff', borderRadius: 7, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-            <img src={`${import.meta.env.BASE_URL}logos/logo.png`} alt="IML" style={{ width: 50, height: 50, objectFit: 'contain' }} />
+          <div style={{ width: 28, height: 28, background: '#fff', borderRadius: 6, overflow: 'hidden', flexShrink: 0 }}>
+            <img src={`${import.meta.env.BASE_URL}logos/logo.png`} alt="IML" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
           </div>
           <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.3px' }}>Instructional Modeling Language</span>
         </div>

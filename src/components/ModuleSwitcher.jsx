@@ -9,7 +9,7 @@ import { GROUPS, moduleIcon } from '../utils/moduleGroups.jsx';
 // gets switched between constantly while modeling. Reuses the exact same
 // grouping (LandingPage's GROUPS) so the two places the module list appears
 // never drift apart.
-export default function ModuleSwitcher({ current, size = 36, borderColor = 'rgba(255,255,255,0.15)', color = '#f1f5f9' }) {
+export default function ModuleSwitcher({ current, size = 34, borderColor = 'rgba(255,255,255,0.10)', color = '#f1f5f9' }) {
   const setAppView = useModelStore((s) => s.setAppView);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -34,7 +34,13 @@ export default function ModuleSwitcher({ current, size = 36, borderColor = 'rgba
 
       {open && (
         <div style={{
-          position: 'absolute', top: 'calc(100% + 6px)', left: 0, zIndex: 300,
+          // Right-aligned (grows leftward), matching every topbar's own
+          // hamburger-menu dropdown — this button sits near the right edge
+          // of the screen in every topbar, so a left-aligned (grows
+          // rightward) panel routinely ran off the right edge of the
+          // viewport, worst on Transformations' topbar (the most buttons
+          // crowding this control furthest right).
+          position: 'absolute', top: 'calc(100% + 6px)', right: 0, zIndex: 300,
           background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
           borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,0.45)', minWidth: 250, overflow: 'hidden',
           padding: '6px 0',

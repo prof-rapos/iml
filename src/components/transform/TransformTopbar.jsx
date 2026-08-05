@@ -142,7 +142,7 @@ export default function TransformTopbar() {
 
       <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
 
-      <ModuleSwitcher current="transformations" size={28} borderColor={BORDER} color={TEXT_DIM} />
+      <ModuleSwitcher current="transformations" size={34} borderColor={BORDER} color={TEXT} />
 
       {/* Home */}
       <button
