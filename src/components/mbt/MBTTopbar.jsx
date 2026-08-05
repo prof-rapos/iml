@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import JSZip from 'jszip';
+import { toJpeg } from 'html-to-image';
 import { useModelStore } from '../../store/modelStore';
 import { useIdeStore } from '../../store/ideStore';
 import { useMbtStore } from '../../store/mbtStore';
 import { generateAllTestsFiles } from '../../utils/mbtCodeGen';
 import { useOutsideClick } from '../../utils/useOutsideClick';
-import { MenuSection, MenuItem, HomeButton } from '../topbarMenu';
+import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 import ModuleSwitcher from '../ModuleSwitcher';
 import { TEXT } from '../theme';
 
@@ -58,6 +59,29 @@ export default function MBTTopbar() {
     URL.revokeObjectURL(url);
   };
 
+  // Same pattern as Structural/Behavioural's Export JPG (Topbar.jsx,
+  // BehaviourTopbar.jsx) — captures whatever's currently visible in the
+  // canvas, not an auto-fit-everything shot, same caveat those already have
+  // for a diagram bigger than the viewport.
+  const handleExportJpeg = async () => {
+    setMenuOpen(false);
+    const node = document.querySelector('.react-flow');
+    if (!node) return;
+    try {
+      const dataUrl = await toJpeg(node, {
+        quality: 0.95, backgroundColor: '#1a1f2b',
+        filter: (el) => !el.classList?.contains('react-flow__controls'),
+      });
+      const cls = metaModel.classes.find((c) => c.id === capsuleId);
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `${cls?.name || 'set'}-symbolic-execution-tree.jpg`;
+      a.click();
+    } catch (err) {
+      notify(`Export failed: ${err.message}`);
+    }
+  };
+
   return (
     <div style={{
       height: 48, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 10,
@@ -103,6 +127,8 @@ export default function MBTTopbar() {
             <MenuSection label="Generate" />
             <MenuItem onClick={handleGenerateAllTests}>Generate All Tests</MenuItem>
             <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
+            <MenuDivider />
+            <MenuItem onClick={handleExportJpeg} disabled={!capsuleId} title={!capsuleId ? 'Select a capsule and build its tree first' : undefined}>Export JPG</MenuItem>
           </div>
         )}
       </div>
