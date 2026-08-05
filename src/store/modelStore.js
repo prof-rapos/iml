@@ -8,6 +8,7 @@ import {
   validateModelShape,
 } from '../utils/modelHelpers.js';
 import { validateConformance } from '../utils/conformance.js';
+import { saveAutosave } from '../utils/autosave.js';
 import { selectionPatch } from './selectionChanges.js';
 
 const mkIM = (name = 'NewInstanceModel') => ({
@@ -1430,5 +1431,28 @@ useModelStore.subscribe((state, prevState) => {
 useModelStore.subscribe((state, prevState) => {
   if (state.metaModel !== prevState.metaModel || state.instanceModels !== prevState.instanceModels) {
     if (!suppressDirty && !state.dirty) useModelStore.setState({ dirty: true });
+  }
+});
+
+// Periodic crash-recovery snapshot to localStorage (see utils/autosave.js).
+// Always writes the current state, dirty flag included — App.jsx's
+// mount-time restore prompt only offers to restore when the snapshot's own
+// `dirty` is true, i.e. there really was unsaved work at the moment of the
+// last reload/crash. A clean save point (a fresh load, a deliberate Clear)
+// resets `dirty` to false, so the *next* snapshot correctly stops looking
+// like something worth recovering, without needing to special-case those
+// actions here.
+let autosaveTimer = null;
+useModelStore.subscribe((state, prevState) => {
+  if (
+    state.metaModel      !== prevState.metaModel ||
+    state.instanceModels !== prevState.instanceModels ||
+    state.layouts        !== prevState.layouts
+  ) {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(() => {
+      const s = useModelStore.getState();
+      saveAutosave({ metaModel: s.metaModel, instanceModels: s.instanceModels, layouts: s.layouts, dirty: s.dirty });
+    }, 2000);
   }
 });

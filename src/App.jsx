@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { ReactFlowProvider } from '@xyflow/react';
 import Topbar from './components/Topbar';
 import Sidebar from './components/Sidebar';
@@ -6,18 +6,33 @@ import ModelCanvas from './components/ModelCanvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import LandingPage from './components/LandingPage';
 import Notification from './components/Notification';
+import RestorePrompt from './components/RestorePrompt';
 import IDEView from './components/ide/IDEView';
 import TransformView from './components/transform/TransformView';
 import BehaviouralView from './components/behaviour/BehaviouralView';
 import MBTView from './components/mbt/MBTView';
 import { useModelStore } from './store/modelStore';
 import { seedDemoModel } from './utils/seedModel';
+import { readAutosave, clearAutosave } from './utils/autosave';
 
 export default function App() {
   const rebuildCanvas = useModelStore((s) => s.rebuildCanvas);
   const appView       = useModelStore((s) => s.appView);
+  const loadFromJSON  = useModelStore((s) => s.loadFromJSON);
 
-  useEffect(() => {
+  // Read once, during the initial render (a lazy useState initializer, not
+  // an effect) — a pure synchronous read of localStorage, no different from
+  // seeding a form field from a prop. Only offer to restore when the
+  // snapshot's own `dirty` flag was true — i.e. there really was unsaved
+  // work at the moment of the last reload/crash, not just a stale-but-clean
+  // autosave left over from a deliberate load/Clear (which resets dirty to
+  // false, the same signal the beforeunload warning already uses).
+  const [restorable, setRestorable] = useState(() => {
+    const saved = readAutosave();
+    return saved && saved.dirty ? saved : null;
+  });
+
+  const seedFresh = () => {
     seedDemoModel();
     // seedDemoModel sets state directly (not through loadFromJSON), so it
     // doesn't get the dirty-suppression that action's own callers do —
@@ -25,15 +40,35 @@ export default function App() {
     // as "unsaved work" the moment the app opens.
     useModelStore.setState({ dirty: false });
     setTimeout(() => rebuildCanvas('metamodel'), 50);
-    // rebuildCanvas is a Zustand action (stable reference) — this still
-    // only runs once, on mount.
-  }, [rebuildCanvas]);
+  };
 
-  // No autosave anywhere in the app (a known, deliberate gap — see project
-  // backlog) — an accidental refresh/close otherwise silently destroys the
-  // whole in-progress session with zero warning, since seedDemoModel above
-  // runs unconditionally on every mount. Only warn once there's actually
-  // something at risk (see the `dirty` flag's own comment in modelStore.js).
+  useEffect(() => {
+    // Seeding the demo model is deferred until the restore prompt resolves,
+    // so it can't flash in behind the modal or get immediately overwritten.
+    if (!restorable) seedFresh();
+    // rebuildCanvas/seedFresh are stable Zustand-action-derived references,
+    // and `restorable` is only ever read here at its initial mount value
+    // (both branches below already set it to null before anything could
+    // re-run this) — this still only ever seeds once.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleRestore = () => {
+    loadFromJSON({ metaModel: restorable.metaModel, instanceModels: restorable.instanceModels, layouts: restorable.layouts });
+    setRestorable(null);
+  };
+  const handleDiscard = () => {
+    clearAutosave();
+    setRestorable(null);
+    seedFresh();
+  };
+
+  // beforeunload only prevents an accidental refresh from happening
+  // silently — it doesn't stop the user from confirming it anyway, and
+  // can't help at all against an actual crash. The autosave snapshot above
+  // (and RestorePrompt below) is the backstop for those two cases; only
+  // warn once there's actually something at risk (see the `dirty` flag's
+  // own comment in modelStore.js).
   useEffect(() => {
     const handler = (e) => {
       if (!useModelStore.getState().dirty) return;
@@ -44,23 +79,32 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  if (appView === 'home')            return <LandingPage />;
-  if (appView === 'ide')             return <IDEView />;
-  if (appView === 'transformations') return <TransformView />;
-  if (appView === 'behavioural')     return <BehaviouralView />;
-  if (appView === 'testing')         return <MBTView />;
+  const view =
+    appView === 'home'            ? <LandingPage /> :
+    appView === 'ide'             ? <IDEView /> :
+    appView === 'transformations' ? <TransformView /> :
+    appView === 'behavioural'     ? <BehaviouralView /> :
+    appView === 'testing'         ? <MBTView /> :
+    (
+      <ReactFlowProvider>
+        <Notification />
+        <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+          <Topbar />
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            <Sidebar />
+            <ModelCanvas />
+            <PropertiesPanel />
+          </div>
+        </div>
+      </ReactFlowProvider>
+    );
 
   return (
-    <ReactFlowProvider>
-      <Notification />
-      <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <Topbar />
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
-          <Sidebar />
-          <ModelCanvas />
-          <PropertiesPanel />
-        </div>
-      </div>
-    </ReactFlowProvider>
+    <>
+      {view}
+      {restorable && (
+        <RestorePrompt savedAt={restorable.savedAt} onRestore={handleRestore} onDiscard={handleDiscard} />
+      )}
+    </>
   );
 }
