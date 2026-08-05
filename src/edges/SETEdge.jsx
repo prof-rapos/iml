@@ -48,7 +48,7 @@ export default function SETEdge({
 
       <EdgeLabelRenderer>
         <div
-          title={edge.guardFork ? 'Best-effort — guard outcome not guaranteed' : undefined}
+          title={edge.guardFork ? (edge.guardReason ?? 'Best-effort — guard outcome not guaranteed') : undefined}
           style={{
             position: 'absolute',
             transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)`,

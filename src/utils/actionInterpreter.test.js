@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { applyActionCode, parseActionLine } from './actionInterpreter.js';
+import { applyActionCode, parseActionLine, evaluateCondition, describeUnresolvedGuard } from './actionInterpreter.js';
 
 const attrs = [
   { id: 'aColor', name: 'lightColor', type: 'ENUM' },
@@ -243,5 +243,61 @@ describe('applyActionCode — conditional blocks', () => {
     values.set('aCount', { kind: 'known', value: '3' });
     const result = applyActionCode(code, attrIndex, values);
     expect(result.get('aCount')).toEqual({ kind: 'known', value: '3' });
+  });
+});
+
+describe('evaluateCondition — STRING/ENUM equality', () => {
+  it('evaluates a known STRING attribute against a quoted literal', () => {
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('direction == "NS"', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('direction == "EW"', attrIndex, values)).toBe(false);
+    expect(evaluateCondition('direction != "EW"', attrIndex, values)).toBe(true);
+  });
+
+  it('evaluates a known ENUM attribute against an enum literal', () => {
+    const values = unknownValues();
+    values.set('aColor', { kind: 'known', value: 'RED' });
+    expect(evaluateCondition('lightColor == LightValue.RED', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('lightColor == LightValue.GREEN', attrIndex, values)).toBe(false);
+  });
+
+  it('still returns unknown when the STRING/ENUM value itself is not known', () => {
+    const values = unknownValues();
+    expect(evaluateCondition('direction == "NS"', attrIndex, values)).toBe('unknown');
+  });
+
+  it('still returns unknown for attribute-vs-attribute comparisons', () => {
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('direction == otherAttr', attrIndex, values)).toBe('unknown');
+  });
+
+  it('does not regress numeric/boolean comparisons', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '5' });
+    values.set('aFlag', { kind: 'known', value: 'true' });
+    expect(evaluateCondition('count < 10', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('count >= 10', attrIndex, values)).toBe(false);
+    expect(evaluateCondition('ready == true', attrIndex, values)).toBe(true);
+  });
+});
+
+describe('describeUnresolvedGuard', () => {
+  it('flags an untracked identifier as a likely typo', () => {
+    expect(describeUnresolvedGuard('countt > 5', attrIndex)).toMatch(/isn't a tracked attribute/);
+    expect(describeUnresolvedGuard('flagg', attrIndex)).toMatch(/isn't a tracked attribute/);
+  });
+
+  it('flags an attribute-vs-attribute comparison distinctly from a typo', () => {
+    expect(describeUnresolvedGuard('count > price', attrIndex)).toMatch(/other than a fixed value/);
+  });
+
+  it('gives a "not yet known" reason for a tracked attribute with an unknown value', () => {
+    expect(describeUnresolvedGuard('count > 5', attrIndex)).toMatch(/isn't known for certain/);
+  });
+
+  it('flags an unsupported guard shape (e.g. a compound boolean expression)', () => {
+    expect(describeUnresolvedGuard('ready && count', attrIndex)).toMatch(/not one of the supported guard forms/i);
   });
 });

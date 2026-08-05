@@ -34,6 +34,7 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
       ? `Timer fires on "${edge.event.port}"${edge.event.msLabel ? ` (~${edge.event.msLabel}ms)` : ' — duration not statically known'}`
       : `Receive ${edge.event.port}.${edge.event.signal}`,
     guardFork: edge.guardFork,
+    guardReason: edge.guardReason ?? null,
   }));
 
   const guardForkPresent = steps.some((s) => s.guardFork);

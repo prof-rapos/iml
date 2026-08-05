@@ -249,6 +249,77 @@ describe('buildSET — guard evaluation against a known tracked attribute', () =
   });
 });
 
+describe('buildSET — STRING/ENUM equality guards evaluate when the value is known', () => {
+  // Two complementary STRING guards on the same trigger — before this fix,
+  // evaluateCondition only ever recognized numeric/boolean RHS literals, so
+  // a STRING/ENUM comparison always degraded to 'unknown' even with an
+  // exactly-known value, forcing an avoidable fork (both "== NS" and
+  // "== EW" explored) at every step.
+  const metaModel = {
+    ...NO_ATTRS,
+    classes: [{
+      id: 'C', name: 'C',
+      attributes: [{ id: 'aDir', name: 'dir', type: 'STRING', lowerBound: 1, upperBound: 1, defaultValue: 'NS' }],
+    }],
+    behaviours: {
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sReady', kind: 'simple', name: 'Ready', entry: '', exit: '' },
+          { id: 'sNS', kind: 'simple', name: 'NorthSouth', entry: '', exit: '' },
+          { id: 'sEW', kind: 'simple', name: 'EastWest', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sReady', trigger: '', guard: '', effect: 'dir = "NS";' },
+          { id: 'tNS', source: 'sReady', target: 'sNS', trigger: 'p.go', guard: 'dir == "NS"', effect: '' },
+          { id: 'tEW', source: 'sReady', target: 'sEW', trigger: 'p.go', guard: 'dir == "EW"', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('takes exactly the deterministically-true branch, no fork', () => {
+    const result = buildSET('C', metaModel);
+    const readyNode = nodesArr(result).find((n) => n.stateId === 'sReady');
+    const outgoing = edgesArr(result).filter((e) => e.sourceNodeId === readyNode.id);
+    expect(outgoing).toHaveLength(1);
+    expect(outgoing[0].transitionId).toBe('tNS');
+    expect(outgoing[0].guardFork).toBe(false);
+  });
+});
+
+describe('buildSET — an unresolved guard carries a guardReason', () => {
+  const metaModel = {
+    ...NO_ATTRS,
+    classes: [{
+      id: 'C', name: 'C',
+      attributes: [{ id: 'aVal', name: 'val', type: 'INT', lowerBound: 1, upperBound: 1 }],
+    }],
+    behaviours: {
+      C: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sReady', kind: 'simple', name: 'Ready', entry: '', exit: '' },
+          { id: 'sA', kind: 'simple', name: 'A', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sReady', trigger: '', guard: '', effect: '' },
+          // "val" is never assigned anywhere, so it's untracked/unknown at
+          // this point — a genuinely unresolvable guard, not a typo.
+          { id: 'tA', source: 'sReady', target: 'sA', trigger: 'p.go', guard: 'val > 5', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('labels the forked edge with a reason distinguishing it from a typo', () => {
+    const result = buildSET('C', metaModel);
+    const forked = edgesArr(result).find((e) => e.guardFork);
+    expect(forked).toBeDefined();
+    expect(forked.guardReason).toMatch(/isn't known for certain/);
+  });
+});
+
 describe('buildSET — final state and dead ends', () => {
   it('marks a transition into the Final pseudostate as leaf-final, never expanded', () => {
     const metaModel = {

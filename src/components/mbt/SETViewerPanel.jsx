@@ -7,7 +7,7 @@ import SETNode from '../../nodes/SETNode';
 import SETEdge from '../../edges/SETEdge';
 import SvgMarkers from '../SvgMarkers';
 import SETLegend from './SETLegend';
-import { TEXT_DIM } from '../theme';
+import { TEXT, TEXT_DIM } from '../theme';
 
 const nodeTypes = { setNode: SETNode };
 const edgeTypes = { setEdge: SETEdge };
@@ -150,12 +150,15 @@ export default function SETViewerPanel() {
         <select
           value={capsuleId ?? ''}
           onChange={(e) => setCapsule(e.target.value || null)}
+          disabled={capsuleClasses.length === 0}
           style={{
             background: '#21262d', border: `1px solid ${BORDER}`, color: '#e6edf3',
-            borderRadius: 5, padding: '5px 8px', fontSize: 12, cursor: 'pointer', minWidth: 160,
+            borderRadius: 5, padding: '5px 8px', fontSize: 12,
+            cursor: capsuleClasses.length === 0 ? 'default' : 'pointer', minWidth: 160,
+            opacity: capsuleClasses.length === 0 ? 0.5 : 1,
           }}
         >
-          <option value="">— select a class —</option>
+          <option value="">{capsuleClasses.length === 0 ? '— no capsules with a state machine —' : '— select a class —'}</option>
           {capsuleClasses.map((c) => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
@@ -206,11 +209,20 @@ export default function SETViewerPanel() {
           </ReactFlowProvider>
         ) : (
           <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', gap: 8, alignItems: 'center',
             justifyContent: 'center', textAlign: 'center', padding: 24,
             color: TEXT_DIM, fontSize: 13, fontFamily: 'var(--iml-font-sans)',
           }}>
-            Select a capsule (class) above to build its symbolic execution tree.
+            {capsuleClasses.length === 0 ? (
+              <>
+                <div style={{ fontSize: 15, fontWeight: 600, color: TEXT }}>No capsule has a state machine yet</div>
+                <div style={{ maxWidth: 320, lineHeight: 1.6 }}>
+                  Model-Based Testing explores a capsule's state machine — build one first in the Behavioural Modeling module (give a class ports and at least one state), then come back here.
+                </div>
+              </>
+            ) : (
+              'Select a capsule (class) above to build its symbolic execution tree.'
+            )}
           </div>
         )}
       </div>

@@ -27,7 +27,7 @@ const RE_IF   = new RegExp(`^if\\s*\\((.*)\\)\\s*\\{$`);
 const RE_ELSE = /^\}\s*else\s*\{$/;
 const RE_CLOSE = /^\}$/;
 
-const RE_COMPARISON = new RegExp(`^(${IDENT})\\s*(<=|>=|==|!=|<|>)\\s*(${NUM}|true|false)$`);
+const RE_COMPARISON = new RegExp(`^(${IDENT})\\s*(<=|>=|==|!=|<|>)\\s*(.+)$`);
 const RE_BOOL_NOT    = new RegExp(`^!\\s*(${IDENT})$`);
 const RE_BOOL_IDENT  = new RegExp(`^(${IDENT})$`);
 
@@ -114,24 +114,47 @@ export function evaluateCondition(condRaw, attrIndex, values) {
     const cur = attr && values.get(attr.id);
     if (!cur || cur.kind !== 'known') return 'unknown';
     const [, , op, rhsRaw] = m;
-    if (rhsRaw === 'true' || rhsRaw === 'false') {
+    const rhsTrim = rhsRaw.trim();
+
+    if (rhsTrim === 'true' || rhsTrim === 'false') {
       if (op !== '==' && op !== '!=') return 'unknown';
       const lhsBool = cur.value === 'true';
-      const rhsBool = rhsRaw === 'true';
+      const rhsBool = rhsTrim === 'true';
       return op === '==' ? lhsBool === rhsBool : lhsBool !== rhsBool;
     }
-    const lhs = Number(cur.value);
-    const rhs = Number(rhsRaw);
-    if (Number.isNaN(lhs) || Number.isNaN(rhs)) return 'unknown';
-    switch (op) {
-      case '<':  return lhs < rhs;
-      case '<=': return lhs <= rhs;
-      case '>':  return lhs > rhs;
-      case '>=': return lhs >= rhs;
-      case '==': return lhs === rhs;
-      case '!=': return lhs !== rhs;
-      default:   return 'unknown';
+
+    if (RE_NUMLIT.test(rhsTrim)) {
+      const lhs = Number(cur.value);
+      const rhs = Number(rhsTrim);
+      if (Number.isNaN(lhs) || Number.isNaN(rhs)) return 'unknown';
+      switch (op) {
+        case '<':  return lhs < rhs;
+        case '<=': return lhs <= rhs;
+        case '>':  return lhs > rhs;
+        case '>=': return lhs >= rhs;
+        case '==': return lhs === rhs;
+        case '!=': return lhs !== rhs;
+        default:   return 'unknown';
+      }
     }
+
+    // STRING/ENUM equality — only == / != are meaningful for them. The
+    // tracked value is already stored as a plain string (enum values as
+    // their bare literal name — see parseLiteral), so a direct string
+    // compare against a quoted literal or an enum literal (Color.RED) works
+    // without needing the attribute's declared type. This used to always
+    // fall through to 'unknown' below even when the value was exactly
+    // known, forcing an avoidable fork in the SET.
+    if (op === '==' || op === '!=') {
+      const strLit  = rhsTrim.match(RE_STRLIT);
+      const enumLit = rhsTrim.match(RE_ENUMLIT);
+      const rhsVal  = strLit ? strLit[1].replace(/\\(.)/g, '$1') : enumLit ? enumLit[1] : null;
+      if (rhsVal !== null) {
+        return op === '==' ? cur.value === rhsVal : cur.value !== rhsVal;
+      }
+    }
+
+    return 'unknown';
   }
 
   m = cond.match(RE_BOOL_NOT);
@@ -151,6 +174,44 @@ export function evaluateCondition(condRaw, attrIndex, values) {
   }
 
   return 'unknown';
+}
+
+// Called only once evaluateCondition has already returned 'unknown', to give
+// a caller-facing reason instead of one generic "best-effort" label for every
+// unresolved guard — a typo (an attribute name that doesn't exist at all) used
+// to look identical to a guard that's genuinely unresolvable by design
+// (attr-vs-attr, a value not yet known at this point in the path). Static-only
+// (attrIndex, not the runtime values map) — deliberately doesn't try to tell
+// "tracked but not-yet-known" apart from other dynamic reasons, since that
+// split isn't a mistake either way and would need threading node values in
+// too, for no real benefit to the message shown.
+export function describeUnresolvedGuard(condRaw, attrIndex) {
+  const cond = condRaw.trim();
+
+  let m = cond.match(RE_COMPARISON);
+  if (m) {
+    const [, ident, op, rhsRaw] = m;
+    if (!attrIndex.get(ident)) {
+      return `References "${ident}", which isn't a tracked attribute on this capsule — check for a typo.`;
+    }
+    const rhsTrim = rhsRaw.trim();
+    const isLiteral = rhsTrim === 'true' || rhsTrim === 'false'
+      || RE_NUMLIT.test(rhsTrim) || RE_STRLIT.test(rhsTrim) || RE_ENUMLIT.test(rhsTrim);
+    if (!isLiteral) {
+      return `Compares "${ident}" ${op} "${rhsTrim}" — comparing against something other than a fixed value (e.g. another attribute) isn't evaluated.`;
+    }
+    return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
+  }
+
+  m = cond.match(RE_BOOL_NOT) || cond.match(RE_BOOL_IDENT);
+  if (m) {
+    if (!attrIndex.get(m[1])) {
+      return `References "${m[1]}", which isn't a tracked attribute on this capsule — check for a typo.`;
+    }
+    return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
+  }
+
+  return 'Not one of the supported guard forms (a single comparison, or a boolean attribute/its negation) — check the syntax, e.g. it may combine multiple conditions with && / ||.';
 }
 
 // Classifies one trimmed, semicolon-stripped line for the block parser.

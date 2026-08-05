@@ -1,7 +1,7 @@
 import { nanoid } from 'nanoid';
 import { getAllAttributes } from './modelHelpers.js';
 import { safeId } from './javaCodeGen.js';
-import { applyActionCode, evaluateCondition } from './actionInterpreter.js';
+import { applyActionCode, evaluateCondition, describeUnresolvedGuard } from './actionInterpreter.js';
 
 // Subsumption-based symbolic execution over one capsule class's state
 // machine, producing a Symbolic Execution Tree (SET): a node = (FSM state,
@@ -114,16 +114,16 @@ export function buildSET(classId, metaModel) {
     return id;
   }
 
-  function makeEdge(sourceNodeId, targetNodeId, transitionId, branch, guardFork, event) {
+  function makeEdge(sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason) {
     const id = nanoid(8);
-    edgesById.set(id, { id, sourceNodeId, targetNodeId, transitionId, branch, guardFork, event });
+    edgesById.set(id, { id, sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason: guardReason ?? null });
     return id;
   }
 
   // Applies one transition (effect, then the target state's entry action) and
   // creates the resulting child node — either a fresh 'open' node (which gets
   // recursively expanded) or a 'leaf-subsumed'/'leaf-final' node.
-  function fireTransition(node, t, trigger, branch, guardFork) {
+  function fireTransition(node, t, trigger, branch, guardFork, guardReason) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
     const targetState = machine.states.find((s) => s.id === t.target);
@@ -132,7 +132,7 @@ export function buildSET(classId, metaModel) {
 
     if (targetState?.kind === 'final') {
       const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'leaf-final');
-      const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event);
+      const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
       nodesById.get(childId).parentEdgeId = edgeId;
       return;
     }
@@ -144,13 +144,13 @@ export function buildSET(classId, metaModel) {
     if (existingId) {
       const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'leaf-subsumed');
       nodesById.get(childId).subsumedByNodeId = existingId;
-      const edgeId = makeEdge(node.id, childId, t.id, branch, guardFork, event);
+      const edgeId = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
       nodesById.get(childId).parentEdgeId = edgeId;
       return;
     }
 
     const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'open');
-    const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event);
+    const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
     const childNode = nodesById.get(childId);
     childNode.parentEdgeId = edgeId;
     visited.set(sig, childId);
@@ -163,12 +163,12 @@ export function buildSET(classId, metaModel) {
   // is false when every member's guard was fully evaluated to false (the
   // drop is certain), true when at least one member couldn't be evaluated
   // (the drop is only one of the possible outcomes).
-  function fireDropped(node, trigger, guardFork) {
+  function fireDropped(node, trigger, guardFork, guardReason) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
     const droppedId = makeNode(node.stateId, node.attrValues, node.depth + 1, null, 'leaf-subsumed');
     nodesById.get(droppedId).subsumedByNodeId = node.id;
-    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', guardFork, event);
+    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', guardFork, event, guardReason);
     nodesById.get(droppedId).parentEdgeId = edgeId;
   }
 
@@ -198,6 +198,7 @@ export function buildSET(classId, metaModel) {
     for (const [trigger, group] of groups) {
       let stopped = false;   // an unconditional or a fully-evaluated-true guard fired for certain — matches dispatch()'s if/else-if: nothing after it can run
       let anyUnknown = false; // at least one member's guard couldn't be evaluated, so "none of them fired" is only a possible outcome, not certain
+      let lastUnknownReason = null; // informational only — see describeUnresolvedGuard
       for (let i = 0; i < group.length; i++) {
         const t = group[i];
         const guardText = t.guard && t.guard.trim();
@@ -214,9 +215,10 @@ export function buildSET(classId, metaModel) {
         }
         if (evaluated === false) continue; // certainly does not fire — no edge, no impossible branch
         anyUnknown = true;
-        fireTransition(node, t, trigger, `guard-${i}-true`, true); // can't rule in or out — fork, same as before
+        lastUnknownReason = describeUnresolvedGuard(guardText, attrIndex);
+        fireTransition(node, t, trigger, `guard-${i}-true`, true, lastUnknownReason); // can't rule in or out — fork, same as before
       }
-      if (!stopped) fireDropped(node, trigger, anyUnknown);
+      if (!stopped) fireDropped(node, trigger, anyUnknown, lastUnknownReason);
     }
   }
 
