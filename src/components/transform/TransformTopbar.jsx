@@ -8,7 +8,7 @@ import { TEXT, TEXT_DIM } from '../theme';
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#7c3aed';
 
-function loadJsonFile(onLoad, onError) {
+function loadJsonFile(onLoad, onError, requireInstances = false) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = '.json';
@@ -22,7 +22,7 @@ function loadJsonFile(onLoad, onError) {
       // present metaModel (missing classes/relations arrays, an old schema)
       // passed straight through and crashed downstream instead, with no
       // error boundary anywhere in the app to catch it.
-      const shapeError = validateModelShape(data);
+      const shapeError = validateModelShape(data, requireInstances);
       if (shapeError) throw new Error(shapeError);
       onLoad(data);
     } catch (err) {
@@ -59,7 +59,15 @@ export default function TransformTopbar() {
   const handleRun = () => {
     if (!canRun) return;
     try {
-      setResult(runTransform(source, target, rules));
+      const transformed = runTransform(source, target, rules);
+      setResult(transformed);
+      // Individual expression failures (div by zero, a multi-valued ref, a
+      // typo) already degrade to "" per-value so the run itself still
+      // succeeds — but that used to be silent apart from a console.warn.
+      // Surface a count so it doesn't look like a clean, verified run.
+      if (transformed.warnings?.length) {
+        showError(`Transform completed with ${transformed.warnings.length} expression warning${transformed.warnings.length !== 1 ? 's' : ''} — see console for details.`);
+      }
     } catch (err) {
       showError(`Transform failed: ${err.message}`);
     }
@@ -92,7 +100,7 @@ export default function TransformTopbar() {
 
       {/* Load buttons */}
       <button
-        onClick={() => loadJsonFile(loadSource, showError)}
+        onClick={() => loadJsonFile(loadSource, showError, true)}
         style={btnStyle('#21262d')}
         title="Load source .iml.json (meta-model + instances)"
       >

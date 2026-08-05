@@ -50,7 +50,10 @@ export const useTransformStore = create((set, get) => ({
       (r) => r.source === targetClassId && r.kind !== 'INHERITANCE'
     );
     const relationMappings = tgtRels.map((tr) => {
-      const match = srcRels.find((sr) => sr.name === tr.name);
+      // Match by name AND kind — the UI already describes this as "matched
+      // by name and type"; a name-only match could silently pair e.g. a
+      // REFERENCE with a COMPOSITION relation of the same name.
+      const match = srcRels.find((sr) => sr.name === tr.name && sr.kind === tr.kind);
       return { targetRelId: tr.id, sourceRelId: match?.id ?? null };
     });
 

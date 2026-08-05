@@ -12,7 +12,12 @@
 // safe, without being so strict that a genuinely valid file from an older
 // export gets rejected. Returns null when valid, or a user-facing message
 // naming what's wrong.
-export function validateModelShape(data) {
+// `requireInstances`: pass true when the caller specifically needs instance
+// data (e.g. Transformations' "Load Source" — a target-only export has no
+// instanceModels, and running a transform against it used to fail late with
+// a cryptic "Cannot read properties of undefined" instead of a clear message
+// at load time).
+export function validateModelShape(data, requireInstances = false) {
   if (!data || typeof data !== 'object') return 'Not a valid model file.';
   const mm = data.metaModel;
   if (!mm || typeof mm !== 'object') return 'Missing "metaModel" — this doesn\'t look like an .iml.json file.';
@@ -26,6 +31,9 @@ export function validateModelShape(data) {
     if (!rel || typeof rel.source !== 'string' || typeof rel.target !== 'string' || typeof rel.kind !== 'string') {
       return 'One of the meta-model\'s relations is missing a source, target, or kind.';
     }
+  }
+  if (requireInstances && !Array.isArray(data.instanceModels)) {
+    return 'This file has no instance models — it looks like a target-only meta-model export. Load it as Target instead, or use a file that also has instance data.';
   }
   return null;
 }

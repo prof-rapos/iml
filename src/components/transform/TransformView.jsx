@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
 import TransformTopbar from './TransformTopbar';
 import ModelPanel from './ModelPanel';
@@ -8,6 +9,22 @@ const BORDER = 'rgba(255,255,255,0.10)';
 
 export default function TransformView() {
   const { source, target, result } = useTransformStore();
+
+  // `result` itself stays set (it also gates the Download button) — this is
+  // just the toast's own visibility, so it can auto-hide/be dismissed
+  // without losing the ability to download. Used to have neither: it sat
+  // there covering the bottom of the screen until the next run.
+  const [toastDismissed, setToastDismissed] = useState(false);
+  const [lastResult, setLastResult] = useState(result);
+  if (result !== lastResult) {
+    setLastResult(result);
+    setToastDismissed(false);
+  }
+  useEffect(() => {
+    if (!result) return;
+    const t = setTimeout(() => setToastDismissed(true), 6000);
+    return () => clearTimeout(t);
+  }, [result]);
 
   const totalGenerated = result
     ? result.instanceModels.reduce((n, im) => n + im.objects.length, 0)
@@ -35,19 +52,26 @@ export default function TransformView() {
       </div>
 
       {/* Result notification */}
-      {result && (
+      {result && !toastDismissed && (
         <div style={{
           position: 'fixed', bottom: 16, left: '50%', transform: 'translateX(-50%)',
           zIndex: 900,
+          display: 'flex', alignItems: 'center', gap: 10,
           background: '#161b22',
           border: '1px solid rgba(63,185,80,0.5)',
           borderRadius: 8, padding: '10px 20px',
           fontSize: 13, color: '#3fb950',
           fontFamily: 'var(--iml-font-sans)',
           boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
-          pointerEvents: 'none',
         }}>
-          ✓ Transformation complete — {totalGenerated} object{totalGenerated !== 1 ? 's' : ''} generated across {result.instanceModels.length} instance model{result.instanceModels.length !== 1 ? 's' : ''}
+          <span>✓ Transformation complete — {totalGenerated} object{totalGenerated !== 1 ? 's' : ''} generated across {result.instanceModels.length} instance model{result.instanceModels.length !== 1 ? 's' : ''}</span>
+          <button
+            onClick={() => setToastDismissed(true)}
+            title="Dismiss"
+            style={{ background: 'none', border: 'none', color: '#3fb950', cursor: 'pointer', fontSize: 13, fontWeight: 700, padding: 0, lineHeight: 1 }}
+          >
+            ✕
+          </button>
         </div>
       )}
     </div>

@@ -51,68 +51,77 @@ export function runTransform(source, target, rules) {
     if (srcPos) mmLayout[rule.targetClassId] = srcPos;
   }
 
-  const layouts = { mm: mmLayout };
+  const layouts  = { mm: mmLayout };
+  const warnings = [];
 
   const targetInstanceModels = source.instanceModels.map((srcIM) => {
-    const objMap = {};  // srcObjId → tgtObjId
+    // srcObjId → [{ ruleId, tgtObjId, targetClassId }, ...] — an array because
+    // more than one rule can share the same sourceClassId (e.g. splitting one
+    // source class into two target classes); every matching rule must run,
+    // not just whichever `.find()` happens to hit first.
+    const objMap = {};
     const objects = [];
     const links = [];
 
     // Pass 1: create target objects
     for (const srcObj of srcIM.objects) {
-      const rule = rules.find((r) => r.sourceClassId === srcObj.classId);
-      if (!rule) continue;
+      const matchingRules = rules.filter((r) => r.sourceClassId === srcObj.classId);
+      for (const rule of matchingRules) {
+        const tgtObjId = nanoid(8);
+        (objMap[srcObj.id] ??= []).push({ ruleId: rule.id, tgtObjId, targetClassId: rule.targetClassId });
 
-      const tgtObjId = nanoid(8);
-      objMap[srcObj.id] = tgtObjId;
+        // Precompute attr lists for this rule (inheritance-aware, from the correct metaModel)
+        const srcAttrs = getAllAttributes(rule.sourceClassId, source.metaModel);
+        const tgtAttrs = getAllAttributes(rule.targetClassId, target.metaModel);
 
-      // Precompute attr lists for this rule (inheritance-aware, from the correct metaModel)
-      const srcAttrs = getAllAttributes(rule.sourceClassId, source.metaModel);
-      const tgtAttrs = getAllAttributes(rule.targetClassId, target.metaModel);
-
-      const attributeValues = {};
-      for (const m of rule.attributeMappings) {
-        if (m.type === 'direct' && m.sourceAttrId) {
-          const srcAttr = srcAttrs.find((a) => a.id === m.sourceAttrId);
-          const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
-          const rawVal  = getAttrValue(srcObj, m.sourceAttrId);
-          attributeValues[m.targetAttrId] = coerceValue(rawVal, srcAttr, tgtAttr);
-        } else if (m.type === 'constant') {
-          const tgtAttr  = tgtAttrs.find((a) => a.id === m.targetAttrId);
-          const tgtMulti = tgtAttr ? tgtAttr.upperBound !== 1 : false;
-          attributeValues[m.targetAttrId] = tgtMulti ? [m.value ?? ''] : (m.value ?? '');
-        } else if (m.type === 'expression') {
-          const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
-          // Scope: source attribute name → value (so expressions read {attrName}).
-          const scope = {};
-          for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
-          let raw;
-          try {
-            raw = evalExpression(m.expression ?? '', scope);
-          } catch (err) {
-            console.warn(`Transform expression "${m.expression}" failed for attribute ${m.targetAttrId}:`, err);
-            raw = '';
+        const attributeValues = {};
+        for (const m of rule.attributeMappings) {
+          if (m.type === 'direct' && m.sourceAttrId) {
+            const srcAttr = srcAttrs.find((a) => a.id === m.sourceAttrId);
+            const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+            const rawVal  = getAttrValue(srcObj, m.sourceAttrId);
+            attributeValues[m.targetAttrId] = coerceValue(rawVal, srcAttr, tgtAttr);
+          } else if (m.type === 'constant') {
+            const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+            // A constant is always entered/stored as a plain string — coerce
+            // it through the same STRING→target-type path a direct mapping
+            // gets, otherwise e.g. a BOOLEAN target keeps the literal "yes".
+            attributeValues[m.targetAttrId] = coerceValue(m.value ?? '', { type: 'STRING', upperBound: 1 }, tgtAttr);
+          } else if (m.type === 'expression') {
+            const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+            // Scope: source attribute name → value (so expressions read {attrName}).
+            const scope = {};
+            for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
+            let raw;
+            try {
+              raw = evalExpression(m.expression ?? '', scope);
+            } catch (err) {
+              const msg = `Expression "${m.expression}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}": ${err.message}`;
+              console.warn(msg);
+              warnings.push(msg);
+              raw = '';
+            }
+            // Treat a numeric result as DOUBLE so the target type coercion (e.g.
+            // truncation to INT) applies; otherwise treat it as a plain string.
+            const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
+            attributeValues[m.targetAttrId] = coerceValue(raw, { type: fromType, upperBound: 1 }, tgtAttr);
+          } else {
+            // 'omit' (or any unrecognized mapping type) — still initialize the
+            // slot, matching every other object-creation path (addObject,
+            // addClass_attribute), so a multi-valued target attribute doesn't
+            // end up with a missing key that PropertiesPanel misreads as single-valued.
+            const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+            attributeValues[m.targetAttrId] = tgtAttr && tgtAttr.upperBound !== 1 ? [] : '';
           }
-          // Treat a numeric result as DOUBLE so the target type coercion (e.g.
-          // truncation to INT) applies; otherwise treat it as a plain string.
-          const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
-          attributeValues[m.targetAttrId] = coerceValue(raw, { type: fromType, upperBound: 1 }, tgtAttr);
-        } else {
-          // 'omit' (or any unrecognized mapping type) — still initialize the
-          // slot, matching every other object-creation path (addObject,
-          // addClass_attribute), so a multi-valued target attribute doesn't
-          // end up with a missing key that PropertiesPanel misreads as single-valued.
-          const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
-          attributeValues[m.targetAttrId] = tgtAttr && tgtAttr.upperBound !== 1 ? [] : '';
         }
-      }
 
-      objects.push({
-        id: tgtObjId,
-        classId: rule.targetClassId,
-        name: srcObj.name,
-        attributeValues,
-      });
+        objects.push({
+          id: tgtObjId,
+          classId: rule.targetClassId,
+          name: srcObj.name,
+          attributeValues,
+        });
+      }
     }
 
     // Pass 2: create target links (preserving source/target handles)
@@ -120,25 +129,31 @@ export function runTransform(source, target, rules) {
       const srcRel = source.metaModel.relations.find((r) => r.id === srcLink.relationId);
       if (!srcRel) continue;
 
-      const rule = rules.find((r) => r.sourceClassId === srcRel.source);
-      if (!rule) continue;
-
-      const relMap = rule.relationMappings?.find((m) => m.sourceRelId === srcLink.relationId);
-      if (!relMap?.targetRelId) continue;
-
       const { source: rawSrc, target: rawTgt } = linkEndpoints(srcLink);
-      const tgtSrc = objMap[rawSrc];
-      const tgtTgt = objMap[rawTgt];
-      if (!tgtSrc || !tgtTgt) continue;
+      const matchingRules = rules.filter((r) => r.sourceClassId === srcRel.source);
 
-      links.push({
-        id: nanoid(8),
-        relationId: relMap.targetRelId,
-        source: tgtSrc,
-        target: tgtTgt,
-        sourceHandle: srcLink.sourceHandle ?? null,
-        targetHandle: srcLink.targetHandle ?? null,
-      });
+      for (const rule of matchingRules) {
+        const relMap = rule.relationMappings?.find((m) => m.sourceRelId === srcLink.relationId);
+        if (!relMap?.targetRelId) continue;
+
+        // rawSrc's object was necessarily created by exactly this rule
+        // (rule.sourceClassId matches its class), but rawTgt's class may
+        // itself have several matching rules — pick the target object whose
+        // rule produced the class the target relation actually points at.
+        const targetRel = target.metaModel.relations.find((r) => r.id === relMap.targetRelId);
+        const srcEntry = objMap[rawSrc]?.find((e) => e.ruleId === rule.id);
+        const tgtEntry = objMap[rawTgt]?.find((e) => e.targetClassId === targetRel?.target) ?? objMap[rawTgt]?.[0];
+        if (!srcEntry || !tgtEntry) continue;
+
+        links.push({
+          id: nanoid(8),
+          relationId: relMap.targetRelId,
+          source: srcEntry.tgtObjId,
+          target: tgtEntry.tgtObjId,
+          sourceHandle: srcLink.sourceHandle ?? null,
+          targetHandle: srcLink.targetHandle ?? null,
+        });
+      }
     }
 
     const tgtIM = {
@@ -150,10 +165,12 @@ export function runTransform(source, target, rules) {
     };
 
     // Build instance layout: map source object positions → target object IDs
+    // (every target object spawned from the same source object shares its position)
     const srcImLayout = source.layouts?.[`im-${srcIM.id}`] ?? {};
     const tgtImLayout = {};
-    for (const [srcId, tgtId] of Object.entries(objMap)) {
-      if (srcImLayout[srcId]) tgtImLayout[tgtId] = srcImLayout[srcId];
+    for (const [srcId, entries] of Object.entries(objMap)) {
+      if (!srcImLayout[srcId]) continue;
+      for (const { tgtObjId } of entries) tgtImLayout[tgtObjId] = srcImLayout[srcId];
     }
     layouts[`im-${tgtIM.id}`] = tgtImLayout;
 
@@ -164,5 +181,6 @@ export function runTransform(source, target, rules) {
     metaModel: target.metaModel,
     instanceModels: targetInstanceModels,
     layouts,
+    warnings,
   };
 }
