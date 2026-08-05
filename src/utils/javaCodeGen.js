@@ -890,7 +890,11 @@ function generateClassFile(cls, metaModel, pkg, scope = 'structural') {
   lines.push('    public String prettyPrint() { return prettyPrint(0); }');
 
   // ── Capsule additions (ports, wiring, state machine) ───────────────
-  if (scope !== 'structural' && isCapsuleClass(cls)) {
+  // A state machine on a portless class used to be silently dropped here —
+  // isCapsuleClass alone gated whether generateCapsuleBody ran at all, so a
+  // class with behaviour but no ports got no dispatch/State/Trigger code
+  // whatsoever, with no error or warning anywhere.
+  if (scope !== 'structural' && (isCapsuleClass(cls) || hasStateMachine(cls, metaModel))) {
     lines.push('');
     lines.push(...generateCapsuleBody(cls, metaModel));
   }

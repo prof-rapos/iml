@@ -96,6 +96,21 @@ describe('modelStore — behaviour (state machine) actions', () => {
     expect(useModelStore.getState().getBehaviour('C').transitions.find((x) => x.id === t).target).toBe(b); // unchanged
   });
 
+  it('rejects a guard on the initial transition — it always fires unconditionally', () => {
+    const init = useModelStore.getState().addState('C', 'initial');
+    const mid  = useModelStore.getState().addState('C', 'simple');
+    const t    = useModelStore.getState().addTransition('C', init, mid);
+
+    useModelStore.getState().updateTransition('C', t, { guard: 'x > 0' });
+    expect(useModelStore.getState().getBehaviour('C').transitions.find((x) => x.id === t).guard).toBe(''); // unchanged
+
+    // A non-initial transition still accepts a guard.
+    const b = useModelStore.getState().addState('C', 'simple');
+    const t2 = useModelStore.getState().addTransition('C', mid, b);
+    useModelStore.getState().updateTransition('C', t2, { guard: 'x > 0' });
+    expect(useModelStore.getState().getBehaviour('C').transitions.find((x) => x.id === t2).guard).toBe('x > 0');
+  });
+
   it('removes behaviour and sm-layout when the class is deleted', () => {
     useModelStore.getState().addState('C', 'simple');
     useModelStore.getState().setStatePositions('C', { foo: { x: 0, y: 0 } });

@@ -116,6 +116,26 @@ export function validateConformance(metaModel, instanceModel) {
         });
       }
     }
+
+    // A machine with no (or a duplicate) outgoing transition from its initial
+    // pseudostate used to fail silently at runtime instead of at generation
+    // time: generateStart() finds nothing (or just the first match) to enter,
+    // so currentState stays null forever and dispatch() drops every message
+    // with no error anywhere.
+    if (machine.states.length > 0) {
+      const initialStates = machine.states.filter((s) => s.kind === 'initial');
+      if (initialStates.length === 0) {
+        errors.push({ kind: 'class', id: cls.id, msg: `"${cls.name}": this state machine has no initial pseudostate — it will never start (dispatch would silently drop every message)` });
+      }
+      for (const initSt of initialStates) {
+        const outgoing = (machine.transitions ?? []).filter((t) => t.source === initSt.id);
+        if (outgoing.length === 0) {
+          errors.push({ kind: 'state', id: initSt.id, msg: `"${cls.name}": the initial pseudostate has no outgoing transition — the machine will never start (dispatch would silently drop every message)` });
+        } else if (outgoing.length > 1) {
+          errors.push({ kind: 'state', id: initSt.id, msg: `"${cls.name}": the initial pseudostate has more than one outgoing transition — only one runs, which one is ambiguous` });
+        }
+      }
+    }
   }
 
   // Object level: class existence, abstractness, attribute types & multiplicity

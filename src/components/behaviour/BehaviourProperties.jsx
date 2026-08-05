@@ -143,6 +143,8 @@ export default function BehaviourProperties() {
   }
 
   if (trans) {
+    const srcState = sm?.states.find((st) => st.id === trans.source);
+    const fromInitial = srcState?.kind === 'initial';
     return (
       <div style={panelStyle}>
         <div style={headerStyle}>
@@ -174,8 +176,14 @@ export default function BehaviourProperties() {
             })()}
           </Field>
           <Field label="Guard">
-            <input style={inputStyle} value={trans.guard} placeholder="e.g. amount >= price"
-              onChange={(e) => updateTransition(capsuleId, trans.id, { guard: e.target.value })} />
+            {fromInitial ? (
+              <div style={{ fontSize: 12, color: TEXT_MUTED, fontStyle: 'italic' }}>
+                The initial transition always fires unconditionally — it can't have a guard.
+              </div>
+            ) : (
+              <input style={inputStyle} value={trans.guard} placeholder="e.g. amount >= price"
+                onChange={(e) => updateTransition(capsuleId, trans.id, { guard: e.target.value })} />
+            )}
           </Field>
           <Field label="Effect">
             <CodeArea value={trans.effect} placeholder={'dispense();\nbalance = 0;'}

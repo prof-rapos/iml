@@ -33,12 +33,18 @@ describe('protocols & ports', () => {
     expect(capsuleMessages('C', mm()).map((m) => m.value)).toContain('timer.timeout');
   });
 
-  it('a regular Log port yields no triggers (log is out); conjugation flips it', () => {
+  it('a regular Log port yields no triggers (log is out); conjugation is a no-op for system ports', () => {
+    // sys-timing/sys-log codegen never reads `conjugated` — it used to be
+    // possible to "conjugate" one anyway and have capsuleMessages offer a
+    // trigger that then silently never fired at runtime. updatePort now
+    // forces conjugated back to false for any system-protocol port.
     const pid = useModelStore.getState().addPort('C');
     useModelStore.getState().updatePort('C', pid, { name: 'l', protocolId: 'sys-log' });
     expect(capsuleMessages('C', mm())).toEqual([]);
     useModelStore.getState().updatePort('C', pid, { conjugated: true });
-    expect(capsuleMessages('C', mm()).map((m) => m.value)).toContain('l.log');
+    const port = mm().classes[0].ports.find((p) => p.id === pid);
+    expect(port.conjugated).toBe(false);
+    expect(capsuleMessages('C', mm())).toEqual([]);
   });
 
   it('surfaces user-defined protocol signals as messages', () => {

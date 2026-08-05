@@ -1081,6 +1081,19 @@ export const useModelStore = create((set, get) => ({
         return;
       }
     }
+    // A guard on the initial transition used to be silently ignored at
+    // codegen — start() always takes it unconditionally since there's no
+    // triggering signal at bootstrap for the guard to evaluate against.
+    // Block it at edit time instead of letting it look like it does something.
+    if (patch.guard !== undefined && String(patch.guard).trim() !== '') {
+      const machine  = get().metaModel.behaviours?.[classId] ?? { states: [], transitions: [] };
+      const existing = machine.transitions.find((t) => t.id === transId);
+      const srcState = machine.states.find((st) => st.id === existing?.source);
+      if (srcState?.kind === 'initial') {
+        get().notify('The initial transition always fires — it cannot have a guard.');
+        return;
+      }
+    }
     set((s) => ({ metaModel: withMachine(s.metaModel, classId, (m) => ({
       ...m, transitions: m.transitions.map((t) => t.id === transId ? { ...t, ...patch } : t),
     })) }));
@@ -1249,8 +1262,20 @@ export const useModelStore = create((set, get) => ({
       patch = { ...patch, name: trimmed };
     }
     set((s) => {
-      const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) =>
-        c.id === classId ? { ...c, ports: (c.ports ?? []).map((p) => p.id === portId ? { ...p, ...patch } : p) } : c) };
+      const metaModel = { ...s.metaModel, classes: s.metaModel.classes.map((c) => {
+        if (c.id !== classId) return c;
+        return { ...c, ports: (c.ports ?? []).map((p) => {
+          if (p.id !== portId) return p;
+          const next = { ...p, ...patch };
+          // Conjugating a system port (Timing/Log) is meaningless — the
+          // sys-timing/sys-log codegen path never reads `conjugated` at all,
+          // so it used to silently do nothing while the UI implied it should
+          // flip the port's direction. Keep the two mutually exclusive.
+          const proto = allProtocols(s.metaModel).find((pr) => pr.id === next.protocolId);
+          if (proto?.system) next.conjugated = false;
+          return next;
+        }) };
+      }) };
       // Re-validate: a protocolId/conjugated change may invalidate an existing connector.
       const instanceModels = ('protocolId' in patch || 'conjugated' in patch)
         ? pruneDanglingConnectors(metaModel, s.instanceModels)

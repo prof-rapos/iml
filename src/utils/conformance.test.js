@@ -88,7 +88,10 @@ describe('validateConformance — behavioural (state machines)', () => {
           { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
           { id: 'sFinal', kind: 'final', name: '', entry: '', exit: '' },
         ],
-        transitions: [],
+        // A single outgoing transition from the initial pseudostate so this
+        // fixture stays valid under the separate "initial transition" checks
+        // below — this test is only about duplicate-name detection.
+        transitions: [{ id: 't1', source: 'sInit', target: 'sFinal', trigger: '', guard: '', effect: '' }],
       },
     });
     expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.kind === 'state')).toEqual([]);

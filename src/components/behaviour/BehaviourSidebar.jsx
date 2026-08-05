@@ -34,6 +34,8 @@ const smallInput = {
 };
 
 function PortRow({ classId, port, protocols, updatePort, deletePort }) {
+  const proto = protocols.find((p) => p.id === port.protocolId);
+  const isSystem = !!proto?.system;
   return (
     <div style={{ background: 'rgba(255,255,255,0.04)', border: `1px solid ${BORDER}`, borderRadius: 5, padding: 6, margin: '0 8px 5px' }}>
       <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginBottom: 4 }}>
@@ -46,8 +48,9 @@ function PortRow({ classId, port, protocols, updatePort, deletePort }) {
         onChange={(e) => updatePort(classId, port.id, { protocolId: e.target.value })}>
         {protocols.map((p) => <option key={p.id} value={p.id}>{p.name}{p.system ? ' (system)' : ''}</option>)}
       </select>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: TEXT_DIM, cursor: 'pointer' }}>
-        <input type="checkbox" checked={!!port.conjugated}
+      <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: TEXT_DIM, cursor: isSystem ? 'default' : 'pointer', opacity: isSystem ? 0.5 : 1 }}
+        title={isSystem ? "Conjugation doesn't apply to system ports (Timing/Log) — their direction is fixed." : undefined}>
+        <input type="checkbox" checked={!isSystem && !!port.conjugated} disabled={isSystem}
           onChange={(e) => updatePort(classId, port.id, { conjugated: e.target.checked })} />
         conjugated (flip in/out)
       </label>

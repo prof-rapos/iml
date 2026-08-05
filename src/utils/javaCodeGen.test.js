@@ -389,3 +389,36 @@ describe('generateJavaCode — signal parameters reach guards and effects', () =
     expect(noParamSrc).toContain('public void deposit() { dispatch(Trigger.OPS_DEPOSIT); }');
   });
 });
+
+describe('generateJavaCode — a state machine on a portless class is not silently dropped', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Counter',
+    classes: [{
+      id: 'CT', name: 'Counter', isAbstract: false,
+      attributes: [{ id: 'aN', name: 'n', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1, defaultValue: '0' }],
+      // No ports at all — isCapsuleClass() alone would gate this class out
+      // of generateCapsuleBody entirely, discarding the whole state machine.
+      ports: [],
+    }],
+    relations: [], enumerations: [], protocols: [],
+    behaviours: {
+      CT: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sRunning', kind: 'simple', name: 'Running', entry: 'n = n + 1;', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sRunning', trigger: '', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('still emits the State/Trigger enums and dispatch/start methods', () => {
+    const files = generateJavaCode(metaModel, [], 'behavioural');
+    const src = fileFor(files, 'Counter.java');
+    expect(src).toContain('enum State');
+    expect(src).toContain('public void start()');
+    expect(src).toContain('private void dispatch(');
+  });
+});
