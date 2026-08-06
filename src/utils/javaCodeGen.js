@@ -139,7 +139,7 @@ function getParentClass(classId, metaModel) {
 
 // ── Relation helpers ──────────────────────────────────────────────────────────
 
-function isMultiRelation(rel) {
+export function isMultiRelation(rel) {
   const mult = (rel.targetMultiplicity || '').trim();
   if (!mult) return false;
   if (mult === '*') return true;
@@ -151,7 +151,7 @@ function isMultiRelation(rel) {
   return !isNaN(n) && n > 1;
 }
 
-function getRelationFieldName(rel, targetCls) {
+export function getRelationFieldName(rel, targetCls) {
   if (rel.name && rel.name.trim()) return safeId(rel.name);
   const base = safeId(targetCls.name);
   return isMultiRelation(rel) ? base + 'List' : base;

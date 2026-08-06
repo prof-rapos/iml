@@ -291,6 +291,34 @@ describe('validateConformance — behavioural (action-code port sends)', () => {
     };
     expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
   });
+
+  // Regression: the same false-positive as the attribute case above, but for
+  // a composition/reference relation's generated field — e.g. a "players"
+  // field (List<Player>) from a COMPOSITION relation named "players" is
+  // legitimately called as `players.get(0).getName()`, not a port send.
+  it('does not flag a method call on a composition relation field (e.g. players.get(0))', () => {
+    const mm = {
+      name: 'M', enumerations: [],
+      classes: [
+        {
+          id: 'C', name: 'Match', attributes: [],
+          ports: [{ id: 'pOps', name: 'ops', protocolId: 'proto1', conjugated: false }],
+        },
+        { id: 'P', name: 'Player', attributes: [{ id: 'aName', name: 'name', type: 'STRING' }], ports: [] },
+      ],
+      relations: [
+        { id: 'r1', kind: 'COMPOSITION', source: 'C', target: 'P', name: 'players', targetMultiplicity: '2' },
+      ],
+      protocols: [{ id: 'proto1', name: 'signaling', signals: [{ id: 's1', name: 'ping', direction: 'out', params: [] }] }],
+      behaviours: {
+        C: {
+          states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'players.get(0).getName(); ops.ping();', exit: '' }],
+          transitions: [],
+        },
+      },
+    };
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
 });
 
 describe('validateConformance — object & attribute rules', () => {

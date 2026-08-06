@@ -1,7 +1,8 @@
 // Pure conformance validation: check an instance model against its meta-model.
 // Extracted from the store so every rule is unit-testable in isolation.
 
-import { getAllAttributes, getEnum, isEnumValueValid } from './modelHelpers.js';
+import { getAllAttributes, getAllRelations, getEnum, isEnumValueValid } from './modelHelpers.js';
+import { getRelationFieldName } from './javaCodeGen.js';
 // getProtocolById also resolves the built-in Timing/Log system protocols
 // (not just metaModel.protocols) — needed so a transition triggered by
 // timer.timeout doesn't get flagged as unresolvable. modelStore.js imports
@@ -143,6 +144,22 @@ export function validateConformance(metaModel, instanceModel) {
       // attribute on this class is unambiguous: it's not a port reference,
       // full stop, regardless of what method is being called on it.
       const attrNames = new Set(getAllAttributes(cls.id, metaModel).map((a) => a.name));
+      // Same false-positive, different source: a composition/reference
+      // relation's generated field (e.g. `players` from a COMPOSITION
+      // relation named "players") is just as legitimately called with
+      // ordinary methods — `players.get(0).getName()` — as an attribute is.
+      // Field names here must mirror getRelationFieldName's own logic
+      // exactly (relation.name if set, else the target class's name,
+      // pluralized to "...List" for multi-valued relations) since that's
+      // what codegen actually emits as the field.
+      const relFieldNames = new Set(
+        getAllRelations(cls.id, metaModel)
+          .map((rel) => {
+            const targetCls = metaModel.classes.find((c) => c.id === rel.target);
+            return targetCls ? getRelationFieldName(rel, targetCls) : null;
+          })
+          .filter(Boolean)
+      );
 
       // Regex-based, not a parser — same tradeoff as findMainClasses/
       // stripComments elsewhere. Strip quoted strings first so a log
@@ -155,7 +172,7 @@ export function validateConformance(metaModel, instanceModel) {
         if (!text) return;
         for (const m of stripStrings(text).matchAll(CALL_RE)) {
           const [, portRef, sigRef] = m;
-          if (attrNames.has(portRef)) continue;
+          if (attrNames.has(portRef) || relFieldNames.has(portRef)) continue;
           const validSigs = sendableSignals.get(portRef);
           if (!validSigs) {
             errors.push({ kind, id, msg: `"${cls.name}": ${label} sends through "${portRef}", which isn't a port on this class — likely stale after a rename or delete` });
