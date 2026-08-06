@@ -1,11 +1,4 @@
-import { useModelStore } from '../store/modelStore';
-
-// Loads a demo TrafficLight capsule model (UML-RT protocols, ports, capsule
-// structure connectors, and a state machine) so the canvas isn't empty on
-// first launch.
-export function seedDemoModel() {
-  useModelStore.setState(
-  {
+{
   "metaModel": {
     "kind": "metamodel",
     "name": "Lights",
@@ -305,6 +298,4 @@ export function seedDemoModel() {
       }
     }
   }
-}
-  );
 }

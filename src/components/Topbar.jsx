@@ -5,6 +5,7 @@ import { useOutsideClick } from '../utils/useOutsideClick';
 import { useGenerateMenu } from './useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from './topbarMenu';
 import ModuleSwitcher from './ModuleSwitcher';
+import LoadExampleModal from './LoadExampleModal';
 
 const BORDER = 'rgba(255,255,255,0.10)';
 
@@ -19,6 +20,7 @@ export default function Topbar() {
   const fileRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
+  const [exampleModalOpen, setExampleModalOpen] = useState(false);
 
   const { menuSection: generateMenuSection, dialog: generateDialog } =
     useGenerateMenu({ defaultScope: 'structural', closeMenu: () => setMenuOpen(false) });
@@ -133,6 +135,7 @@ export default function Topbar() {
             <MenuSection label="File" />
             <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
             <MenuItem onClick={handleSave}>Export IML</MenuItem>
+            <MenuItem onClick={() => { setExampleModalOpen(true); setMenuOpen(false); }}>Load Example Model…</MenuItem>
             <MenuDivider />
             <MenuItem onClick={handleExportJpeg}>Export JPG</MenuItem>
             <MenuDivider />
@@ -142,6 +145,7 @@ export default function Topbar() {
       </div>
 
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoad} />
+      {exampleModalOpen && <LoadExampleModal onClose={() => setExampleModalOpen(false)} />}
     </div>
 
     {generateDialog}

@@ -173,10 +173,10 @@ describe('generateJavaCode — bare numeric multiplicities greater than 1 are tr
   });
 });
 
-// Trimmed version of the TrafficLight seed model (seedModel.js): a capsule
-// class with two user-protocol ports (base + conjugate on the same
-// bidirectional "opposite" protocol), a Timing port, a Log port, and a
-// 3-state cyclic state machine (Red -> Green -> Yellow -> Red).
+// Trimmed version of the TrafficLight example model (public/examples/
+// Lights.iml.json): a capsule class with two user-protocol ports (base +
+// conjugate on the same bidirectional "opposite" protocol), a Timing port,
+// a Log port, and a 3-state cyclic state machine (Red -> Green -> Yellow -> Red).
 describe('generateJavaCode — behavioural codegen (capsules, ports, state machines)', () => {
   const metaModel = {
     kind: 'metamodel', name: 'Lights',

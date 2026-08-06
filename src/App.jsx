@@ -12,7 +12,6 @@ import TransformView from './components/transform/TransformView';
 import BehaviouralView from './components/behaviour/BehaviouralView';
 import MBTView from './components/mbt/MBTView';
 import { useModelStore } from './store/modelStore';
-import { seedDemoModel } from './utils/seedModel';
 import { readAutosave, clearAutosave } from './utils/autosave';
 
 export default function App() {
@@ -32,24 +31,23 @@ export default function App() {
     return saved && saved.dirty ? saved : null;
   });
 
-  const seedFresh = () => {
-    seedDemoModel();
-    // seedDemoModel sets state directly (not through loadFromJSON), so it
-    // doesn't get the dirty-suppression that action's own callers do —
-    // reset explicitly so the demo model itself doesn't immediately read
-    // as "unsaved work" the moment the app opens.
+  // The store already initializes to an empty meta-model/instance-model by
+  // default — no demo model is seeded. Still need to rebuild the canvas once
+  // on mount so `nodes`/`edges` are freshly derived (matters if a stale
+  // autosave-restore-declined path leaves them out of sync).
+  const startFresh = () => {
     useModelStore.setState({ dirty: false });
     setTimeout(() => rebuildCanvas('metamodel'), 50);
   };
 
   useEffect(() => {
-    // Seeding the demo model is deferred until the restore prompt resolves,
-    // so it can't flash in behind the modal or get immediately overwritten.
-    if (!restorable) seedFresh();
-    // rebuildCanvas/seedFresh are stable Zustand-action-derived references,
+    // Deferred until the restore prompt resolves, so a rebuild against the
+    // empty default state can't flash in behind the modal.
+    if (!restorable) startFresh();
+    // rebuildCanvas/startFresh are stable Zustand-action-derived references,
     // and `restorable` is only ever read here at its initial mount value
     // (both branches below already set it to null before anything could
-    // re-run this) — this still only ever seeds once.
+    // re-run this) — this still only ever runs once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -60,7 +58,7 @@ export default function App() {
   const handleDiscard = () => {
     clearAutosave();
     setRestorable(null);
-    seedFresh();
+    startFresh();
   };
 
   // beforeunload only prevents an accidental refresh from happening
