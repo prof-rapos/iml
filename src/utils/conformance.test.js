@@ -319,6 +319,53 @@ describe('validateConformance — behavioural (action-code port sends)', () => {
     };
     expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
   });
+
+  // Regression: `java.util.Random rand = new java.util.Random();` flagged
+  // "util" — the middle segment of a fully-qualified type name has the same
+  // "ident.ident(" shape as a port send, but is never actually a standalone
+  // reference; a real port send is always exactly one dot deep.
+  it('does not flag the middle segment of a fully-qualified type name', () => {
+    const mm = baseCls({
+      C: {
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'java.util.Random rand = new java.util.Random(); ops.ping();', exit: '' }],
+        transitions: [],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+
+  // Regression: a local variable declared and used within the same action
+  // code (e.g. `Random random = new Random(); ... random.nextInt(6);`) has
+  // the same call shape as a port send once a method is called on it, but
+  // it's an ordinary local, not a port reference.
+  it('does not flag a method call on a locally-declared variable', () => {
+    const mm = baseCls({
+      C: {
+        states: [{
+          id: 's1', kind: 'simple', name: 'Open',
+          entry: 'Random random = new Random();\nint roll = random.nextInt(6);\nops.ping();',
+          exit: '',
+        }],
+        transitions: [],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+
+  it('still flags a genuine stale port send even when local variables are present', () => {
+    const mm = baseCls({
+      C: {
+        states: [{
+          id: 's1', kind: 'simple', name: 'Open',
+          entry: 'int x = 0;\noldOps.ping();',
+          exit: '',
+        }],
+        transitions: [],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1');
+    expect(errors).toContainEqual(expect.objectContaining({ id: 's1' }));
+  });
 });
 
 describe('validateConformance — object & attribute rules', () => {

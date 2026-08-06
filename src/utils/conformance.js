@@ -168,11 +168,30 @@ export function validateConformance(metaModel, instanceModel) {
       const CALL_RE = /([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)\s*\(/g;
       const stripStrings = (s) => s.replace(/"(?:[^"\\]|\\.)*"/g, '""');
 
+      // Ordinary local variables declared right there in the action code
+      // (a loop counter, `int winner = 0;`, a `java.util.Random` instance to
+      // roll a move, …) have the exact same "ident.ident(" shape once a
+      // method is called on them (`rand.nextInt(6)`) as a port send does,
+      // and are just as legitimate. Not parseable in general without a real
+      // Java parser, but a permissive scan for "TypeName varName" ahead of
+      // = / ; / , / ) catches the realistic cases action code actually
+      // writes, without misfiring on control-flow keywords (there's no
+      // second space-separated identifier after "if"/"while"/"switch(...)")
+      // or on plain reassignment (only one identifier precedes "=").
+      const LOCAL_DECL_RE = /(?:^|[\s;{}(,])(?:[A-Za-z_$][\w$]*\.)*[A-Za-z_$][\w$]*(?:<[^;{}]*>)?(?:\[\s*\])*\s+([A-Za-z_$][\w$]*)\s*(?=[=;,)])/g;
+
       const checkActionCode = (text, kind, id, label) => {
         if (!text) return;
-        for (const m of stripStrings(text).matchAll(CALL_RE)) {
+        const stripped = stripStrings(text);
+        const localVarNames = new Set([...stripped.matchAll(LOCAL_DECL_RE)].map((m) => m[1]));
+        for (const m of stripped.matchAll(CALL_RE)) {
           const [, portRef, sigRef] = m;
-          if (attrNames.has(portRef) || relFieldNames.has(portRef)) continue;
+          if (attrNames.has(portRef) || relFieldNames.has(portRef) || localVarNames.has(portRef)) continue;
+          // A match whose portRef is itself immediately preceded by another
+          // "." is the tail of a longer qualified name/chain (e.g. "util"
+          // inside "java.util.Random(...)"), not a standalone port
+          // reference — a real port send is always exactly one dot deep.
+          if (stripped[m.index - 1] === '.') continue;
           const validSigs = sendableSignals.get(portRef);
           if (!validSigs) {
             errors.push({ kind, id, msg: `"${cls.name}": ${label} sends through "${portRef}", which isn't a port on this class — likely stale after a rename or delete` });
