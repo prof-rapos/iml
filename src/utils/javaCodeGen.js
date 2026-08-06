@@ -1046,14 +1046,53 @@ function connectorWireLines(im, metaModel, varNames) {
   return lines;
 }
 
+// Order capsules leaves-first, root-last per their composition containment,
+// so a parent's start() (which may immediately signal its parts) never runs
+// before the parts themselves are started.
 function startLines(im, metaModel, varNames) {
   const starters = im.objects.filter((obj) => {
     const cls = metaModel.classes.find((c) => c.id === obj.classId);
     return cls && hasStateMachine(cls, metaModel);
   });
   if (starters.length === 0) return [];
-  const lines = ['        // Start capsules'];
-  for (const obj of starters) lines.push(`        ${varNames.get(obj.id)}.start();`);
+
+  // Same source=container/target=part convention relationWireLines relies on
+  // for its addX(child) calls (diamond-at-source UML composition notation).
+  const parentOf = new Map();
+  for (const link of im.links) {
+    const rel = metaModel.relations.find((r) => r.id === link.relationId);
+    if (rel?.kind === 'COMPOSITION') parentOf.set(link.target, link.source);
+  }
+
+  const starterIds = new Set(starters.map((o) => o.id));
+  const childrenOf = new Map();
+  for (const id of starterIds) {
+    const parent = parentOf.get(id);
+    if (parent && starterIds.has(parent)) {
+      if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+      childrenOf.get(parent).push(id);
+    }
+  }
+
+  const ordered  = [];
+  const visited  = new Set();
+  const visit = (id) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    for (const childId of childrenOf.get(id) ?? []) visit(childId);
+    ordered.push(id);
+  };
+  // Roots (no starter parent) first, in declaration order, so sibling trees
+  // keep a stable relative order; visit() recurses into children before
+  // pushing the parent, giving leaves-first/root-last within each tree.
+  for (const obj of starters) {
+    const parent = parentOf.get(obj.id);
+    if (!parent || !starterIds.has(parent)) visit(obj.id);
+  }
+  for (const obj of starters) visit(obj.id); // safety net: multi-parent/cyclic edge cases
+
+  const lines = ['        // Start capsules (leaves first, root last, per composition containment)'];
+  for (const id of ordered) lines.push(`        ${varNames.get(id)}.start();`);
   lines.push('');
   return lines;
 }
@@ -1091,11 +1130,14 @@ function generateInstanceFile(im, metaModel, pkg) {
 }
 
 // Behavioural/all-code main(): construct (capsules needing a Timing port take
-// the Scheduler), set attributes, optionally wire relation links + print
-// (scope 'all' only), wire capsule connectors, start() every capsule, then
-// run the shared event loop. The structural print happens BEFORE start()
-// since run() blocks forever for a cyclic model — it must capture the
-// initial state, not dead code after an infinite loop.
+// the Scheduler), set attributes, wire relation links (needed for both
+// scopes — a capsule's action code can depend on a composition-populated
+// list, e.g. a Game broadcasting to its Players, so this isn't just
+// informational output), optionally print structural state (scope 'all'
+// only), wire capsule connectors, start() every capsule, then run the
+// shared event loop. The structural print happens BEFORE start() since
+// run() blocks forever for a cyclic model — it must capture the initial
+// state, not dead code after an infinite loop.
 function generateMainFile(im, metaModel, pkg, scope) {
   const className   = toClassName(im.name);
   const varNames    = buildVarNames(im, metaModel);
@@ -1108,7 +1150,7 @@ function generateMainFile(im, metaModel, pkg, scope) {
   }
   lines.push(...instantiationLines(im, metaModel, varNames, ctorArgsForCapsule));
   lines.push(...attributeSetLines(im, metaModel, varNames));
-  if (scope === 'all') lines.push(...relationWireLines(im, metaModel, varNames));
+  lines.push(...relationWireLines(im, metaModel, varNames));
   lines.push(...connectorWireLines(im, metaModel, varNames));
   if (scope === 'all') {
     lines.push(...printLines(im, varNames));

@@ -324,6 +324,66 @@ describe('generateJavaCode — behavioural codegen (capsules, ports, state machi
 // receiver method's signature but its value was never stored or passed
 // anywhere — any guard/effect referencing it (the normal way to model an
 // event carrying data) failed to compile with "cannot find symbol".
+// Regression: composition-relation instance links (e.g. a Game capsule that
+// composition-owns two Player capsules) were only wired into the generated
+// main() when scope === 'all' — the far more commonly used 'behavioural'
+// scope silently left the container's list empty, even though the wiring is
+// behaviourally load-bearing (a capsule's action code may iterate that list),
+// not just informational print output. Also covers the companion fix: start()
+// calls must respect composition containment (parts before their container).
+describe('generateJavaCode — composition-relation wiring and capsule start order', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Arena',
+    classes: [
+      { id: 'GM', name: 'Game', isAbstract: false, attributes: [], ports: [{ id: 'gLog', name: 'log', protocolId: 'sys-log', conjugated: false }] },
+      { id: 'PL', name: 'Player', isAbstract: false, attributes: [], ports: [{ id: 'pLog', name: 'log', protocolId: 'sys-log', conjugated: false }] },
+    ],
+    relations: [
+      { id: 'r1', kind: 'COMPOSITION', source: 'GM', target: 'PL', targetMultiplicity: '*' },
+    ],
+    enumerations: [],
+    protocols: [],
+    behaviours: {
+      GM: { states: [{ id: 's1', kind: 'initial', name: '', entry: '', exit: '' }, { id: 's2', kind: 'simple', name: 'Running', entry: '', exit: '' }], transitions: [{ id: 't1', source: 's1', target: 's2', trigger: '', guard: '', effect: '' }] },
+      PL: { states: [{ id: 's1', kind: 'initial', name: '', entry: '', exit: '' }, { id: 's2', kind: 'simple', name: 'Waiting', entry: '', exit: '' }], transitions: [{ id: 't1', source: 's1', target: 's2', trigger: '', guard: '', effect: '' }] },
+    },
+  };
+
+  const im = {
+    id: 'im1', kind: 'instancemodel', name: 'Match',
+    objects: [
+      { id: 'game', classId: 'GM', name: 'Game1', attributeValues: {} },
+      { id: 'p1',   classId: 'PL', name: 'Player1', attributeValues: {} },
+      { id: 'p2',   classId: 'PL', name: 'Player2', attributeValues: {} },
+    ],
+    links: [
+      { id: 'l1', relationId: 'r1', source: 'game', target: 'p1' },
+      { id: 'l2', relationId: 'r1', source: 'game', target: 'p2' },
+    ],
+    connectors: [],
+  };
+
+  it('wires composition links (addPlayerList) into behavioural-scope main(), not just structural/all', () => {
+    const main = fileFor(generateJavaCode(metaModel, [im], 'behavioural'), 'Match.java');
+    expect(main).toContain('game1.addPlayerList(player1);');
+    expect(main).toContain('game1.addPlayerList(player2);');
+  });
+
+  it('starts contained (part) capsules before their composition-owner, in both scopes', () => {
+    for (const scope of ['behavioural', 'all']) {
+      const main = fileFor(generateJavaCode(metaModel, [im], scope), 'Match.java');
+      const p1Idx   = main.indexOf('player1.start();');
+      const p2Idx   = main.indexOf('player2.start();');
+      const gameIdx = main.indexOf('game1.start();');
+      expect(p1Idx).toBeGreaterThan(-1);
+      expect(p2Idx).toBeGreaterThan(-1);
+      expect(gameIdx).toBeGreaterThan(-1);
+      expect(p1Idx).toBeLessThan(gameIdx);
+      expect(p2Idx).toBeLessThan(gameIdx);
+    }
+  });
+});
+
 describe('generateJavaCode — signal parameters reach guards and effects', () => {
   const metaModel = {
     kind: 'metamodel', name: 'Bank',
