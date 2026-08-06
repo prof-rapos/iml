@@ -12,6 +12,11 @@ const handleStyle = {
   background: '#64748b',
   border: '2px solid #fff',
   borderRadius: '50%',
+  // See nodeShell.jsx's NO_TRANSFORM comment — a custom-sized handle's
+  // default centering transform disagrees with React Flow's own
+  // edge-position math, leaving a gap between the node border and where
+  // the edge actually connects.
+  transform: 'none',
 };
 
 // "→ StateA (x=3, y=2)" instead of an opaque id fragment — names the actual

@@ -147,5 +147,14 @@ function handleStyle(conjugated) {
     width: 10, height: 10, borderRadius: 2,
     background: conjugated ? '#fff' : '#111',
     border: '2px solid #7c3aed',
+    // See nodeShell.jsx's NO_TRANSFORM comment — React Flow's default
+    // horizontal centering transform for a Left/Right handle disagrees
+    // with its own edge-position math, leaving a gap between the node
+    // border and where the connector line actually connects. Only the
+    // horizontal component is dropped here (translateY, not translate) —
+    // the vertical -50% is what centers the handle on its own explicit
+    // `top: HEADER_HEIGHT + row * ROW_HEIGHT + ...` row position above,
+    // and still needs to apply.
+    transform: 'translateY(-50%)',
   };
 }
