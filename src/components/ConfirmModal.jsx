@@ -1,15 +1,18 @@
+import { useOverlayClose } from '../utils/useOverlayClose';
+
 // Shared confirmation dialog — extracted from Sidebar.jsx (originally used
 // only for "Clear Meta-Model") so other destructive/lossy actions elsewhere
 // in the app (e.g. PropertiesPanel's attribute-narrowing warning) get the
 // same look instead of a second hand-rolled modal or a native confirm().
 export default function ConfirmModal({ message, onConfirm, onCancel, confirmLabel = 'Confirm' }) {
+  const overlayClose = useOverlayClose(onCancel);
   return (
     <div style={{
       position: 'fixed', inset: 0, zIndex: 1000,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       background: 'rgba(0,0,0,0.55)',
     }}
-      onClick={onCancel}
+      {...overlayClose}
     >
       <div style={{
         background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',

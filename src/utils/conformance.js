@@ -136,6 +136,13 @@ export function validateConformance(metaModel, instanceModel) {
         const sentDir = port.conjugated ? 'in' : 'out';
         sendableSignals.set(port.name, new Set((proto.signals ?? []).filter((sg) => sg.direction === sentDir).map((sg) => sg.name)));
       }
+      // Action code can also call an ordinary Java method on an attribute's
+      // value — e.g. `p1Move.equals("R")` on a STRING attribute, the normal
+      // (only, for strings) way to compare it — which has the exact same
+      // "ident.ident(" shape as a port send. Any identifier that's a real
+      // attribute on this class is unambiguous: it's not a port reference,
+      // full stop, regardless of what method is being called on it.
+      const attrNames = new Set(getAllAttributes(cls.id, metaModel).map((a) => a.name));
 
       // Regex-based, not a parser — same tradeoff as findMainClasses/
       // stripComments elsewhere. Strip quoted strings first so a log
@@ -148,6 +155,7 @@ export function validateConformance(metaModel, instanceModel) {
         if (!text) return;
         for (const m of stripStrings(text).matchAll(CALL_RE)) {
           const [, portRef, sigRef] = m;
+          if (attrNames.has(portRef)) continue;
           const validSigs = sendableSignals.get(portRef);
           if (!validSigs) {
             errors.push({ kind, id, msg: `"${cls.name}": ${label} sends through "${portRef}", which isn't a port on this class — likely stale after a rename or delete` });

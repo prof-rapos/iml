@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useModelStore } from '../store/modelStore';
 import { GROUPS, moduleIcon } from '../utils/moduleGroups.jsx';
+import { useOverlayClose } from '../utils/useOverlayClose';
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 function ModuleCard({ mod, onSelect, onComingSoon }) {
@@ -66,6 +67,7 @@ function ModuleCard({ mod, onSelect, onComingSoon }) {
 
 // ── Coming Soon modal ─────────────────────────────────────────────────────────
 function ComingSoonModal({ mod, onClose }) {
+  const overlayClose = useOverlayClose(onClose);
   return (
     <div
       style={{
@@ -73,7 +75,7 @@ function ComingSoonModal({ mod, onClose }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         background: 'rgba(0,0,0,0.6)',
       }}
-      onClick={onClose}
+      {...overlayClose}
     >
       <div
         style={{

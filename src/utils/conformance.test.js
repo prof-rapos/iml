@@ -265,6 +265,32 @@ describe('validateConformance — behavioural (action-code port sends)', () => {
     };
     expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
   });
+
+  // Regression: the check originally flagged ANY "ident.ident(" pattern
+  // whose left side wasn't a current port — but a STRING (or any object-
+  // typed) attribute's own Java methods have exactly that shape too, e.g.
+  // `p1Move.equals("R")` to compare it (the normal way, since strings can't
+  // use `==`). That's not a port reference at all, so it should never be
+  // flagged regardless of what method is being called.
+  it('does not flag a method call on a class attribute (e.g. a STRING .equals() comparison)', () => {
+    const mm = {
+      name: 'M', enumerations: [],
+      classes: [{
+        id: 'C', name: 'Widget',
+        attributes: [{ id: 'a1', name: 'p1Move', type: 'STRING' }],
+        ports: [{ id: 'pOps', name: 'ops', protocolId: 'proto1', conjugated: false }],
+      }],
+      relations: [],
+      protocols: [{ id: 'proto1', name: 'signaling', signals: [{ id: 's1', name: 'ping', direction: 'out', params: [] }] }],
+      behaviours: {
+        C: {
+          states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'if (p1Move.equals("R")) { ops.ping(); }', exit: '' }],
+          transitions: [],
+        },
+      },
+    };
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
 });
 
 describe('validateConformance — object & attribute rules', () => {

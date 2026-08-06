@@ -8,6 +8,7 @@ import CodeEditor from './CodeEditor';
 import IDETerminal from './IDETerminal';
 import NewFileDialog from './NewFileDialog';
 import NewProjectWizard from './NewProjectWizard';
+import { useOverlayClose } from '../../utils/useOverlayClose';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER = 'rgba(255,255,255,0.08)';
@@ -186,8 +187,9 @@ export default function IDEView() {
 }
 
 function DeleteConfirmDialog({ filename, onConfirm, onCancel }) {
+  const overlayClose = useOverlayClose(onCancel);
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }} onClick={onCancel}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }} {...overlayClose}>
       <div style={{ background: '#161b22', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 12, padding: '24px 28px 20px', width: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', color: '#e6edf3', fontFamily: 'var(--iml-font-sans)' }} onClick={(e) => e.stopPropagation()}>
         <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>Delete file?</div>
         <div style={{ fontSize: 13, color: '#8b949e', lineHeight: 1.6, marginBottom: 20 }}>

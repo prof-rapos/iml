@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
 import { getAllAttributes, getAllRelations } from '../../store/modelStore';
+import { useOverlayClose } from '../../utils/useOverlayClose';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -37,10 +38,12 @@ function AddRuleModal({ source, target, onAdd, onClose }) {
     if (srcId && tgtId) { onAdd(srcId, tgtId); onClose(); }
   };
 
+  const overlayClose = useOverlayClose(onClose);
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}
-      onClick={onClose}
+      {...overlayClose}
     >
       <div
         style={{ background: '#1c2128', border: `1px solid ${BORDER}`, borderRadius: 10, padding: '24px 28px 20px', width: 420, fontFamily: 'var(--iml-font-sans)', color: TEXT }}

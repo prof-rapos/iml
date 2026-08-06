@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { packageToDir } from '../../store/ideStore';
+import { useOverlayClose } from '../../utils/useOverlayClose';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BG = '#161b22';
@@ -49,10 +50,12 @@ export default function NewFileDialog({ projectPackage, existingPaths, onConfirm
     onConfirm({ path, content });
   };
 
+  const overlayClose = useOverlayClose(onCancel);
+
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}
-      onClick={onCancel}
+      {...overlayClose}
     >
       <div
         style={{ background: BG, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '28px 28px 22px', width: 380, boxShadow: '0 20px 60px rgba(0,0,0,0.6)', color: TEXT, fontFamily: 'var(--iml-font-sans)' }}

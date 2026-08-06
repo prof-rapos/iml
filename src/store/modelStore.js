@@ -236,8 +236,13 @@ const JAVA_KEYWORDS = new Set([
   'Object','System','Math','ArrayList','List','Map','Set','Arrays','Collections',
 ]);
 
+// Exact (case-sensitive) match only — Java identifiers ARE case-sensitive,
+// so "Do" or "Class" are perfectly legal names despite "do"/"class" being
+// reserved. A case-insensitive check used to block them anyway, which in
+// practice meant typing a name like "Donut" got silently rejected the
+// instant it passed through "Do".
 function isJavaKeyword(name) {
-  return JAVA_KEYWORDS.has(name) || JAVA_KEYWORDS.has(name.toLowerCase());
+  return JAVA_KEYWORDS.has(name);
 }
 
 // ── Layout key helpers ────────────────────────────────────────────────────────
@@ -767,9 +772,8 @@ export const useModelStore = create((set, get) => ({
 
   clearMetaModel: () => {
     suppressDirty = true;
-    const name = get().metaModel.name;
     set({
-      metaModel: { ...EMPTY_MM, name },
+      metaModel: { ...EMPTY_MM },
       instanceModels: [mkIM('InstanceModel1')],
       currentIMIndex: 0,
       nodes: [], edges: [],
@@ -861,7 +865,15 @@ export const useModelStore = create((set, get) => ({
       const hasDef = a.defaultValue !== undefined && String(a.defaultValue).trim() !== '';
       attributeValues[a.id] = a.upperBound !== 1 ? [] : (hasDef ? String(a.defaultValue) : '');
     }
-    const obj = { id, classId, name: `${cls.name}1`, attributeValues };
+    // Auto-increment against every object already in this instance model
+    // (not just same-class) — matching every other auto-named entity in the
+    // app (classes, ports, states, …), and because generated code needs a
+    // unique local variable per object regardless of class.
+    const existingNames = new Set((get().instanceModels[get().currentIMIndex]?.objects ?? []).map((o) => o.name));
+    let n = 1;
+    let name = `${cls.name}${n}`;
+    while (existingNames.has(name)) name = `${cls.name}${++n}`;
+    const obj = { id, classId, name, attributeValues };
     set((s) => ({
       instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({ objects: [...im.objects, obj] })),
     }));
@@ -869,11 +881,26 @@ export const useModelStore = create((set, get) => ({
     return id;
   },
 
-  updateObject: (id, patch) => set((s) => ({
-    instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
-      objects: im.objects.map((o) => o.id === id ? { ...o, ...patch } : o),
-    })),
-  })),
+  updateObject: (id, patch) => {
+    if (patch.name !== undefined) {
+      const trimmed = String(patch.name).trim();
+      const im = get().instanceModels[get().currentIMIndex];
+      // Scoped to the whole instance model, not just same-class — two
+      // objects sharing a name (even across classes) both compile down to
+      // the same local variable name in generated code, and it's confusing
+      // in the diagram regardless of class.
+      if (im && im.objects.some((o) => o.id !== id && o.name === trimmed)) {
+        get().notify(`"${trimmed}" is already used by another object in "${im.name}". Object names must be unique within an instance model.`);
+        return;
+      }
+      patch = { ...patch, name: trimmed };
+    }
+    set((s) => ({
+      instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({
+        objects: im.objects.map((o) => o.id === id ? { ...o, ...patch } : o),
+      })),
+    }));
+  },
 
   updateSlotValues: (objId, attrId, values) => set((s) => ({
     instanceModels: withCurrentIM(s.instanceModels, s.currentIMIndex, (im) => ({

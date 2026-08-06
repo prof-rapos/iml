@@ -3,6 +3,7 @@ import { useModelStore, getAllAttributes } from '../store/modelStore';
 import { BORDER, TEXT, TEXT_MUTED, panelStyle, headerStyle } from './panelShellTokens';
 import { DeleteBtn } from './panelShell';
 import ConfirmModal from './ConfirmModal';
+import NameInput from './NameInput';
 
 // ── Local-only tokens (not shared — these three are unique to this panel) ──
 const INPUT_BG   = 'rgba(255,255,255,0.07)';
@@ -126,8 +127,8 @@ export default function PropertiesPanel() {
         </div>
         <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
           <Field label="Name">
-            <input style={inputStyle} value={cls.name}
-              onChange={(e) => updateClass(cls.id, { name: e.target.value })} />
+            <NameInput style={inputStyle} value={cls.name}
+              onCommit={(name) => updateClass(cls.id, { name })} />
           </Field>
           <Field label="Abstract">
             <select style={selectStyle} value={cls.isAbstract ? 'yes' : 'no'}
@@ -172,8 +173,8 @@ export default function PropertiesPanel() {
         </div>
         <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
           <Field label="Name">
-            <input style={inputStyle} value={obj.name}
-              onChange={(e) => updateObject(obj.id, { name: e.target.value })} />
+            <NameInput style={inputStyle} value={obj.name}
+              onCommit={(name) => updateObject(obj.id, { name })} />
           </Field>
 
           {issues.length > 0 && (
@@ -242,9 +243,9 @@ function AttrEditor({ classId, attr, enumerations = [], updateAttribute, deleteA
   return (
     <div style={{ background: CARD_BG, borderRadius: 6, padding: '10px', marginBottom: 8, border: `1px solid ${BORDER}` }}>
       <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
-        <input style={{ ...inputStyle, flex: 2, padding: '5px 8px', fontSize: 12 }}
+        <NameInput style={{ ...inputStyle, flex: 2, padding: '5px 8px', fontSize: 12 }}
           value={attr.name} placeholder="name"
-          onChange={(e) => updateAttribute(classId, attr.id, { name: e.target.value })} />
+          onCommit={(name) => updateAttribute(classId, attr.id, { name })} />
         <select style={{ ...selectStyle, flex: 1.5, padding: '5px 6px', fontSize: 12 }}
           value={typeValue}
           onChange={(e) => onTypeChange(e.target.value)}>
@@ -435,8 +436,8 @@ function EnumEditor({ en, updateEnumeration, deleteEnumeration, addEnumLiteral, 
       </div>
       <div style={{ padding: 14, overflowY: 'auto', flex: 1 }}>
         <Field label="Name">
-          <input style={inputStyle} value={en.name}
-            onChange={(e) => updateEnumeration(en.id, { name: e.target.value })} />
+          <NameInput style={inputStyle} value={en.name}
+            onCommit={(name) => updateEnumeration(en.id, { name })} />
         </Field>
 
         <div style={sectionStyle}>Literals</div>

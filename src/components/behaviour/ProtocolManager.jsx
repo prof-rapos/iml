@@ -1,4 +1,5 @@
 import { useModelStore, SYSTEM_PROTOCOLS } from '../../store/modelStore';
+import { useOverlayClose } from '../../utils/useOverlayClose';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -124,11 +125,12 @@ export default function ProtocolManager({ onClose }) {
   const updateParam     = useModelStore((s) => s.updateParam);
   const deleteParam     = useModelStore((s) => s.deleteParam);
   const actions = { updateProtocol, deleteProtocol, addSignal, updateSignal, deleteSignal, addParam, updateParam, deleteParam };
+  const overlayClose = useOverlayClose(onClose);
 
   return (
     <div
       style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.65)' }}
-      onClick={onClose}
+      {...overlayClose}
     >
       <div
         style={{ background: '#0d1117', border: `1px solid ${BORDER}`, borderRadius: 10, width: 460, maxHeight: '80vh', display: 'flex', flexDirection: 'column', fontFamily: 'var(--iml-font-sans)', color: TEXT }}
