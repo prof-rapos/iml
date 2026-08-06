@@ -110,12 +110,12 @@ export default function MBTTopbar() {
             border: `1px solid ${BORDER}`,
             background: menuOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)',
             color: TEXT,
-            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 3,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,
           }}
         >
-          <span style={{ display: 'block', width: 15, height: 1.5, background: TEXT, borderRadius: 1 }} />
-          <span style={{ display: 'block', width: 15, height: 1.5, background: TEXT, borderRadius: 1 }} />
-          <span style={{ display: 'block', width: 15, height: 1.5, background: TEXT, borderRadius: 1 }} />
+          <span style={{ display: 'block', width: 16, height: 1.5, background: TEXT, borderRadius: 1 }} />
+          <span style={{ display: 'block', width: 16, height: 1.5, background: TEXT, borderRadius: 1 }} />
+          <span style={{ display: 'block', width: 16, height: 1.5, background: TEXT, borderRadius: 1 }} />
         </button>
 
         {menuOpen && (

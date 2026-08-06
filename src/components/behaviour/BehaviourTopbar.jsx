@@ -177,7 +177,7 @@ export default function BehaviourTopbar() {
       <HomeButton onClick={() => setAppView('home')} size={34} borderColor={BORDER} color={TEXT} />
 
       <div ref={menuRef} style={{ position: 'relative' }}>
-        <button onClick={() => setMenuOpen((o) => !o)} title="Menu" style={{ ...btn(menuOpen), flexDirection: 'column', gap: 3 }}>
+        <button onClick={() => setMenuOpen((o) => !o)} title="Menu" style={{ ...btn(menuOpen), flexDirection: 'column', gap: 4 }}>
           <span style={bar} /><span style={bar} /><span style={bar} />
         </button>
 
@@ -211,4 +211,4 @@ const btn = (active) => ({
   border: `1px solid ${BORDER}`, background: active ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)',
   color: TEXT, display: 'flex', alignItems: 'center', justifyContent: 'center',
 });
-const bar = { display: 'block', width: 15, height: 1.5, background: TEXT, borderRadius: 1 };
+const bar = { display: 'block', width: 16, height: 1.5, background: TEXT, borderRadius: 1 };

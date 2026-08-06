@@ -85,7 +85,7 @@ export default function Topbar() {
       color: '#f1f5f9',
       display: 'flex',
       alignItems: 'center',
-      gap: 12,
+      gap: 10,
       padding: '0 16px',
       borderBottom: `1px solid ${BORDER}`,
       flexShrink: 0,

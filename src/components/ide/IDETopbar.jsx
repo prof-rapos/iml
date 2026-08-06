@@ -100,7 +100,7 @@ export default function IDETopbar() {
     <>
       <div style={{
         height: 48, background: '#161b22', color: '#f1f5f9',
-        display: 'flex', alignItems: 'center', gap: 12, padding: '0 16px',
+        display: 'flex', alignItems: 'center', gap: 10, padding: '0 16px',
         borderBottom: `1px solid ${BORDER}`, flexShrink: 0,
       }}>
         {/* Logo + title */}
