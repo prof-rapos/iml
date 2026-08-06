@@ -24,16 +24,19 @@ describe('clearMetaModel', () => {
   });
 });
 
-// Regression: isJavaKeyword used to also reject any case-variant of a
-// reserved word (name.toLowerCase() against the keyword set) — Java
-// identifiers are case-sensitive, so this blocked perfectly legal names
-// like "Do" (typing toward "Donut") purely because "do" is reserved.
-describe('updateClass — reserved-keyword check is case-sensitive', () => {
+// isJavaKeyword rejects any case-variant of a reserved word or shadowed
+// stdlib class name, not just an exact match — a name that differs from
+// "class"/"String" only in case reads as a mistake, not a deliberate
+// choice. Safe to check eagerly (not just on exact match) because
+// validation only ever fires on blur/commit (NameInput.jsx), never
+// per-keystroke, so it can't reject "Do" the instant it's typed while
+// aiming for "Donut".
+describe('updateClass — reserved-keyword check is case-insensitive', () => {
   beforeEach(seed);
 
-  it('accepts a name that is a case-variant of a keyword ("Do", not "do")', () => {
+  it('rejects a case-variant of a keyword ("Do", not just "do")', () => {
     useModelStore.getState().updateClass('A', { name: 'Do' });
-    expect(useModelStore.getState().metaModel.classes[0].name).toBe('Do');
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('A');
   });
 
   it('still rejects the exact-case reserved word', () => {
@@ -41,9 +44,33 @@ describe('updateClass — reserved-keyword check is case-sensitive', () => {
     expect(useModelStore.getState().metaModel.classes[0].name).toBe('A');
   });
 
-  it('accepts a lowercase name that only collides case-insensitively with a shadowed stdlib class ("string" vs "String")', () => {
+  it('rejects a lowercase name that collides case-insensitively with a shadowed stdlib class ("string" vs "String")', () => {
     useModelStore.getState().updateClass('A', { name: 'string' });
-    expect(useModelStore.getState().metaModel.classes[0].name).toBe('string');
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('A');
+  });
+
+  it('accepts a name that merely contains a keyword as a substring ("Classroom")', () => {
+    useModelStore.getState().updateClass('A', { name: 'Classroom' });
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('Classroom');
+  });
+});
+
+describe('updateClass — identifier-format check', () => {
+  beforeEach(seed);
+
+  it('rejects names with spaces or punctuation', () => {
+    useModelStore.getState().updateClass('A', { name: 'My Class!' });
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('A');
+  });
+
+  it('rejects a name starting with a digit', () => {
+    useModelStore.getState().updateClass('A', { name: '1Class' });
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('A');
+  });
+
+  it('accepts underscores and a leading underscore/dollar sign', () => {
+    useModelStore.getState().updateClass('A', { name: '_My$Class_1' });
+    expect(useModelStore.getState().metaModel.classes[0].name).toBe('_My$Class_1');
   });
 });
 
@@ -82,5 +109,38 @@ describe('instance object naming', () => {
     const id1 = s.addObject('A');
     s.updateObject(id1, { name: 'A1' });
     expect(useModelStore.getState().instanceModels[0].objects[0].name).toBe('A1');
+  });
+
+  it('updateObject rejects a keyword-colliding or invalid-identifier name', () => {
+    const s = useModelStore.getState();
+    const id1 = s.addObject('A');
+    s.updateObject(id1, { name: 'class' });
+    expect(useModelStore.getState().instanceModels[0].objects[0].name).toBe('A1');
+    s.updateObject(id1, { name: 'has a space' });
+    expect(useModelStore.getState().instanceModels[0].objects[0].name).toBe('A1');
+  });
+});
+
+// Ports had no keyword/format validation at all — a port named "class" or
+// with spaces/punctuation would compile down to broken generated Java
+// (portFieldName only sanitizes characters via safeId, it doesn't reject a
+// name that's already a valid-but-reserved identifier).
+describe('updatePort — keyword and identifier-format validation', () => {
+  beforeEach(seed);
+
+  it('rejects a keyword-colliding port name', () => {
+    const s = useModelStore.getState();
+    const portId = s.addPort('A');
+    s.updatePort('A', portId, { name: 'class' });
+    const port = useModelStore.getState().metaModel.classes[0].ports.find((p) => p.id === portId);
+    expect(port.name).toBe('port');
+  });
+
+  it('rejects a port name with invalid characters', () => {
+    const s = useModelStore.getState();
+    const portId = s.addPort('A');
+    s.updatePort('A', portId, { name: 'my-port' });
+    const port = useModelStore.getState().metaModel.classes[0].ports.find((p) => p.id === portId);
+    expect(port.name).toBe('port');
   });
 });

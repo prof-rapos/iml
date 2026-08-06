@@ -236,13 +236,42 @@ const JAVA_KEYWORDS = new Set([
   'Object','System','Math','ArrayList','List','Map','Set','Arrays','Collections',
 ]);
 
-// Exact (case-sensitive) match only — Java identifiers ARE case-sensitive,
-// so "Do" or "Class" are perfectly legal names despite "do"/"class" being
-// reserved. A case-insensitive check used to block them anyway, which in
-// practice meant typing a name like "Donut" got silently rejected the
-// instant it passed through "Do".
+const JAVA_KEYWORDS_LOWER = new Set([...JAVA_KEYWORDS].map((k) => k.toLowerCase()));
+
+// Case-INsensitive on purpose: "Class" or "Do" are technically legal Java
+// identifiers despite "class"/"do" being reserved, but a name that differs
+// from a keyword only in case is exactly the kind of thing that reads as a
+// mistake later, not a deliberate choice — so it's blocked here too. Safe to
+// check this eagerly now because validation only ever fires on blur/commit
+// (see NameInput.jsx), not per-keystroke — the previous case-sensitive
+// carve-out existed only to stop a keystroke-level check from rejecting
+// "Donut" the instant it passed through "Do".
 function isJavaKeyword(name) {
-  return JAVA_KEYWORDS.has(name);
+  return JAVA_KEYWORDS_LOWER.has(name.toLowerCase());
+}
+
+// A valid (unqualified) Java identifier: starts with a letter/_/$, continues
+// with letters/digits/_/$. Doesn't rule out keywords — isJavaKeyword() above
+// covers that separately. Names that fail this (spaces, punctuation, a
+// leading digit) aren't just cosmetically odd: several places emit the raw
+// name straight into generated Java source (e.g. `public class ${cls.name}`
+// in javaCodeGen.js), so an invalid one produces code that won't compile.
+const JAVA_IDENTIFIER_RE = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+function isValidJavaIdentifier(name) {
+  return JAVA_IDENTIFIER_RE.test(name);
+}
+
+// Shared keyword + identifier-format check for every name-settable field
+// across the meta-model. `descriptor` reads into "...cannot be used as
+// ${descriptor}", e.g. "a class name", "an attribute name".
+function invalidNameReason(name, descriptor) {
+  if (!isValidJavaIdentifier(name)) {
+    return `"${name}" isn't a valid Java identifier (letters, digits, _ and $ only, can't start with a digit) — it can't be used as ${descriptor}.`;
+  }
+  if (isJavaKeyword(name)) {
+    return `"${name}" is a reserved Java keyword and cannot be used as ${descriptor}.`;
+  }
+  return null;
 }
 
 // ── Layout key helpers ────────────────────────────────────────────────────────
@@ -391,7 +420,7 @@ export const useModelStore = create((set, get) => ({
   addClass: (isAbstract = false) => {
     const id  = nanoid(8);
     // Generate a unique default name
-    const base    = isAbstract ? 'AbstractClass' : 'Class';
+    const base    = isAbstract ? 'AbstractClass' : 'NewClass';
     const existing = new Set(get().metaModel.classes.map((c) => c.name));
     let name = base;
     let n = 1;
@@ -407,10 +436,8 @@ export const useModelStore = create((set, get) => ({
   updateClass: (id, patch) => {
     if (patch.name !== undefined) {
       const { metaModel } = get();
-      if (isJavaKeyword(patch.name)) {
-        get().notify(`"${patch.name}" is a reserved Java keyword and cannot be used as a class name.`);
-        return;
-      }
+      const reason = invalidNameReason(patch.name, 'a class name');
+      if (reason) { get().notify(reason); return; }
       const duplicate = metaModel.classes.some((c) => c.id !== id && c.name === patch.name);
       if (duplicate) {
         get().notify(`A class named "${patch.name}" already exists. Class names must be unique.`);
@@ -431,9 +458,9 @@ export const useModelStore = create((set, get) => ({
     // Validate attribute name
     const { metaModel } = get();
     const cls = metaModel.classes.find((c) => c.id === classId);
-    if (isJavaKeyword(full.name)) {
-      get().notify(`"${full.name}" is a reserved Java keyword and cannot be used as an attribute name.`);
-      return null;
+    {
+      const reason = invalidNameReason(full.name, 'an attribute name');
+      if (reason) { get().notify(reason); return null; }
     }
     const existingNames = new Set(getAllAttributes(classId, metaModel).map((a) => a.name));
     if (existingNames.has(full.name)) {
@@ -483,10 +510,8 @@ export const useModelStore = create((set, get) => ({
   updateAttribute: (classId, attrId, patch) => {
     if (patch.name !== undefined) {
       const { metaModel } = get();
-      if (isJavaKeyword(patch.name)) {
-        get().notify(`"${patch.name}" is a reserved Java keyword and cannot be used as an attribute name.`);
-        return;
-      }
+      const reason = invalidNameReason(patch.name, 'an attribute name');
+      if (reason) { get().notify(reason); return; }
       // Check for name conflict with other attributes (inherited + own, excluding self)
       const allAttrs = getAllAttributes(classId, metaModel).filter((a) => a.id !== attrId);
       if (allAttrs.some((a) => a.name === patch.name)) {
@@ -596,9 +621,9 @@ export const useModelStore = create((set, get) => ({
   addEnumeration: () => {
     const id = nanoid(8);
     const existing = new Set(get().metaModel.enumerations?.map((e) => e.name) ?? []);
-    let name = 'Enum';
+    let name = 'NewEnum';
     let n = 1;
-    while (existing.has(name)) name = `Enum${++n}`;
+    while (existing.has(name)) name = `NewEnum${++n}`;
     const en = { id, name, literals: [] };
     set((s) => ({
       metaModel: { ...s.metaModel, enumerations: [...(s.metaModel.enumerations ?? []), en] },
@@ -610,10 +635,8 @@ export const useModelStore = create((set, get) => ({
   updateEnumeration: (id, patch) => {
     if (patch.name !== undefined) {
       const { metaModel } = get();
-      if (isJavaKeyword(patch.name)) {
-        get().notify(`"${patch.name}" is a reserved Java keyword and cannot be used as an enum name.`);
-        return;
-      }
+      const reason = invalidNameReason(patch.name, 'an enum name');
+      if (reason) { get().notify(reason); return; }
       // Enums and classes share Java's type namespace — names must not collide.
       const clash = (metaModel.enumerations ?? []).some((e) => e.id !== id && e.name === patch.name)
         || metaModel.classes.some((c) => c.name === patch.name);
@@ -884,6 +907,8 @@ export const useModelStore = create((set, get) => ({
   updateObject: (id, patch) => {
     if (patch.name !== undefined) {
       const trimmed = String(patch.name).trim();
+      const reason = invalidNameReason(trimmed, 'an object name');
+      if (reason) { get().notify(reason); return; }
       const im = get().instanceModels[get().currentIMIndex];
       // Scoped to the whole instance model, not just same-class — two
       // objects sharing a name (even across classes) both compile down to
@@ -1163,10 +1188,8 @@ export const useModelStore = create((set, get) => ({
   updateProtocol: (id, patch) => {
     if (patch.name !== undefined) {
       const trimmed = String(patch.name).trim();
-      if (isJavaKeyword(trimmed)) {
-        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a protocol name.`);
-        return;
-      }
+      const reason = invalidNameReason(trimmed, 'a protocol name');
+      if (reason) { get().notify(reason); return; }
       const duplicate = allProtocols(get().metaModel).some((p) => p.id !== id && p.name === trimmed);
       if (duplicate) {
         get().notify(`A protocol named "${trimmed}" already exists. Protocol names must be unique.`);
@@ -1203,10 +1226,8 @@ export const useModelStore = create((set, get) => ({
   updateSignal: (protocolId, signalId, patch) => {
     if (patch.name !== undefined) {
       const trimmed = String(patch.name).trim();
-      if (isJavaKeyword(trimmed)) {
-        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a signal name.`);
-        return;
-      }
+      const reason = invalidNameReason(trimmed, 'a signal name');
+      if (reason) { get().notify(reason); return; }
       const protocol = allProtocols(get().metaModel).find((p) => p.id === protocolId);
       const duplicate = (protocol?.signals ?? []).some((sg) => sg.id !== signalId && sg.name === trimmed);
       if (duplicate) {
@@ -1241,10 +1262,8 @@ export const useModelStore = create((set, get) => ({
   updateParam: (protocolId, signalId, paramId, patch) => {
     if (patch.name !== undefined) {
       const trimmed = String(patch.name).trim();
-      if (isJavaKeyword(trimmed)) {
-        get().notify(`"${trimmed}" is a reserved Java keyword and cannot be used as a parameter name.`);
-        return;
-      }
+      const reason = invalidNameReason(trimmed, 'a parameter name');
+      if (reason) { get().notify(reason); return; }
       const protocol = allProtocols(get().metaModel).find((p) => p.id === protocolId);
       const signal = protocol?.signals.find((sg) => sg.id === signalId);
       const duplicate = (signal?.params ?? []).some((pr) => pr.id !== paramId && pr.name === trimmed);
@@ -1282,6 +1301,8 @@ export const useModelStore = create((set, get) => ({
   updatePort: (classId, portId, patch) => {
     if (patch.name !== undefined) {
       const trimmed = String(patch.name).trim();
+      const reason = invalidNameReason(trimmed, 'a port name');
+      if (reason) { get().notify(reason); return; }
       const cls = get().metaModel.classes.find((c) => c.id === classId);
       if (cls && (cls.ports ?? []).some((p) => p.id !== portId && p.name === trimmed)) {
         get().notify(`"${cls.name}" already has a port named "${trimmed}".`);
