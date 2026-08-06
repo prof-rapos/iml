@@ -1,0 +1,507 @@
+{
+  "metaModel": {
+    "kind": "metamodel",
+    "name": "RPS",
+    "classes": [
+      {
+        "id": "qFhZ6MCS",
+        "name": "RPS_Match",
+        "isAbstract": false,
+        "attributes": [
+          {
+            "id": "J7OMcXAr",
+            "name": "gamesToPlay",
+            "type": "INT",
+            "visibility": "PUBLIC",
+            "lowerBound": 1,
+            "upperBound": 1,
+            "defaultValue": "3"
+          },
+          {
+            "id": "FgXjrwZS",
+            "name": "gamesPlayed",
+            "type": "INT",
+            "visibility": "PUBLIC",
+            "lowerBound": 1,
+            "upperBound": 1,
+            "defaultValue": "0"
+          },
+          {
+            "id": "iZ_XUZIe",
+            "name": "p1Move",
+            "type": "STRING",
+            "visibility": "PUBLIC",
+            "lowerBound": 0,
+            "upperBound": 1,
+            "defaultValue": ""
+          },
+          {
+            "id": "Y9KYU-LU",
+            "name": "p2Move",
+            "type": "STRING",
+            "visibility": "PUBLIC",
+            "lowerBound": 0,
+            "upperBound": 1,
+            "defaultValue": ""
+          }
+        ],
+        "ports": [
+          {
+            "id": "5NC1XYyj",
+            "name": "player1",
+            "protocolId": "9ciJ-dhP",
+            "conjugated": false
+          },
+          {
+            "id": "XWfPB0bi",
+            "name": "player2",
+            "protocolId": "9ciJ-dhP",
+            "conjugated": false
+          },
+          {
+            "id": "ngK7wWR_",
+            "name": "timer",
+            "protocolId": "sys-timing",
+            "conjugated": false
+          },
+          {
+            "id": "yjsp3Muj",
+            "name": "log",
+            "protocolId": "sys-log",
+            "conjugated": false
+          }
+        ]
+      },
+      {
+        "id": "7JXYkjK_",
+        "name": "Player",
+        "isAbstract": false,
+        "attributes": [
+          {
+            "id": "tAdVC1Zi",
+            "name": "name",
+            "type": "STRING",
+            "visibility": "PUBLIC",
+            "lowerBound": 1,
+            "upperBound": 1,
+            "defaultValue": ""
+          },
+          {
+            "id": "82zsqCTO",
+            "name": "gamesWon",
+            "type": "INT",
+            "visibility": "PUBLIC",
+            "lowerBound": 1,
+            "upperBound": 1,
+            "defaultValue": "0"
+          }
+        ],
+        "ports": [
+          {
+            "id": "tJHaTXMt",
+            "name": "game",
+            "protocolId": "9ciJ-dhP",
+            "conjugated": true
+          }
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "I75ToCJr",
+        "kind": "COMPOSITION",
+        "source": "qFhZ6MCS",
+        "target": "7JXYkjK_",
+        "name": "players",
+        "sourceMultiplicity": "1",
+        "targetMultiplicity": "2",
+        "sourceHandle": "bottom",
+        "targetHandle": "top"
+      }
+    ],
+    "enumerations": [],
+    "behaviours": {
+      "qFhZ6MCS": {
+        "states": [
+          {
+            "id": "eWPWTYh6",
+            "kind": "initial",
+            "name": "",
+            "entry": "",
+            "exit": ""
+          },
+          {
+            "id": "S7Q1AzgO",
+            "kind": "simple",
+            "name": "PlayAgain",
+            "entry": "timer.informIn(500);\nif (gamesPlayed < gamesToPlay) {\n  player1.ready();\n}",
+            "exit": ""
+          },
+          {
+            "id": "rgWb9Vx1",
+            "kind": "simple",
+            "name": "Waiting",
+            "entry": "player2.ready();",
+            "exit": ""
+          },
+          {
+            "id": "cq-pI34j",
+            "kind": "final",
+            "name": "",
+            "entry": "",
+            "exit": ""
+          }
+        ],
+        "transitions": [
+          {
+            "id": "yeaGZoju",
+            "source": "eWPWTYh6",
+            "target": "S7Q1AzgO",
+            "trigger": "",
+            "guard": "",
+            "effect": "",
+            "sourceHandle": "right",
+            "targetHandle": "left"
+          },
+          {
+            "id": "hWtvZXGW",
+            "source": "S7Q1AzgO",
+            "target": "cq-pI34j",
+            "trigger": "timer.timeout",
+            "guard": "",
+            "effect": "log.log(\"\\nGame Over!\");\nlog.log(players.get(0).getName() + \": \" + players.get(0).getGamesWon());\nlog.log(players.get(1).getName() + \": \" + players.get(1).getGamesWon());\nString winner = (players.get(0).getGamesWon() > players.get(1).getGamesWon()) ? players.get(0).getName() : players.get(1).getName();\nlog.log(winner + \" wins!\");",
+            "sourceHandle": "right",
+            "targetHandle": "left",
+            "labelT": 0.48333333333333334
+          },
+          {
+            "id": "vlXrzidM",
+            "source": "S7Q1AzgO",
+            "target": "rgWb9Vx1",
+            "trigger": "player1.sendMove",
+            "guard": "",
+            "effect": "log.log(\"\");\r\nlog.log(\"Round \" + (gamesPlayed + 1) + \":\");\r\np1Move = move;\r\nlog.log(\"  \" + players.get(0).getName() + \" plays \" + p1Move);",
+            "sourceHandle": "bottom",
+            "targetHandle": "right",
+            "labelT": 0.6333333333333333
+          },
+          {
+            "id": "TTCtgs00",
+            "source": "rgWb9Vx1",
+            "target": "S7Q1AzgO",
+            "trigger": "player2.sendMove",
+            "guard": "",
+            "effect": "p2Move = move;\r\nlog.log(\"  \" + players.get(1).getName() + \" plays \" + p2Move);\r\n\r\nint winner = 0;\r\n\r\nif      (p1Move.equals(\"R\") && p2Move.equals(\"S\")) winner = 1;\r\nelse if (p1Move.equals(\"P\") && p2Move.equals(\"R\")) winner = 1;\r\nelse if (p1Move.equals(\"S\") && p2Move.equals(\"P\")) winner = 1;\r\nelse if (p1Move.equals(\"R\") && p2Move.equals(\"P\")) winner = 2;\r\nelse if (p1Move.equals(\"P\") && p2Move.equals(\"S\")) winner = 2;\r\nelse if (p1Move.equals(\"S\") && p2Move.equals(\"R\")) winner = 2;\r\n\r\nif (!p1Move.equals(p2Move)) gamesPlayed++;\r\n\r\n\r\nif (winner == 1) {\r\n    players.get(0).setGamesWon(players.get(0).getGamesWon() + 1);\r\n    log.log(players.get(0).getName() + \" wins the round.\");\r\n} else if (winner == 2) {\r\n    players.get(1).setGamesWon(players.get(1).getGamesWon() + 1);\r\n    log.log(players.get(1).getName() + \" wins the round.\");\r\n}",
+            "sourceHandle": "left",
+            "targetHandle": "bottom",
+            "labelT": 0.65
+          }
+        ]
+      },
+      "7JXYkjK_": {
+        "states": [
+          {
+            "id": "gWbWSXN9",
+            "kind": "initial",
+            "name": "",
+            "entry": "",
+            "exit": ""
+          },
+          {
+            "id": "pGlR3zms",
+            "kind": "simple",
+            "name": "Waiting",
+            "entry": "",
+            "exit": ""
+          }
+        ],
+        "transitions": [
+          {
+            "id": "QLvlUG7r",
+            "source": "gWbWSXN9",
+            "target": "pGlR3zms",
+            "trigger": "",
+            "guard": "",
+            "effect": "",
+            "sourceHandle": "right",
+            "targetHandle": "left"
+          },
+          {
+            "id": "CP66EEUz",
+            "source": "pGlR3zms",
+            "target": "pGlR3zms",
+            "trigger": "game.ready",
+            "guard": "",
+            "effect": "java.util.Random random = new java.util.Random();\r\nint randomNumber = random.nextInt(3) + 1;\r\n\r\nString move = \"\";\r\n\r\nswitch(randomNumber) {\r\n  case 1:\r\n    move = \"R\";\r\n    break;\r\n  case 2:\r\n    move = \"P\";\r\n    break;\r\n  case 3:\r\n    move = \"S\";\r\n    break;\r\n}\r\n\r\ngame.sendMove(move);",
+            "sourceHandle": "top",
+            "targetHandle": "right"
+          }
+        ]
+      }
+    },
+    "protocols": [
+      {
+        "id": "9ciJ-dhP",
+        "name": "RPS",
+        "signals": [
+          {
+            "id": "hbX5PtY0",
+            "name": "ready",
+            "direction": "out",
+            "params": []
+          },
+          {
+            "id": "ADEqCd_F",
+            "name": "sendMove",
+            "direction": "in",
+            "params": [
+              {
+                "id": "ZsZbqpbs",
+                "name": "move",
+                "type": "STRING"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "instanceModels": [
+    {
+      "id": "SEjjBg7f",
+      "kind": "instancemodel",
+      "name": "BestOf3",
+      "objects": [
+        {
+          "id": "JNtTR5dX",
+          "classId": "qFhZ6MCS",
+          "name": "RPS_Match1",
+          "attributeValues": {
+            "J7OMcXAr": "3",
+            "FgXjrwZS": "0",
+            "iZ_XUZIe": "",
+            "Y9KYU-LU": ""
+          }
+        },
+        {
+          "id": "GJDy55cv",
+          "classId": "7JXYkjK_",
+          "name": "Player A",
+          "attributeValues": {
+            "tAdVC1Zi": "Player A",
+            "82zsqCTO": "0"
+          }
+        },
+        {
+          "id": "Syw8TF2G",
+          "classId": "7JXYkjK_",
+          "name": "Player B",
+          "attributeValues": {
+            "tAdVC1Zi": "Player B",
+            "82zsqCTO": "0"
+          }
+        }
+      ],
+      "links": [
+        {
+          "id": "O-CYDYKc",
+          "relationId": "I75ToCJr",
+          "source": "JNtTR5dX",
+          "target": "Syw8TF2G",
+          "sourceHandle": "left",
+          "targetHandle": "top"
+        },
+        {
+          "id": "5IQvIyDN",
+          "relationId": "I75ToCJr",
+          "source": "JNtTR5dX",
+          "target": "GJDy55cv",
+          "sourceHandle": "right",
+          "targetHandle": "top"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "DguTuY52",
+          "sourceObjectId": "GJDy55cv",
+          "sourcePortId": "tJHaTXMt",
+          "targetObjectId": "JNtTR5dX",
+          "targetPortId": "5NC1XYyj"
+        },
+        {
+          "id": "UfhZzalE",
+          "sourceObjectId": "Syw8TF2G",
+          "sourcePortId": "tJHaTXMt",
+          "targetObjectId": "JNtTR5dX",
+          "targetPortId": "XWfPB0bi"
+        }
+      ]
+    },
+    {
+      "id": "4vw3TBos",
+      "kind": "instancemodel",
+      "name": "BestOf7",
+      "objects": [
+        {
+          "id": "Ti6DT4gD",
+          "classId": "qFhZ6MCS",
+          "name": "RPS_Match1",
+          "attributeValues": {
+            "J7OMcXAr": "7",
+            "FgXjrwZS": "0",
+            "iZ_XUZIe": "",
+            "Y9KYU-LU": ""
+          }
+        },
+        {
+          "id": "ISrjhW7X",
+          "classId": "7JXYkjK_",
+          "name": "Player1",
+          "attributeValues": {
+            "tAdVC1Zi": "Dog",
+            "82zsqCTO": "0"
+          }
+        },
+        {
+          "id": "oY2LND59",
+          "classId": "7JXYkjK_",
+          "name": "Player2",
+          "attributeValues": {
+            "tAdVC1Zi": "Monkey",
+            "82zsqCTO": "0"
+          }
+        }
+      ],
+      "links": [
+        {
+          "id": "cFCme-d1",
+          "relationId": "I75ToCJr",
+          "source": "Ti6DT4gD",
+          "target": "ISrjhW7X",
+          "sourceHandle": "right",
+          "targetHandle": "top"
+        },
+        {
+          "id": "Oorhf1xi",
+          "relationId": "I75ToCJr",
+          "source": "Ti6DT4gD",
+          "target": "oY2LND59",
+          "sourceHandle": "left",
+          "targetHandle": "top"
+        }
+      ],
+      "connectors": [
+        {
+          "id": "qk7kZbad",
+          "sourceObjectId": "oY2LND59",
+          "sourcePortId": "tJHaTXMt",
+          "targetObjectId": "Ti6DT4gD",
+          "targetPortId": "XWfPB0bi"
+        },
+        {
+          "id": "x3Be0-pI",
+          "sourceObjectId": "ISrjhW7X",
+          "sourcePortId": "tJHaTXMt",
+          "targetObjectId": "Ti6DT4gD",
+          "targetPortId": "5NC1XYyj"
+        }
+      ]
+    }
+  ],
+  "layouts": {
+    "mm": {
+      "qFhZ6MCS": {
+        "x": 160.35203636363633,
+        "y": -59.37856363636368
+      },
+      "7JXYkjK_": {
+        "x": 161.35203636363633,
+        "y": 162.12143636363632
+      }
+    },
+    "im-SEjjBg7f": {
+      "Syw8TF2G": {
+        "x": 45.85203636363633,
+        "y": 178.12143636363632
+      },
+      "GJDy55cv": {
+        "x": 328.35203636363633,
+        "y": 175.12143636363632
+      },
+      "JNtTR5dX": {
+        "x": 171.85203636363633,
+        "y": -31.87856363636368
+      }
+    },
+    "cs-SEjjBg7f": {
+      "Syw8TF2G": {
+        "x": -118.76614362441332,
+        "y": -57.51620446039473
+      },
+      "GJDy55cv": {
+        "x": -115.08244715730635,
+        "y": 25.037404208496014
+      },
+      "JNtTR5dX": {
+        "x": 169.240384673748,
+        "y": -33.61966476295593
+      }
+    },
+    "sm-qFhZ6MCS": {
+      "eWPWTYh6": {
+        "x": 272,
+        "y": 402.5
+      },
+      "S7Q1AzgO": {
+        "x": 385,
+        "y": 288
+      },
+      "rgWb9Vx1": {
+        "x": 412.5,
+        "y": 556.5
+      },
+      "cq-pI34j": {
+        "x": 805,
+        "y": 386
+      }
+    },
+    "sm-7JXYkjK_": {
+      "gWbWSXN9": {
+        "x": 403.5,
+        "y": 384.25
+      },
+      "pGlR3zms": {
+        "x": 527.5,
+        "y": 373.25
+      }
+    },
+    "im-4vw3TBos": {
+      "oY2LND59": {
+        "x": 13.60203636363633,
+        "y": 160.12143636363632
+      },
+      "ISrjhW7X": {
+        "x": 345.10203636363633,
+        "y": 158.62143636363632
+      },
+      "Ti6DT4gD": {
+        "x": 145.10203636363633,
+        "y": -68.37856363636368
+      }
+    },
+    "cs-4vw3TBos": {
+      "oY2LND59": {
+        "x": -183.21176200414826,
+        "y": 40.77913499116366
+      },
+      "ISrjhW7X": {
+        "x": -185.95859797663303,
+        "y": 131.0114203980635
+      },
+      "Ti6DT4gD": {
+        "x": 154.85696451855875,
+        "y": 43.59985954046044
+      }
+    }
+  }
+}
