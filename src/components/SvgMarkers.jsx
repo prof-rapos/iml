@@ -29,11 +29,17 @@ export default function SvgMarkers() {
           <polygon points="0,0 18,8 0,16" fill="white" stroke="black" strokeWidth="1.5" />
         </marker>
 
-        {/* Reference / Composition / Transition: open black arrowhead */}
+        {/* Reference / Composition / Transition: open black arrowhead.
+            refX must match the path's own tip x (11) exactly — now that
+            edges terminate flush against the node border (no more gap),
+            any refX short of the tip leaves the last sliver of the
+            arrowhead poking past the endpoint and into the node's box,
+            where it's painted over (the node renders above the edge
+            layer) and reads as a clipped-off tip. */}
         <marker
           id="arrow-open"
           viewBox="0 0 12 12"
-          refX="10" refY="6"
+          refX="11" refY="6"
           markerWidth="14" markerHeight="14"
           orient="auto"
           markerUnits="userSpaceOnUse"
