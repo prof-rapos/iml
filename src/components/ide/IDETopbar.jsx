@@ -124,8 +124,8 @@ export default function IDETopbar() {
             onClick={() => setMenuOpen((o) => !o)}
             title="Menu"
             style={{
-              width: 36, height: 36, borderRadius: 6, cursor: 'pointer',
-              border: '1px solid rgba(255,255,255,0.15)',
+              width: 34, height: 34, borderRadius: 6, cursor: 'pointer',
+              border: `1px solid ${BORDER}`,
               background: menuOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.07)',
               color: '#f1f5f9',
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 4,

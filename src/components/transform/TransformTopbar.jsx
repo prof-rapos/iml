@@ -5,6 +5,7 @@ import { runTransform } from '../../utils/runTransform';
 import { validateModelShape } from '../../utils/modelHelpers';
 import { TEXT, TEXT_DIM } from '../theme';
 import ModuleSwitcher from '../ModuleSwitcher';
+import { HomeButton } from '../topbarMenu';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#7c3aed';
@@ -118,7 +119,7 @@ export default function TransformTopbar() {
         {target && <span style={{ color: '#3fb950', marginLeft: 4 }}>✓</span>}
       </button>
 
-      <div style={{ flex: 1 }} />
+      <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
 
       {/* Run */}
       <button
@@ -140,20 +141,12 @@ export default function TransformTopbar() {
         ↓ Download Result
       </button>
 
-      <div style={{ width: 1, height: 20, background: BORDER, margin: '0 4px' }} />
+      <div style={{ flex: 1 }} />
 
+      {/* Right cluster — Modules + Home, same as every other topbar */}
       <ModuleSwitcher current="transformations" size={34} borderColor={BORDER} color={TEXT} />
 
-      {/* Home */}
-      <button
-        onClick={() => setAppView('home')}
-        style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_DIM, padding: '4px 6px', borderRadius: 4, display: 'flex', alignItems: 'center' }}
-        title="Back to home"
-      >
-        <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor">
-          <path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4.5a.5.5 0 0 0 .5-.5v-4h2v4a.5.5 0 0 0 .5.5H14a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146z"/>
-        </svg>
-      </button>
+      <HomeButton onClick={() => setAppView('home')} size={34} borderColor={BORDER} color={TEXT} />
 
       {/* Error toast */}
       {error && (

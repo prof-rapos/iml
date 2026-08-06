@@ -38,7 +38,7 @@ export function MenuItem({ children, onClick, disabled, title }) {
   );
 }
 
-export function HomeButton({ onClick, size = 36, borderColor = 'rgba(255,255,255,0.15)', color = '#f1f5f9' }) {
+export function HomeButton({ onClick, size = 34, borderColor = 'rgba(255,255,255,0.10)', color = '#f1f5f9' }) {
   return (
     <button
       onClick={onClick}
