@@ -86,7 +86,7 @@ function enumOf(attr, metaModel) {
 }
 
 // Sanitise a literal into a valid Java identifier, preserving its case.
-function safeEnumConst(name) {
+export function safeEnumConst(name) {
   const s = String(name ?? '').replace(/[^a-zA-Z0-9_$]/g, '_').replace(/^(?=\d)/, '_');
   return s || '_LITERAL';
 }
@@ -94,6 +94,20 @@ function safeEnumConst(name) {
 function javaTypeForAttr(attr, metaModel) {
   const e = enumOf(attr, metaModel);
   return e ? toClassName(e.name) : javaType(attr.type);
+}
+
+// Same ENUM-resolution as javaTypeForAttr, but for a signal parameter — which
+// has the same {type, enumId} shape as an attribute but isn't one, so
+// enumOf()/javaTypeForAttr() (keyed on `attr.type` specifically) don't apply
+// directly. Signal-param codegen used to always call the plain javaType(type)
+// helper, silently falling back to String for an ENUM-typed parameter even
+// though the UI lets you pick one — the receiver method/field ended up typed
+// wrong (String, not the actual enum) and any real Java that assigned an enum
+// constant to it wouldn't compile.
+function javaTypeForParam(param, metaModel) {
+  if (param.type !== 'ENUM') return javaType(param.type);
+  const e = (metaModel.enumerations ?? []).find((en) => en.id === param.enumId);
+  return e ? toClassName(e.name) : javaType(param.type);
 }
 
 function boxedTypeForAttr(attr, metaModel) {
@@ -298,7 +312,7 @@ function argFieldName(portName, sigName, paramName) {
 // local variables. Returns [] for anything that doesn't resolve (a stale
 // trigger after a rename/delete, a system port) — same graceful-drop
 // posture as the rest of dispatch generation.
-function resolveSignalParams(triggerVal, cls, metaModel) {
+export function resolveSignalParams(triggerVal, cls, metaModel) {
   const [portName, sigName] = String(triggerVal).split('.');
   const port = (cls.ports ?? []).find((p) => p.name === portName);
   if (!port) return [];
@@ -312,10 +326,10 @@ function resolveSignalParams(triggerVal, cls, metaModel) {
 // method per signal (both directions) — a class implementing it only ever
 // overrides the signals it actually receives; everything else is a safe
 // no-op. Keeps the interface shape trivial even for bidirectional protocols.
-function generateProtocolReceiverInterface(protocol, pkg) {
+function generateProtocolReceiverInterface(protocol, pkg, metaModel) {
   const name = toClassName(protocol.name) + 'Receiver';
   const methods = (protocol.signals ?? []).map((sig) => {
-    const params = (sig.params ?? []).map((p) => `${javaType(p.type)} ${safeId(p.name)}`).join(', ');
+    const params = (sig.params ?? []).map((p) => `${javaTypeForParam(p, metaModel)} ${safeId(p.name)}`).join(', ');
     return `    default void ${safeId(sig.name)}(${params}) {}`;
   });
   return [
@@ -482,7 +496,7 @@ function generateCapsulePorts(cls, metaModel, dispatchable) {
       if (dispatchable) {
         for (const sig of received) {
           for (const p of sig.params ?? []) {
-            fieldLines.push(`    private ${javaType(p.type)} ${argFieldName(port.name, sig.name, p.name)};`);
+            fieldLines.push(`    private ${javaTypeForParam(p, metaModel)} ${argFieldName(port.name, sig.name, p.name)};`);
           }
         }
       }
@@ -490,7 +504,7 @@ function generateCapsulePorts(cls, metaModel, dispatchable) {
       fieldLines.push(`    private final ${iface} ${field}Receiver = new ${iface}() {`);
       if (dispatchable) {
         for (const sig of received) {
-          const params    = (sig.params ?? []).map((p) => `${javaType(p.type)} ${safeId(p.name)}`).join(', ');
+          const params    = (sig.params ?? []).map((p) => `${javaTypeForParam(p, metaModel)} ${safeId(p.name)}`).join(', ');
           const constName = triggerConstName(`${port.name}.${sig.name}`);
           const assigns   = (sig.params ?? [])
             .map((p) => `${argFieldName(port.name, sig.name, p.name)} = ${safeId(p.name)}; `)
@@ -613,7 +627,7 @@ function generateDispatch(machine, stateConsts, cls, metaModel) {
       // Java scoping, regardless of which guard branch below ends up firing.
       const [portName, sigName] = triggerVal.split('.');
       for (const p of resolveSignalParams(triggerVal, cls, metaModel)) {
-        lines.push(`                    ${javaType(p.type)} ${safeId(p.name)} = ${argFieldName(portName, sigName, p.name)};`);
+        lines.push(`                    ${javaTypeForParam(p, metaModel)} ${safeId(p.name)} = ${argFieldName(portName, sigName, p.name)};`);
       }
       transitions.forEach((t, i) => {
         const guardText = (t.guard && t.guard.trim()) ? t.guard : 'true';
@@ -1195,7 +1209,7 @@ export function generateJavaCode(metaModel, instanceModels, scope = 'structural'
       if (!proto) continue;
       files.push({
         path:    `${pkgDir}/${toClassName(proto.name)}Receiver.java`,
-        content: generateProtocolReceiverInterface(proto, pkgName),
+        content: generateProtocolReceiverInterface(proto, pkgName, metaModel),
       });
     }
     if (usesTiming) {

@@ -450,6 +450,53 @@ describe('generateJavaCode — signal parameters reach guards and effects', () =
   });
 });
 
+// Regression: an ENUM-typed signal parameter's receiver method/field/dispatch
+// local were all generated via the plain javaType(type) helper, which has no
+// notion of enumId and silently falls back to "String" — real Java code that
+// sent an actual enum constant through that signal wouldn't compile against
+// the generated interface.
+describe('generateJavaCode — an ENUM-typed signal parameter resolves to the enum class, not String', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'RPS',
+    classes: [{
+      id: 'PL', name: 'Player', isAbstract: false, attributes: [],
+      ports: [{ id: 'pIn', name: 'game', protocolId: 'proto1', conjugated: false }],
+    }],
+    relations: [],
+    enumerations: [{ id: 'eMove', name: 'Move', literals: ['ROCK', 'PAPER', 'SCISSORS'] }],
+    protocols: [{
+      id: 'proto1', name: 'RPS',
+      signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [{ id: 'p1', name: 'move', type: 'ENUM', enumId: 'eMove' }] }],
+    }],
+    behaviours: {
+      PL: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sWaiting', kind: 'simple', name: 'Waiting', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sWaiting', trigger: '', guard: '', effect: '' },
+          { id: 't1', source: 'sWaiting', target: 'sWaiting', trigger: 'game.sendMove', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+  const files = generateJavaCode(metaModel, [], 'behavioural');
+
+  it('types the receiver interface method with the enum class', () => {
+    const receiver = fileFor(files, 'RPSReceiver.java');
+    expect(receiver).toContain('default void sendMove(Move move) {}');
+    expect(receiver).not.toContain('String move');
+  });
+
+  it('types the capsule field and dispatch-local with the enum class', () => {
+    const src = fileFor(files, 'Player.java');
+    expect(src).toMatch(/private Move _arg_GAME_SENDMOVE_move;/);
+    expect(src).toContain('public void sendMove(Move move) { _arg_GAME_SENDMOVE_move = move; dispatch(Trigger.GAME_SENDMOVE); }');
+    expect(src).toContain('Move move = _arg_GAME_SENDMOVE_move;');
+  });
+});
+
 describe('generateJavaCode — a state machine on a portless class is not silently dropped', () => {
   const metaModel = {
     kind: 'metamodel', name: 'Counter',
