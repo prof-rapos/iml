@@ -59,7 +59,7 @@ export default function Topbar() {
     setMenuOpen(false);
     const exportName = mode === 'instance' ? (instanceModel?.name || 'instance') : (metaModel.name || 'model');
     try {
-      await exportFlowImage({ format, backgroundColor: '#ffffff', filename: `${exportName}.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({ format, filename: `${exportName}.${format === 'svg' ? 'svg' : 'jpg'}` });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }

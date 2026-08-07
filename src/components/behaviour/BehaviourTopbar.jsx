@@ -92,7 +92,7 @@ export default function BehaviourTopbar() {
     const cls = classes.find((c) => c.id === capsuleId);
     const label = subView === 'structure' ? (currentIM?.name || 'structure') : (cls?.name || 'statemachine');
     try {
-      await exportFlowImage({ format, backgroundColor: '#334155', filename: `${label}-behaviour.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({ format, filename: `${label}-behaviour.${format === 'svg' ? 'svg' : 'jpg'}` });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }

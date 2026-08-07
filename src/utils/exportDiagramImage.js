@@ -1,32 +1,109 @@
 import { toJpeg, toSvg } from 'html-to-image';
 
-// Reads every rendered node's flow-space position/size straight off the DOM
-// (each `.react-flow__node` carries its own `transform: translate(x,y)px`,
-// set by React Flow in flow-space — i.e. BEFORE the viewport's own pan/zoom
-// transform is applied) and returns the bounding box that contains all of
-// them. Deliberately DOM-only, not React Flow's own getNodesBounds(): the
-// Topbar components that trigger an export live outside their diagram's
-// ReactFlowProvider (each of Structural/Behavioural/MBT wires this up
-// differently — some share a provider with the canvas, some don't), so the
-// useReactFlow() hook isn't reliably available at the export call site.
-function measureFlowBounds(nodeEls) {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const el of nodeEls) {
-    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(el.style.transform);
-    if (!m) continue;
-    const x = parseFloat(m[1]);
-    const y = parseFloat(m[2]);
-    minX = Math.min(minX, x);
-    minY = Math.min(minY, y);
-    maxX = Math.max(maxX, x + el.offsetWidth);
-    maxY = Math.max(maxY, y + el.offsetHeight);
+// Reads a transformed element's flow-space bounding box straight off its own
+// inline `transform`, without needing React Flow's own getNodesBounds()/
+// useReactFlow() (the Topbar components that trigger an export live outside
+// their diagram's ReactFlowProvider in at least two of the three views, so
+// the hook isn't reliably available at the export call site). Handles BOTH
+// transform conventions used across this app's node/edge-label components:
+// a plain node is `translate(x,y)` (x,y = its own top-left corner); an edge
+// label is `translate(F%, F%) translate(x,y)` for some percentage F (-50% to
+// center on the point, -160% to sit clear above it, etc — every edge type
+// uses a different F) — parsing BOTH translate() calls and resolving the
+// percentage one against the element's own measured size handles any F
+// without needing to special-case each edge component's convention.
+function elementFlowBox(el) {
+  const transform = el.style.transform || '';
+  let px = 0, py = 0, fx = 0, fy = 0;
+  for (const m of transform.matchAll(/translate\(([^,]+),\s*([^)]+)\)/g)) {
+    const [, rawX, rawY] = m;
+    if (rawX.trim().endsWith('%')) fx += parseFloat(rawX) / 100; else px += parseFloat(rawX);
+    if (rawY.trim().endsWith('%')) fy += parseFloat(rawY) / 100; else py += parseFloat(rawY);
   }
-  return { minX, minY, maxX, maxY };
+  const w = el.offsetWidth, h = el.offsetHeight;
+  const x = px + fx * w;
+  const y = py + fy * h;
+  return { minX: x, minY: y, maxX: x + w, maxY: y + h };
 }
 
-// Generous enough to cover a transition label dragged out past its edge, or
-// a node's drop-shadow — this is a best-effort visual margin, not a value
-// anything else depends on.
+// Every node PLUS every edge label (dragged transition labels, relation
+// multiplicities, etc — all rendered via <EdgeLabelRenderer> into a shared
+// `.react-flow__edgelabel-renderer` container) needs to count toward the
+// export's bounds — a label can sit well outside every node's own box (a
+// transition label dragged out along a long edge, or one routed far from
+// its states), and leaving it out of the bounds calculation was cropping it
+// out of the exported image even though it's visually present on the live
+// canvas (reported: "background is sometimes trimmed").
+function measureFlowBounds(root) {
+  const nodeEls = root.querySelectorAll('.react-flow__node');
+  const labelEls = root.querySelectorAll('.react-flow__edgelabel-renderer [style*="translate"]');
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const el of [...nodeEls, ...labelEls]) {
+    const box = elementFlowBox(el);
+    minX = Math.min(minX, box.minX);
+    minY = Math.min(minY, box.minY);
+    maxX = Math.max(maxX, box.maxX);
+    maxY = Math.max(maxY, box.maxY);
+  }
+  return { minX, minY, maxX, maxY, nodeCount: nodeEls.length };
+}
+
+// SVG <marker> definitions (arrowheads — diamond/triangle/open-arrow, see
+// SvgMarkers.jsx) are referenced by edges via `marker-end="url(#id)"`, but
+// the <defs> that actually DEFINE them is rendered as a sibling of
+// `.react-flow__viewport`, not a descendant — a same-document `url(#id)`
+// reference resolves fine live (any element in the page, regardless of
+// which <svg> it's nested in), but once html-to-image clones just the
+// viewport subtree into a STANDALONE image, that reference points at
+// nothing and the arrowhead silently doesn't render (reported: "arrow heads
+// not appearing"). Fixed by cloning every <marker> in the live document into
+// a throwaway <defs> and temporarily grafting it into the captured subtree
+// for the duration of the capture only — restored via try/finally so the
+// live canvas is never left in a different state.
+function graftMarkerDefs(viewport) {
+  const markers = document.querySelectorAll('marker');
+  if (markers.length === 0) return null;
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.setAttribute('width', '0');
+  svg.setAttribute('height', '0');
+  svg.style.position = 'absolute';
+  const defs = document.createElementNS(svgNS, 'defs');
+  markers.forEach((m) => defs.appendChild(m.cloneNode(true)));
+  svg.appendChild(defs);
+  viewport.insertBefore(svg, viewport.firstChild);
+  return svg;
+}
+
+// The live canvas background is a themed CSS custom property
+// (`--iml-canvas-bg`, a mid-gray, applied via React Flow's own `.react-flow
+// __background` element from the <Background> component every canvas
+// renders) — NOT the much darker literal hex values this export used to
+// hardcode per-view, which is why some edges (stroked near-black to read
+// against the real, lighter live background) were reported as nearly
+// invisible against the export's own, too-dark background. Reads the
+// `.react-flow__background` element's own resolved color first (it's a
+// DESCENDANT of the diagram root, so an ancestor walk-up alone would miss
+// it); falls back to walking up from the root for a canvas that doesn't
+// render one, matching what a viewer would actually see live rather than
+// guessing a color per caller.
+function resolveVisibleBackground(root) {
+  const isOpaque = (bg) => bg && bg !== 'transparent' && !/rgba\([^)]*,\s*0\s*\)/.test(bg);
+  const bgLayer = root.querySelector('.react-flow__background');
+  if (bgLayer) {
+    const bg = getComputedStyle(bgLayer).backgroundColor;
+    if (isOpaque(bg)) return bg;
+  }
+  for (let node = root; node; node = node.parentElement) {
+    const bg = getComputedStyle(node).backgroundColor;
+    if (isOpaque(bg)) return bg;
+  }
+  return '#ffffff';
+}
+
+// Generous enough to cover a node's drop-shadow or a label's own padding —
+// this is a best-effort visual margin on top of the exact measured bounds
+// above, not a value anything else depends on.
 const PADDING = 60;
 
 // Exports a whole React Flow diagram (every node/edge, not just what's
@@ -50,33 +127,38 @@ const PADDING = 60;
 // past that, the whole image gets silently scaled DOWN to fit (verified:
 // proportional, not cropped, so no content is lost, just resolution). 'svg'
 // has no such ceiling since it's never rasterized to a fixed pixel grid.
-export async function exportFlowImage({ container, format = 'jpeg', backgroundColor = '#ffffff', filename }) {
+export async function exportFlowImage({ container, format = 'jpeg', backgroundColor, filename }) {
   const root = container ?? document.querySelector('.react-flow');
   const viewport = root?.querySelector('.react-flow__viewport');
   if (!viewport) throw new Error('No diagram found to export.');
 
-  const nodeEls = viewport.querySelectorAll('.react-flow__node');
-  if (nodeEls.length === 0) throw new Error('Nothing to export — the diagram is empty.');
+  const { minX, minY, maxX, maxY, nodeCount } = measureFlowBounds(root);
+  if (nodeCount === 0) throw new Error('Nothing to export — the diagram is empty.');
 
-  const { minX, minY, maxX, maxY } = measureFlowBounds(nodeEls);
   const width = Math.ceil(maxX - minX) + PADDING * 2;
   const height = Math.ceil(maxY - minY) + PADDING * 2;
+  const resolvedBackground = backgroundColor ?? resolveVisibleBackground(root);
 
-  const capture = format === 'svg' ? toSvg : toJpeg;
-  const dataUrl = await capture(viewport, {
-    ...(format === 'jpeg' ? { quality: 0.95 } : {}),
-    backgroundColor,
-    width,
-    height,
-    style: {
-      width: `${width}px`,
-      height: `${height}px`,
-      transform: `translate(${-minX + PADDING}px, ${-minY + PADDING}px) scale(1)`,
-    },
-  });
+  const markerDefs = graftMarkerDefs(viewport);
+  try {
+    const capture = format === 'svg' ? toSvg : toJpeg;
+    const dataUrl = await capture(viewport, {
+      ...(format === 'jpeg' ? { quality: 0.95 } : {}),
+      backgroundColor: resolvedBackground,
+      width,
+      height,
+      style: {
+        width: `${width}px`,
+        height: `${height}px`,
+        transform: `translate(${-minX + PADDING}px, ${-minY + PADDING}px) scale(1)`,
+      },
+    });
 
-  const a = document.createElement('a');
-  a.href = dataUrl;
-  a.download = filename;
-  a.click();
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = filename;
+    a.click();
+  } finally {
+    if (markerDefs) viewport.removeChild(markerDefs);
+  }
 }

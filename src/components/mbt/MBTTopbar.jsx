@@ -67,7 +67,7 @@ export default function MBTTopbar() {
     const cls = metaModel.classes.find((c) => c.id === capsuleId);
     const name = cls?.name || 'set';
     try {
-      await exportFlowImage({ format, backgroundColor: '#1a1f2b', filename: `${name}-symbolic-execution-tree.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({ format, filename: `${name}-symbolic-execution-tree.${format === 'svg' ? 'svg' : 'jpg'}` });
     } catch (err) {
       notify(`Export failed: ${err.message}`);
     }
