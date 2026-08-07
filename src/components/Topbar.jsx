@@ -16,6 +16,7 @@ export default function Topbar() {
   const getFullJSON = useModelStore((s) => s.getFullJSON);
   const loadFromJSON = useModelStore((s) => s.loadFromJSON);
   const setAppView = useModelStore((s) => s.setAppView);
+  const deselectAll = useModelStore((s) => s.deselectAll);
 
   const fileRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -59,7 +60,10 @@ export default function Topbar() {
     setMenuOpen(false);
     const exportName = mode === 'instance' ? (instanceModel?.name || 'instance') : (metaModel.name || 'model');
     try {
-      await exportFlowImage({ format, filename: `${exportName}.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({
+        format, filename: `${exportName}.${format === 'svg' ? 'svg' : 'jpg'}`,
+        beforeCapture: deselectAll,
+      });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }

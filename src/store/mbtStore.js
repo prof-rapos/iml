@@ -108,6 +108,15 @@ export const useMbtStore = create((set, get) => ({
   // endpoints' measured dimensions.
   onNodesChange: (changes) => set({ nodes: applyNodeChanges(changes, get().nodes) }),
 
+  // React Flow's own node `.selected` flag (a plain click, since nodes here
+  // are selectable — see the comment above) is a separate concept from
+  // selectedLeafId's amber path highlight — used by the diagram export's
+  // "deselect everything first" step (see modelStore.js's deselectAll for
+  // the fuller explanation of why clearing one doesn't clear the other).
+  deselectAll: () => set((s) => ({
+    nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+  })),
+
   selectLeaf: (leafId) => {
     const { setResult } = get();
     set({ selectedLeafId: leafId, ...pathIdsFor(leafId, setResult) });

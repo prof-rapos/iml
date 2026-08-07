@@ -75,6 +75,34 @@ function graftMarkerDefs(viewport) {
   return svg;
 }
 
+// A background-color set directly on `.react-flow__viewport` (the same
+// element the capture's positioning transform is applied to) gets shifted
+// right along with it — CSS transform moves an element's whole painted box,
+// background included, so the color only actually covers flow-space
+// (minX-PADDING, minY-PADDING) .. that + (width,height), NOT the capture's
+// own (0,0)..(width,height) canvas. For `toJpeg` this is invisible because
+// html-to-image separately pre-fills the WHOLE output canvas with
+// `backgroundColor` before drawing the rendered content on top (a genuine
+// base fill, unaffected by any content transform) — but `toSvg` has no such
+// canvas-level fill, so the gap it leaves is real and visible (reported:
+// "the bounds issue still exists for SVG, but fixed in JPG" — same
+// diagram, same bounds math, format-dependent because of THIS, not the
+// bounds calculation itself). Fixed the same way the marker grafting above
+// does — insert a real background element as a VIEWPORT CHILD, positioned
+// with the same `translate(x,y)` convention every other child uses, chosen
+// so the viewport's own transform cancels it out and it lands exactly on
+// the capture's (0,0)..(width,height), regardless of format.
+function graftBackgroundRect(viewport, minX, minY, width, height, color) {
+  const rect = document.createElement('div');
+  rect.style.position = 'absolute';
+  rect.style.transform = `translate(${minX - PADDING}px, ${minY - PADDING}px)`;
+  rect.style.width = `${width}px`;
+  rect.style.height = `${height}px`;
+  rect.style.background = color;
+  viewport.insertBefore(rect, viewport.firstChild);
+  return rect;
+}
+
 // The live canvas background is a themed CSS custom property
 // (`--iml-canvas-bg`, a mid-gray, applied via React Flow's own `.react-flow
 // __background` element from the <Background> component every canvas
@@ -127,7 +155,20 @@ const PADDING = 60;
 // past that, the whole image gets silently scaled DOWN to fit (verified:
 // proportional, not cropped, so no content is lost, just resolution). 'svg'
 // has no such ceiling since it's never rasterized to a fixed pixel grid.
-export async function exportFlowImage({ container, format = 'jpeg', backgroundColor, filename }) {
+// `beforeCapture`, if given, runs first (e.g. clearing whichever store's
+// selection drives the live canvas's selected-node/edge styling — reported:
+// "the highlighting in an export seems odd"). It's a plain synchronous
+// Zustand `set()` call in every caller, which schedules a React re-render
+// but doesn't guarantee it's committed to the DOM by the time this function
+// returns — waits two animation frames afterward so the browser has
+// actually painted the deselected state before anything below reads the
+// DOM (bounds measurement, then the capture itself).
+export async function exportFlowImage({ container, format = 'jpeg', backgroundColor, filename, beforeCapture }) {
+  if (beforeCapture) {
+    beforeCapture();
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  }
+
   const root = container ?? document.querySelector('.react-flow');
   const viewport = root?.querySelector('.react-flow__viewport');
   if (!viewport) throw new Error('No diagram found to export.');
@@ -140,6 +181,7 @@ export async function exportFlowImage({ container, format = 'jpeg', backgroundCo
   const resolvedBackground = backgroundColor ?? resolveVisibleBackground(root);
 
   const markerDefs = graftMarkerDefs(viewport);
+  const backgroundRect = graftBackgroundRect(viewport, minX, minY, width, height, resolvedBackground);
   try {
     const capture = format === 'svg' ? toSvg : toJpeg;
     const dataUrl = await capture(viewport, {
@@ -160,5 +202,6 @@ export async function exportFlowImage({ container, format = 'jpeg', backgroundCo
     a.click();
   } finally {
     if (markerDefs) viewport.removeChild(markerDefs);
+    viewport.removeChild(backgroundRect);
   }
 }

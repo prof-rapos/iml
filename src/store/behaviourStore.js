@@ -93,6 +93,15 @@ export const useBehaviourStore = create((set, get) => ({
     });
   },
 
+  // See modelStore.js's deselectAll for why this is a separate concept from
+  // selectedId/selectedType — used by the diagram export's "deselect
+  // everything first" step.
+  deselectAll: () => set((s) => ({
+    nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+    edges: s.edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    selectedId: null, selectedType: null,
+  })),
+
   // ── Actions that delegate to modelStore then rebuild the graph ──────
   addState: (kind, position) => {
     const { capsuleId } = get();

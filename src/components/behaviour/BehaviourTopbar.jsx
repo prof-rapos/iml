@@ -25,7 +25,9 @@ export default function BehaviourTopbar() {
   const subView       = useBehaviourStore((s) => s.subView);
   const setSubView    = useBehaviourStore((s) => s.setSubView);
   const closeCodeDrawer = useBehaviourStore((s) => s.closeCodeDrawer);
+  const deselectAllSM = useBehaviourStore((s) => s.deselectAll);
   const rebuildStructure = useCapsuleStructureStore((s) => s.rebuild);
+  const deselectAllStructure = useCapsuleStructureStore((s) => s.deselectAll);
 
   const currentIM = instanceModels[currentIMIndex];
 
@@ -92,7 +94,10 @@ export default function BehaviourTopbar() {
     const cls = classes.find((c) => c.id === capsuleId);
     const label = subView === 'structure' ? (currentIM?.name || 'structure') : (cls?.name || 'statemachine');
     try {
-      await exportFlowImage({ format, filename: `${label}-behaviour.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({
+        format, filename: `${label}-behaviour.${format === 'svg' ? 'svg' : 'jpg'}`,
+        beforeCapture: () => (subView === 'structure' ? deselectAllStructure() : deselectAllSM()),
+      });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }

@@ -385,6 +385,21 @@ export const useModelStore = create((set, get) => ({
     });
   },
 
+  // React Flow's own node/edge `.selected` flags (which drive the CSS
+  // "selected" class, plus a few custom edge components' own selected-only
+  // styling) are a SEPARATE concept from `selectedId`/`selectedType` above —
+  // `selectionPatch` only ever syncs FROM a React-Flow-driven select change
+  // INTO selectedId, never the other way, so clearing selectedId alone (e.g.
+  // via setSelectedId(null)) leaves any already-selected node/edge still
+  // visually ringed/highlighted. Needed for the diagram export's
+  // "deselect everything first" step (a stray selection ring/highlight was
+  // reported as showing up in an exported image).
+  deselectAll: () => set((s) => ({
+    nodes: s.nodes.map((n) => (n.selected ? { ...n, selected: false } : n)),
+    edges: s.edges.map((e) => (e.selected ? { ...e, selected: false } : e)),
+    selectedId: null, selectedType: null,
+  })),
+
   // ── Layout map: { 'mm': {nodeId: {x,y}}, 'im-<id>': {...} } ──────
   layouts: {},
 

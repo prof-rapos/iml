@@ -18,6 +18,8 @@ export default function MBTTopbar() {
   const notify     = useModelStore((s) => s.notify);
   const capsuleId  = useMbtStore((s) => s.capsuleId);
   const setResult  = useMbtStore((s) => s.setResult);
+  const selectLeaf = useMbtStore((s) => s.selectLeaf);
+  const deselectAllNodes = useMbtStore((s) => s.deselectAll);
   const { loadFiles: ideLoadFiles } = useIdeStore();
 
   const menuRef = useRef(null);
@@ -67,7 +69,10 @@ export default function MBTTopbar() {
     const cls = metaModel.classes.find((c) => c.id === capsuleId);
     const name = cls?.name || 'set';
     try {
-      await exportFlowImage({ format, filename: `${name}-symbolic-execution-tree.${format === 'svg' ? 'svg' : 'jpg'}` });
+      await exportFlowImage({
+        format, filename: `${name}-symbolic-execution-tree.${format === 'svg' ? 'svg' : 'jpg'}`,
+        beforeCapture: () => { selectLeaf(null); deselectAllNodes(); },
+      });
     } catch (err) {
       notify(`Export failed: ${err.message}`);
     }
