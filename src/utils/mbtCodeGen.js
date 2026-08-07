@@ -28,15 +28,19 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
 
   const machine = metaModel.behaviours?.[classId];
   const attrs = getAllAttributes(classId, metaModel);
+  const cls = metaModel.classes.find((c) => c.id === classId);
 
-  const steps = edgeChain.map((edge) => ({
-    kind: edge.event.kind, // 'timeout' | 'signal'
-    label: edge.event.kind === 'timeout'
-      ? `Timer fires on "${edge.event.port}"${edge.event.msLabel ? ` (~${edge.event.msLabel}ms)` : ' — duration not statically known'}`
-      : `Receive ${edge.event.port}.${edge.event.signal}`,
-    guardFork: edge.guardFork,
-    guardReason: edge.guardReason ?? null,
-  }));
+  const steps = edgeChain.map((edge) => {
+    const args = edge.event.kind === 'signal' ? signalCallArgs(edge, cls, metaModel) : '';
+    return {
+      kind: edge.event.kind, // 'timeout' | 'signal'
+      label: edge.event.kind === 'timeout'
+        ? `Timer fires on "${edge.event.port}"${edge.event.msLabel ? ` (~${edge.event.msLabel}ms)` : ' — duration not statically known'}`
+        : `Receive ${edge.event.port}.${edge.event.signal}(${args})`,
+      guardFork: edge.guardFork,
+      guardReason: edge.guardReason ?? null,
+    };
+  });
 
   const guardForkPresent = steps.some((s) => s.guardFork);
 

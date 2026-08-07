@@ -191,6 +191,26 @@ describe('generateConcreteTestFiles — enum-parameter signal calls', () => {
     const test = fileFor(files, mainClassPath.split('/').pop());
     expect(test).toContain('capsule.getGameReceiver().sendMove();');
   });
+
+  it('abstract test case step includes the fired literal as a real enum-typed argument', () => {
+    const result = buildSET('PL', enumMetaModel);
+    const leaves = [...result.nodesById.values()].filter((n) => n.id !== result.rootId);
+    const labels = leaves.map((leaf) => generateAbstractTestCase(leaf.id, result, enumMetaModel).steps[0].label);
+    expect(labels.some((l) => l.includes('game.sendMove(Move.ROCK)'))).toBe(true);
+    expect(labels.some((l) => l.includes('game.sendMove(Move.PAPER)'))).toBe(true);
+    expect(labels.some((l) => l.includes('game.sendMove(Move.SCISSORS)'))).toBe(true);
+  });
+
+  it('abstract test case step for a no-param signal has empty parens (no regression)', () => {
+    const noParamModel = {
+      ...enumMetaModel,
+      protocols: [{ id: 'proto1', name: 'RPS', signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [] }] }],
+    };
+    const result = buildSET('PL', noParamModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId);
+    const tc = generateAbstractTestCase(leaf.id, result, noParamModel);
+    expect(tc.steps[0].label).toContain('game.sendMove()');
+  });
 });
 
 // Regression: action code that reaches into a composition-derived field
