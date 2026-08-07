@@ -3,6 +3,7 @@ import { pathToLeaf } from './symbolicExecution.js';
 import {
   generateJavaCode, toClassName, toPackageName, capitalize, safeId,
   portFieldName, stateConstMap, resolveSignalParams, safeEnumConst,
+  isMultiRelation, getRelationFieldName,
 } from './javaCodeGen.js';
 import { getProtocolById } from '../store/modelStore.js';
 
@@ -172,6 +173,57 @@ function stubWireLines(cls, metaModel, varName) {
   return lines;
 }
 
+// How many target-class instances to synthesize for a composition relation
+// when building an ISOLATED MBT test — mirrors targetMultiplicity as closely
+// as a static count reasonably can: a bare number ("2") gives exactly that
+// many, a range's upper bound ("1..3" -> 3) gives that many, and anything
+// unbounded (bare "*", or an "N..*" range) falls back to one representative
+// instance, since there's no way to know how many the real system would
+// have. Never 0 — even a lowerBound-0 relation still needs one instance for
+// action code that unconditionally indexes into it (e.g. players.get(0)) to
+// not throw.
+function compositionInstanceCount(rel) {
+  const mult = (rel.targetMultiplicity || '').trim();
+  if (!mult || mult === '*') return 1;
+  const upperStr = mult.includes('..') ? mult.split('..')[1].trim() : mult;
+  if (upperStr === '*') return 1;
+  const n = parseInt(upperStr, 10);
+  return Number.isNaN(n) || n < 1 ? 1 : n;
+}
+
+// Composition relations sourced from the capsule under test also need
+// something wired in for an isolated MBT test — action code that reaches
+// into a composition-derived field (e.g. "players.get(0).getName()", the
+// RPS example's own winner computation) throws on an empty/null field
+// otherwise, since MBT never instantiates any OTHER capsule/class alongside
+// the one under test. Synthesizes a small number of bare (default-
+// constructor) instances of the target class per relation and wires them in
+// the same way javaCodeGen.js's own relationWireLines does for a real
+// instance model. A plain `new Target()` already gets safe (non-null,
+// zero/empty) values for every required attribute — generateClassFile
+// always initializes those (see javaCodeGen.js's field-declaration codegen)
+// — so no explicit attribute values need setting here.
+function compositionStubLines(cls, metaModel, varName) {
+  const rels = (metaModel.relations ?? []).filter((r) => r.kind === 'COMPOSITION' && r.source === cls.id);
+  if (rels.length === 0) return [];
+  const lines = ['        // Wire composition relations (synthetic instances for isolated testing)'];
+  let counter = 0;
+  for (const rel of rels) {
+    const targetCls = metaModel.classes.find((c) => c.id === rel.target);
+    if (!targetCls) continue;
+    const field = getRelationFieldName(rel, targetCls);
+    const cap = capitalize(field);
+    const setter = isMultiRelation(rel) ? 'add' : 'set';
+    for (let i = 0; i < compositionInstanceCount(rel); i++) {
+      const stubVar = `_stub${++counter}`;
+      lines.push(`        ${targetCls.name} ${stubVar} = new ${targetCls.name}();`);
+      lines.push(`        ${varName}.${setter}${cap}(${stubVar});`);
+    }
+  }
+  lines.push('');
+  return lines;
+}
+
 // A signal event whose path went through an enum-parameter fork (see
 // enumParamCombos in symbolicExecution.js) carries the exact literal(s) that
 // fired it in edge.paramLabel (comma-joined if the signal ever had more than
@@ -296,6 +348,7 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   if (needsScheduler) lines.push(`        TestScheduler ${schedulerVar} = new TestScheduler();`);
   lines.push(`        ${cls.name} ${varName} = new ${cls.name}(${needsScheduler ? schedulerVar : ''});`);
   lines.push(...stubWireLines(cls, metaModel, varName));
+  lines.push(...compositionStubLines(cls, metaModel, varName));
   lines.push(`        ${varName}.start();`);
   lines.push('');
   lines.push(...testScriptLines(edgeChain, varName, schedulerVar, cls, metaModel));
@@ -354,6 +407,7 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
     if (needsScheduler) methodLines.push(`        TestScheduler ${schedulerVar} = new TestScheduler();`);
     methodLines.push(`        ${cls.name} ${varName} = new ${cls.name}(${needsScheduler ? schedulerVar : ''});`);
     methodLines.push(...stubWireLines(cls, metaModel, varName));
+    methodLines.push(...compositionStubLines(cls, metaModel, varName));
     methodLines.push(`        ${varName}.start();`);
     methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar, cls, metaModel));
     if (leaf.status === 'leaf-depth-bound') {

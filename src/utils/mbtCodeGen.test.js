@@ -193,6 +193,73 @@ describe('generateConcreteTestFiles — enum-parameter signal calls', () => {
   });
 });
 
+// Regression: action code that reaches into a composition-derived field
+// (e.g. "players.get(0).getName()", the RPS example's own winner
+// computation) threw at runtime — MBT builds the capsule under test in
+// total isolation and never wired composition relations at all, so the
+// field was an empty/null List with nothing in it to index into.
+describe('generateConcreteTestFiles — composition relations are stubbed for isolated testing', () => {
+  const rpsLikeModel = {
+    relations: [
+      { id: 'rel1', kind: 'COMPOSITION', source: 'MATCH', target: 'PL', name: 'players', targetMultiplicity: '2' },
+    ],
+    classes: [
+      {
+        id: 'MATCH', name: 'Match', attributes: [],
+        ports: [{ id: 'pTim', name: 'timer', protocolId: 'sys-timing' }],
+      },
+      { id: 'PL', name: 'Player', attributes: [{ id: 'aName', name: 'name', type: 'STRING', lowerBound: 1, upperBound: 1 }], ports: [] },
+    ],
+    enumerations: [],
+    protocols: [],
+    behaviours: {
+      MATCH: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sOpen', kind: 'simple', name: 'Open', entry: '', exit: '' },
+        ],
+        transitions: [{ id: 'tInit', source: 'sInit', target: 'sOpen', trigger: '', guard: '', effect: '' }],
+      },
+    },
+  };
+  const matchCls = rpsLikeModel.classes[0];
+
+  it('constructs the exact declared count (2) of target-class instances and wires them via addPlayers', () => {
+    const result = buildSET('MATCH', rpsLikeModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId) ?? result.nodesById.get(result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, matchCls, rpsLikeModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('Player _stub1 = new Player();');
+    expect(test).toContain('capsule.addPlayers(_stub1);');
+    expect(test).toContain('Player _stub2 = new Player();');
+    expect(test).toContain('capsule.addPlayers(_stub2);');
+    // Wired before start(), same ordering principle as a real instance model.
+    expect(test.indexOf('capsule.addPlayers(_stub1);')).toBeLessThan(test.indexOf('capsule.start();'));
+  });
+
+  it('uses setX (not addX) for a single-valued (non-multi) composition relation', () => {
+    const singleValued = {
+      ...rpsLikeModel,
+      relations: [{ id: 'rel1', kind: 'COMPOSITION', source: 'MATCH', target: 'PL', name: 'referee', targetMultiplicity: '1' }],
+    };
+    const result = buildSET('MATCH', singleValued);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId) ?? result.nodesById.get(result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, matchCls, singleValued);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('capsule.setReferee(_stub1);');
+    expect(test).not.toContain('addReferee');
+  });
+
+  it('does not add any composition-stub lines for a class with no composition relations (no regression)', () => {
+    const noRelModel = { ...rpsLikeModel, relations: [] };
+    const result = buildSET('MATCH', noRelModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId) ?? result.nodesById.get(result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, matchCls, noRelModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).not.toContain('_stub');
+  });
+});
+
 describe('generateConcreteTestFiles — DOUBLE attribute assertions', () => {
   // Regression: a whole-number DOUBLE value (e.g. a default of "20") was
   // previously emitted as a bare literal `20`, an int autoboxed to
