@@ -115,6 +115,46 @@ describe('parseActionLine — unrecognized forms and no-ops', () => {
   });
 });
 
+// Regression: `p1Move = move;` (copying a signal parameter, or any other
+// currently-known identifier, into a tracked attribute) used to always
+// degrade to unknown — parseLiteral only recognized literal syntax
+// (quotes/numbers/bools/enum-dot-form), never "look up another identifier's
+// current value."
+describe('parseActionLine — copying a known identifier\'s value through', () => {
+  it('copies another tracked attribute\'s current known value', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('lastDirection', { id: 'aLastDir', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aLastDir', { kind: 'known', value: 'NS' });
+    const r = parseActionLine('direction = lastDirection', twoStrings, values);
+    expect(r).toEqual({ attrId: 'aName', value: { kind: 'known', value: 'NS' } });
+  });
+
+  it('copies a signal-parameter-injected value (same mechanism symbolicExecution.js uses)', () => {
+    // A signal parameter is injected into attrIndex/values exactly like a
+    // tracked attribute for the duration of one transition — simulate that
+    // here with a synthetic "move" entry.
+    const paramAttrIndex = new Map(attrIndex);
+    paramAttrIndex.set('move', { id: 'pMove', type: 'STRING' });
+    const values = unknownValues();
+    values.set('pMove', { kind: 'known', value: 'ROCK' });
+    const r = parseActionLine('direction = move', paramAttrIndex, values);
+    expect(r).toEqual({ attrId: 'aName', value: { kind: 'known', value: 'ROCK' } });
+  });
+
+  it('still degrades to unknown when the RHS identifier is not currently known', () => {
+    const paramAttrIndex = new Map(attrIndex);
+    paramAttrIndex.set('move', { id: 'pMove', type: 'STRING' });
+    const r = parseActionLine('direction = move', paramAttrIndex, unknownValues());
+    expect(r).toEqual({ attrId: 'aName', value: { kind: 'unknown' } });
+  });
+
+  it('still degrades to unknown for a genuinely untracked RHS identifier (not a typo-proofing regression)', () => {
+    const r = parseActionLine('direction = someLocalVar', attrIndex, unknownValues());
+    expect(r).toEqual({ attrId: 'aName', value: { kind: 'unknown' } });
+  });
+});
+
 describe('applyActionCode', () => {
   it('processes multiple lines in order and only updates touched attributes', () => {
     const result = applyActionCode(
@@ -246,6 +286,115 @@ describe('applyActionCode — conditional blocks', () => {
   });
 });
 
+// Regression: `if (cond) stmt;` with NO braces at all — a very common Java
+// style — used to be neither classified 'if' (RE_IF requires a trailing
+// "{") nor 'unsupported' (no braces at all to trigger the flat-degrade
+// fallback either): it silently fell through as an unrecognized 'stmt' and
+// the touched attribute went stale instead of being applied or degraded to
+// unknown. Exactly the shape of the RPS example's `if (!p1Move.equals(p2Move))
+// gamesPlayed++;`.
+describe('applyActionCode — brace-less single-statement if', () => {
+  it('applies the statement when the condition evaluates true', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '3' });
+    const result = applyActionCode('if (count < 10) count++;', attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '4' });
+  });
+
+  it('does NOT apply the statement when the condition evaluates false (not misapplied)', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '10' });
+    const result = applyActionCode('if (count < 10) count++;', attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '10' });
+  });
+
+  it('degrades (not silently no-ops) when the condition cannot be evaluated', () => {
+    const result = applyActionCode('if (count < 10) count++;', attrIndex, unknownValues());
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+
+  it('still applies a following unconditional line correctly (the if consumes only its own line)', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '10' });
+    const result = applyActionCode('if (count < 10) count++;\ndirection = "EW";', attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '10' });
+    expect(result.get('aName')).toEqual({ kind: 'known', value: 'EW' });
+  });
+
+  it('handles the exact RPS shape: a brace-less if guarding an increment via .equals()', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('p2Move', { id: 'aP2', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aName',  { kind: 'known', value: 'ROCK' });     // p1Move-equivalent (aName/"direction")
+    values.set('aP2',    { kind: 'known', value: 'SCISSORS' }); // p2Move-equivalent
+    values.set('aCount', { kind: 'known', value: '0' });        // gamesPlayed-equivalent
+    const result = applyActionCode('if (!direction.equals(p2Move)) count++;', twoStrings, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '1' });
+  });
+
+  // Regression: found via live testing on the actual RPS example, not caught
+  // by the unit tests above — a brace-less if STILL silently no-op'd even
+  // after the classifyLine/parseBlock fix, whenever the SAME action-code
+  // block also contained a genuine else-if chain (with braces) somewhere
+  // else. Because that chain is classified 'unsupported', applyActionCode
+  // routes the WHOLE block through applyFlatDegraded — a separate, simpler
+  // fallback that never got brace-less-if support, so it hit the exact
+  // "if (cond) stmt" no-op bug the classifyLine fix was supposed to close.
+  it('still applies a brace-less if correctly even when an unrelated else-if chain elsewhere forces the flat-degrade fallback', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('p2Move', { id: 'aP2', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aName',  { kind: 'known', value: 'ROCK' });
+    values.set('aP2',    { kind: 'known', value: 'PAPER' });
+    values.set('aCount', { kind: 'known', value: '0' });
+    const code = [
+      'if (!direction.equals(p2Move)) count++;',
+      'if (ready) {',
+      '  price = 1;',
+      '} else if (!ready) {',
+      '  price = 2;',
+      '}',
+    ].join('\n');
+    const result = applyActionCode(code, twoStrings, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '1' });
+  });
+
+  it('does not apply the brace-less statement (false condition) even inside the flat-degrade fallback', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('p2Move', { id: 'aP2', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aName',  { kind: 'known', value: 'ROCK' });
+    values.set('aP2',    { kind: 'known', value: 'ROCK' }); // equal -> condition false
+    values.set('aCount', { kind: 'known', value: '0' });
+    const code = [
+      'if (!direction.equals(p2Move)) count++;',
+      'if (ready) {',
+      '  price = 1;',
+      '} else if (!ready) {',
+      '  price = 2;',
+      '}',
+    ].join('\n');
+    const result = applyActionCode(code, twoStrings, values);
+    expect(result.get('aCount')).toEqual({ kind: 'known', value: '0' });
+  });
+
+  it('degrades (not silently no-ops) a brace-less if inside the flat-degrade fallback when its condition is unresolvable', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '0' }); // seeded known, so a misapply-vs-degrade mixup is observable
+    // "ready" (aFlag) is left unknown -> the guard is unresolvable.
+    const code = [
+      'if (ready) count++;',
+      'if (ready) {',
+      '  price = 1;',
+      '} else if (!ready) {',
+      '  price = 2;',
+      '}',
+    ].join('\n');
+    const result = applyActionCode(code, attrIndex, values);
+    expect(result.get('aCount')).toEqual({ kind: 'unknown' });
+  });
+});
+
 describe('evaluateCondition — STRING/ENUM equality', () => {
   it('evaluates a known STRING attribute against a quoted literal', () => {
     const values = unknownValues();
@@ -267,10 +416,38 @@ describe('evaluateCondition — STRING/ENUM equality', () => {
     expect(evaluateCondition('direction == "NS"', attrIndex, values)).toBe('unknown');
   });
 
-  it('still returns unknown for attribute-vs-attribute comparisons', () => {
+  it('still returns unknown when the RHS identifier is not tracked at all (not just any attribute-vs-attribute)', () => {
     const values = unknownValues();
     values.set('aName', { kind: 'known', value: 'NS' });
     expect(evaluateCondition('direction == otherAttr', attrIndex, values)).toBe('unknown');
+  });
+
+  // Regression / new capability: a genuine attribute-vs-attribute == / != now
+  // resolves once BOTH sides are concretely known — the earlier "always
+  // unknown" behavior was really about the values being unknown (e.g. both
+  // derived from an incoming signal parameter with no static domain), not
+  // about attribute-vs-attribute being inherently unsupported. Needed for
+  // p1Move.equals(p2Move)-style guards to ever resolve once move values are
+  // enum-bounded (see symbolicExecution.js's enum-parameter forking).
+  it('resolves a genuine attribute-vs-attribute == / != once both sides are known', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('lastDirection', { id: 'aLastDir', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    values.set('aLastDir', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('direction == lastDirection', twoStrings, values)).toBe(true);
+    expect(evaluateCondition('direction != lastDirection', twoStrings, values)).toBe(false);
+    values.set('aLastDir', { kind: 'known', value: 'EW' });
+    expect(evaluateCondition('direction == lastDirection', twoStrings, values)).toBe(false);
+  });
+
+  it('does NOT resolve attribute-vs-attribute for < <= > >= (only == / != ever compare two attributes)', () => {
+    const twoInts = new Map(attrIndex);
+    twoInts.set('otherCount', { id: 'aOtherCount', type: 'INT' });
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '5' });
+    values.set('aOtherCount', { kind: 'known', value: '3' });
+    expect(evaluateCondition('count > otherCount', twoInts, values)).toBe('unknown');
   });
 
   it('does not regress numeric/boolean comparisons', () => {
@@ -280,6 +457,55 @@ describe('evaluateCondition — STRING/ENUM equality', () => {
     expect(evaluateCondition('count < 10', attrIndex, values)).toBe(true);
     expect(evaluateCondition('count >= 10', attrIndex, values)).toBe(false);
     expect(evaluateCondition('ready == true', attrIndex, values)).toBe(true);
+  });
+});
+
+// The idiomatic (and for String, only correct) way to compare STRING/ENUM
+// values in real Java action code — `.equals()`, not `==` — had no
+// recognized grammar at all before this, forcing every such guard to
+// 'unknown' regardless of whether the values were known.
+describe('evaluateCondition — .equals() comparisons', () => {
+  it('evaluates ident.equals("literal")', () => {
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('direction.equals("NS")', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('direction.equals("EW")', attrIndex, values)).toBe(false);
+  });
+
+  it('evaluates the negated form !ident.equals("literal")', () => {
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('!direction.equals("EW")', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('!direction.equals("NS")', attrIndex, values)).toBe(false);
+  });
+
+  it('evaluates ident.equals(enumLiteral) for an ENUM attribute', () => {
+    const values = unknownValues();
+    values.set('aColor', { kind: 'known', value: 'RED' });
+    expect(evaluateCondition('lightColor.equals(LightValue.RED)', attrIndex, values)).toBe(true);
+    expect(evaluateCondition('lightColor.equals(LightValue.GREEN)', attrIndex, values)).toBe(false);
+  });
+
+  it('resolves ident.equals(otherIdent) once both sides are known — the p1Move.equals(p2Move) shape', () => {
+    const twoStrings = new Map(attrIndex);
+    twoStrings.set('p2', { id: 'aP2', type: 'STRING' });
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'ROCK' });
+    values.set('aP2', { kind: 'known', value: 'SCISSORS' });
+    expect(evaluateCondition('direction.equals(p2)', twoStrings, values)).toBe(false);
+    expect(evaluateCondition('!direction.equals(p2)', twoStrings, values)).toBe(true);
+    values.set('aP2', { kind: 'known', value: 'ROCK' });
+    expect(evaluateCondition('direction.equals(p2)', twoStrings, values)).toBe(true);
+  });
+
+  it('returns unknown when the receiver value is not known', () => {
+    expect(evaluateCondition('direction.equals("NS")', attrIndex, unknownValues())).toBe('unknown');
+  });
+
+  it('returns unknown when the argument is not a literal or a currently-known tracked identifier', () => {
+    const values = unknownValues();
+    values.set('aName', { kind: 'known', value: 'NS' });
+    expect(evaluateCondition('direction.equals(someLocal)', attrIndex, values)).toBe('unknown');
   });
 });
 

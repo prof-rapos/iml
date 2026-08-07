@@ -24,10 +24,12 @@ const RE_STRLIT = /^"((?:[^"\\]|\\.)*)"$/;
 const RE_ENUMLIT = /^[A-Za-z_$][\w$]*\.([A-Za-z_$][\w$]*)$/;
 
 const RE_IF   = new RegExp(`^if\\s*\\((.*)\\)\\s*\\{$`);
+const RE_IF_INLINE = new RegExp(`^if\\s*\\((.*)\\)\\s*(.+)$`);
 const RE_ELSE = /^\}\s*else\s*\{$/;
 const RE_CLOSE = /^\}$/;
 
 const RE_COMPARISON = new RegExp(`^(${IDENT})\\s*(<=|>=|==|!=|<|>)\\s*(.+)$`);
+const RE_EQUALS_CALL = new RegExp(`^(!)?\\s*(${IDENT})\\.equals\\((.+)\\)$`);
 const RE_BOOL_NOT    = new RegExp(`^!\\s*(${IDENT})$`);
 const RE_BOOL_IDENT  = new RegExp(`^(${IDENT})$`);
 
@@ -70,6 +72,25 @@ function parseLiteral(rhs, attr) {
   return undefined;
 }
 
+const RE_IDENT_ONLY = new RegExp(`^${IDENT}$`);
+
+// Resolves `text` to a known value, trying a literal first (see parseLiteral
+// — needs `attrForLiteral` to know how to read an ENUM literal) and falling
+// back to a bare-identifier lookup against `values` — another tracked
+// attribute's current value (a plain attribute-to-attribute copy), or a
+// signal parameter injected into `values` under its own name for the
+// duration of one transition (see symbolicExecution.js's enum-parameter
+// forking). Returns undefined if `text` is neither a literal nor a
+// currently-known tracked identifier.
+function resolveValue(text, attrIndex, values, attrForLiteral) {
+  const literal = parseLiteral(text, attrForLiteral);
+  if (literal !== undefined) return literal;
+  if (!RE_IDENT_ONLY.test(text)) return undefined;
+  const other = attrIndex.get(text);
+  const cur = other && values.get(other.id);
+  return cur && cur.kind === 'known' ? cur.value : undefined;
+}
+
 // attrIndex: Map<safeId(attr.name), attr>. values: Map<attrId, {kind:'known',value}|{kind:'unknown'}>.
 // Returns {attrId, value} for a recognized assignment to a tracked attribute, or null if
 // the line doesn't touch one (either not an assignment, or assigns to an untracked identifier).
@@ -87,10 +108,10 @@ export function parseActionLine(line, attrIndex, values) {
   if (m) {
     const attr = attrIndex.get(m[1]);
     if (!attr) return null;
-    const literal = parseLiteral(m[2].trim(), attr);
+    const resolved = resolveValue(m[2].trim(), attrIndex, values, attr);
     return {
       attrId: attr.id,
-      value: literal !== undefined ? { kind: 'known', value: literal } : { kind: 'unknown' },
+      value: resolved !== undefined ? { kind: 'known', value: resolved } : { kind: 'unknown' },
     };
   }
 
@@ -142,19 +163,35 @@ export function evaluateCondition(condRaw, attrIndex, values) {
     // tracked value is already stored as a plain string (enum values as
     // their bare literal name — see parseLiteral), so a direct string
     // compare against a quoted literal or an enum literal (Color.RED) works
-    // without needing the attribute's declared type. This used to always
-    // fall through to 'unknown' below even when the value was exactly
-    // known, forcing an avoidable fork in the SET.
+    // without needing the attribute's declared type. resolveValue also
+    // resolves an identifier RHS (another tracked attribute, or a signal
+    // parameter injected for this one transition) once it's concretely
+    // known — not just a literal — e.g. `p1Move == p2Move`.
     if (op === '==' || op === '!=') {
-      const strLit  = rhsTrim.match(RE_STRLIT);
-      const enumLit = rhsTrim.match(RE_ENUMLIT);
-      const rhsVal  = strLit ? strLit[1].replace(/\\(.)/g, '$1') : enumLit ? enumLit[1] : null;
-      if (rhsVal !== null) {
+      const rhsVal = resolveValue(rhsTrim, attrIndex, values, attr);
+      if (rhsVal !== undefined) {
         return op === '==' ? cur.value === rhsVal : cur.value !== rhsVal;
       }
     }
 
     return 'unknown';
+  }
+
+  // `ident.equals(rhs)` / `!ident.equals(rhs)` — the idiomatic (and for
+  // String, only correct) way to compare STRING/ENUM values, used constantly
+  // in real action code even though it has nothing to do with the operator
+  // grammar above. rhs is resolved the same way as the == / != case: a
+  // literal, or another currently-known tracked identifier.
+  m = cond.match(RE_EQUALS_CALL);
+  if (m) {
+    const [, notPrefix, ident, rhsRaw] = m;
+    const attr = attrIndex.get(ident);
+    const cur = attr && values.get(attr.id);
+    if (!cur || cur.kind !== 'known') return 'unknown';
+    const rhsVal = resolveValue(rhsRaw.trim(), attrIndex, values, attr);
+    if (rhsVal === undefined) return 'unknown';
+    const eq = cur.value === rhsVal;
+    return notPrefix ? !eq : eq;
   }
 
   m = cond.match(RE_BOOL_NOT);
@@ -176,6 +213,21 @@ export function evaluateCondition(condRaw, attrIndex, values) {
   return 'unknown';
 }
 
+// Static-only check for whether `text` is EITHER a literal OR (only for an
+// equality-shaped comparison — == / != / .equals(), the only ones
+// evaluateCondition ever resolves attribute-vs-attribute) a bare identifier
+// that at least resolves to a tracked attribute (regardless of whether it's
+// currently known — describeUnresolvedGuard has no access to the runtime
+// values map, see its own doc comment below). isEquality must mirror
+// evaluateCondition's own operator gating exactly, or this could claim
+// "just not known yet" for an operator (< <= > >=) that never actually
+// resolves an attribute-vs-attribute RHS at all.
+function isResolvableRhsShape(text, isEquality, attrIndex) {
+  if (text === 'true' || text === 'false') return true;
+  if (RE_NUMLIT.test(text) || RE_STRLIT.test(text) || RE_ENUMLIT.test(text)) return true;
+  return isEquality && RE_IDENT_ONLY.test(text) && !!attrIndex.get(text);
+}
+
 // Called only once evaluateCondition has already returned 'unknown', to give
 // a caller-facing reason instead of one generic "best-effort" label for every
 // unresolved guard — a typo (an attribute name that doesn't exist at all) used
@@ -195,10 +247,22 @@ export function describeUnresolvedGuard(condRaw, attrIndex) {
       return `References "${ident}", which isn't a tracked attribute on this capsule — check for a typo.`;
     }
     const rhsTrim = rhsRaw.trim();
-    const isLiteral = rhsTrim === 'true' || rhsTrim === 'false'
-      || RE_NUMLIT.test(rhsTrim) || RE_STRLIT.test(rhsTrim) || RE_ENUMLIT.test(rhsTrim);
-    if (!isLiteral) {
+    const isEq = op === '==' || op === '!=';
+    if (!isResolvableRhsShape(rhsTrim, isEq, attrIndex)) {
       return `Compares "${ident}" ${op} "${rhsTrim}" — comparing against something other than a fixed value (e.g. another attribute) isn't evaluated.`;
+    }
+    return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
+  }
+
+  m = cond.match(RE_EQUALS_CALL);
+  if (m) {
+    const [, , ident, rhsRaw] = m;
+    if (!attrIndex.get(ident)) {
+      return `References "${ident}", which isn't a tracked attribute on this capsule — check for a typo.`;
+    }
+    const rhsTrim = rhsRaw.trim();
+    if (!isResolvableRhsShape(rhsTrim, true, attrIndex)) {
+      return `Compares "${ident}.equals(${rhsTrim})" — comparing against something other than a fixed value or a tracked attribute isn't evaluated.`;
     }
     return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
   }
@@ -215,17 +279,22 @@ export function describeUnresolvedGuard(condRaw, attrIndex) {
 }
 
 // Classifies one trimmed, semicolon-stripped line for the block parser.
-// Only an `if (...) {` / lone `}` / single-line `} else {` are recognized
-// as structural — anything else brace-adjacent (else-if chains, brace-less
-// single-statement bodies, a same-line `if (x) { y; }`) is reported so the
-// caller can fall back to the simpler, safe flat interpreter instead of
-// risking a structural mis-parse.
+// `if (...) {` / lone `}` / single-line `} else {` / a fully brace-less
+// single-statement `if (cond) stmt` are recognized as structural — anything
+// else brace-adjacent (else-if chains, a same-line `if (x) { y; }`) is
+// reported so the caller can fall back to the simpler, safe flat
+// interpreter instead of risking a structural mis-parse. The brace-less
+// form is checked only after the "any brace at all -> unsupported" check,
+// so it can never accidentally swallow a same-line block — by the time
+// RE_IF_INLINE is tried, the line is already known to contain no braces.
 function classifyLine(line) {
   const ifMatch = line.match(RE_IF);
   if (ifMatch) return { type: 'if', cond: ifMatch[1] };
   if (RE_ELSE.test(line)) return { type: 'else' };
   if (RE_CLOSE.test(line)) return { type: 'close' };
   if (line.includes('{') || line.includes('}')) return { type: 'unsupported' };
+  const inlineMatch = line.match(RE_IF_INLINE);
+  if (inlineMatch) return { type: 'if-inline', cond: inlineMatch[1], stmt: inlineMatch[2] };
   return { type: 'stmt', text: line };
 }
 
@@ -247,6 +316,13 @@ function parseBlock(tokens, i) {
       }
       if (tokens[i]?.type === 'close') i++;
       stmts.push({ kind: 'if', cond: t.cond, then: thenResult.stmts, else: elseStmts });
+      continue;
+    }
+    if (t.type === 'if-inline') {
+      // No close/else token to consume — the "block" is just the one
+      // statement captured on the same line.
+      stmts.push({ kind: 'if', cond: t.cond, then: [{ kind: 'line', text: t.stmt }], else: null });
+      i++;
       continue;
     }
     stmts.push({ kind: 'line', text: t.text });
@@ -302,16 +378,25 @@ function execStatements(stmts, attrIndex, values) {
 }
 
 // Fallback for code shapes the structured parser above won't cleanly handle
-// (else-if chains, brace-less bodies, etc.) — same depth-tracking behavior
-// as before structured if/else support existed: a recognized assignment
-// only applies unconditionally at brace depth 0; anything inside any block
-// degrades to unknown. Never MISAPPLIES a value — the one residual gap is a
-// same-line block (e.g. "if (x) { count++; }" all on one line): the whole
-// line doesn't match any single-statement regex as a unit, so it's read as
-// a no-op and the attribute is left stale rather than marked unknown. Not
-// fixed — this shape hasn't appeared in any real model (multi-line brace
+// (else-if chains, a same-line "if (x) { y; }" block, etc.) — same
+// depth-tracking behavior as before structured if/else support existed: a
+// recognized assignment only applies unconditionally at brace depth 0;
+// anything inside any braced block degrades to unknown. Never MISAPPLIES a
+// value — the one residual gap is the same-line braced block itself (e.g.
+// "if (x) { count++; }" all on one line): the whole line doesn't match any
+// single-statement regex as a unit, so it's read as a no-op and the
+// attribute is left stale rather than marked unknown. Not fixed — this
+// specific shape hasn't appeared in any real model (multi-line brace
 // formatting is universal in practice), and "stale" is a materially smaller
 // risk than the misapplied-value bug this whole file exists to avoid.
+//
+// A brace-less single-statement if (RE_IF_INLINE) is handled explicitly
+// below, unlike that residual gap — it's the shape a real else-if chain
+// forces THIS fallback to run for a whole effect block that may otherwise
+// be entirely well-formed, so leaving it as a silent no-op here would
+// re-open exactly the "gamesPlayed never advances" bug the structured
+// parser's own if-inline support was added to fix, for any effect that
+// happens to also contain one genuinely unsupported chain elsewhere.
 function applyFlatDegraded(lines, attrIndex, values) {
   let next = values;
   let depth = 0;
@@ -320,6 +405,22 @@ function applyFlatDegraded(lines, attrIndex, values) {
     const opens = (line.match(/\{/g) || []).length;
     const closes = (line.match(/\}/g) || []).length;
     depth = Math.max(0, depth + opens - closes);
+
+    // Only meaningful at depth 0 (unconditional context) — inside an
+    // already-uncertain block, a nested brace-less if is still covered by
+    // the ordinary "degrade whatever it touches" path below, same as any
+    // other line there.
+    const inlineMatch = startDepth === 0 ? line.match(RE_IF_INLINE) : null;
+    if (inlineMatch) {
+      const cond = evaluateCondition(inlineMatch[1], attrIndex, next);
+      if (cond === false) continue; // certainly does not fire — no-op, not even a degrade
+      const result = parseActionLine(inlineMatch[2], attrIndex, next);
+      if (result) {
+        next = new Map(next);
+        next.set(result.attrId, cond === true ? result.value : { kind: 'unknown' });
+      }
+      continue;
+    }
 
     const result = parseActionLine(line, attrIndex, next);
     if (result) {
