@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { toJpeg } from 'html-to-image';
+import { exportFlowImage } from '../../utils/exportDiagramImage';
 import { useModelStore } from '../../store/modelStore';
 import { useBehaviourStore } from '../../store/behaviourStore';
 import { useCapsuleStructureStore } from '../../store/capsuleStructureStore';
@@ -87,21 +87,12 @@ export default function BehaviourTopbar() {
     e.target.value = '';
   };
 
-  const handleExportJpeg = async () => {
+  const handleExportImage = async (format) => {
     setMenuOpen(false);
-    const node = document.querySelector('.react-flow');
-    if (!node) return;
+    const cls = classes.find((c) => c.id === capsuleId);
+    const label = subView === 'structure' ? (currentIM?.name || 'structure') : (cls?.name || 'statemachine');
     try {
-      const dataUrl = await toJpeg(node, {
-        quality: 0.95, backgroundColor: '#334155',
-        filter: (el) => !el.classList?.contains('react-flow__controls'),
-      });
-      const cls = classes.find((c) => c.id === capsuleId);
-      const label = subView === 'structure' ? (currentIM?.name || 'structure') : (cls?.name || 'statemachine');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `${label}-behaviour.jpg`;
-      a.click();
+      await exportFlowImage({ format, backgroundColor: '#334155', filename: `${label}-behaviour.${format === 'svg' ? 'svg' : 'jpg'}` });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }
@@ -191,7 +182,8 @@ export default function BehaviourTopbar() {
             <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
             <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
             <MenuDivider />
-            <MenuItem onClick={handleExportJpeg} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
+            <MenuItem onClick={() => handleExportImage('jpeg')} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
+            <MenuItem onClick={() => handleExportImage('svg')} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export SVG (vector)</MenuItem>
             <MenuDivider />
             {generateMenuSection}
           </div>

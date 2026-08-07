@@ -1,6 +1,6 @@
 import { useModelStore } from '../store/modelStore';
 import { useRef, useState } from 'react';
-import { toJpeg } from 'html-to-image';
+import { exportFlowImage } from '../utils/exportDiagramImage';
 import { useOutsideClick } from '../utils/useOutsideClick';
 import { useGenerateMenu } from './useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from './topbarMenu';
@@ -55,25 +55,11 @@ export default function Topbar() {
     e.target.value = '';
   };
 
-  const handleExportJpeg = async () => {
+  const handleExportImage = async (format) => {
     setMenuOpen(false);
-    const node = document.querySelector('.react-flow');
-    if (!node) return;
+    const exportName = mode === 'instance' ? (instanceModel?.name || 'instance') : (metaModel.name || 'model');
     try {
-      const dataUrl = await toJpeg(node, {
-        quality: 0.95,
-        backgroundColor: '#ffffff',
-        filter: (el) => {
-          if (el.classList?.contains('react-flow__controls')) return false;
-          if (el.classList?.contains('react-flow__minimap')) return false;
-          return true;
-        },
-      });
-      const exportName = mode === 'instance' ? (instanceModel?.name || 'instance') : (metaModel.name || 'model');
-      const a = document.createElement('a');
-      a.href = dataUrl;
-      a.download = `${exportName}.jpg`;
-      a.click();
+      await exportFlowImage({ format, backgroundColor: '#ffffff', filename: `${exportName}.${format === 'svg' ? 'svg' : 'jpg'}` });
     } catch (err) {
       alert('Export failed: ' + err.message);
     }
@@ -137,7 +123,8 @@ export default function Topbar() {
             <MenuItem onClick={handleSave}>Export IML</MenuItem>
             <MenuItem onClick={() => { setExampleModalOpen(true); setMenuOpen(false); }}>Load Example Model…</MenuItem>
             <MenuDivider />
-            <MenuItem onClick={handleExportJpeg}>Export JPG</MenuItem>
+            <MenuItem onClick={() => handleExportImage('jpeg')}>Export JPG</MenuItem>
+            <MenuItem onClick={() => handleExportImage('svg')}>Export SVG (vector)</MenuItem>
             <MenuDivider />
             {generateMenuSection}
           </div>
