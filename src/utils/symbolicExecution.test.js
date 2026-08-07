@@ -240,6 +240,39 @@ describe('buildSET — guard evaluation against a known tracked attribute', () =
     expect(dropped).toHaveLength(0);
   });
 
+  it('a lone certainly-false guard (nothing complementary) produces no node or edge at all — a provable no-op is not worth a leaf', () => {
+    // A single-member trigger group whose guard is definitely false (no
+    // catch-all, nothing unresolvable): before, this still produced a
+    // self-subsumed "dropped" leaf via fireDropped. Since the state and
+    // every tracked attribute provably can't change, that leaf carried zero
+    // information — reported as tree bloat against a real example (RPS with
+    // a 1-round guard: 28 of 37 nodes were exactly this shape). Now skipped
+    // entirely: no node, no edge.
+    const soloGuardModel = {
+      ...NO_ATTRS,
+      classes: [{
+        id: 'D', name: 'D',
+        attributes: [{ id: 'aX', name: 'x', type: 'INT', lowerBound: 1, upperBound: 1, defaultValue: '0' }],
+      }],
+      behaviours: {
+        D: {
+          states: [
+            { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+            { id: 'sA', kind: 'simple', name: 'A', entry: '', exit: '' },
+            { id: 'sB', kind: 'simple', name: 'B', entry: '', exit: '' },
+          ],
+          transitions: [
+            { id: 'tInit', source: 'sInit', target: 'sA', trigger: '', guard: '', effect: '' },
+            { id: 'tB', source: 'sA', target: 'sB', trigger: 'p.go', guard: 'x > 5', effect: '' },
+          ],
+        },
+      },
+    };
+    const result = buildSET('D', soloGuardModel);
+    expect(nodesArr(result)).toHaveLength(1); // just the root — no dropped leaf, no fired edge
+    expect(edgesArr(result)).toHaveLength(0);
+  });
+
   it('produces a small, linear tree (no combinatorial blow-up from forking both guard outcomes at every step)', () => {
     const result = buildSET('C', metaModel);
     // 3 loop-back steps (val=1,2,3) reaching Final at val=3 (Counting is

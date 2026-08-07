@@ -177,10 +177,15 @@ export function buildSET(classId, metaModel) {
 
   // The "all guards false, signal dropped" outcome: a leaf that subsumes
   // straight back into the source node (nothing changed) — reuses the
-  // subsumption machinery instead of special-casing "no-op" edges. guardFork
-  // is false when every member's guard was fully evaluated to false (the
-  // drop is certain), true when at least one member couldn't be evaluated
-  // (the drop is only one of the possible outcomes).
+  // subsumption machinery instead of special-casing "no-op" edges. Only
+  // called when the drop is genuinely UNCERTAIN (guardFork true — at least
+  // one member's guard couldn't be evaluated, so "dropped" is one of
+  // several real possible outcomes worth surfacing as its own leaf). A
+  // CERTAIN drop (every member's guard fully evaluated false) carries zero
+  // information — the state provably can't change — so the caller skips it
+  // entirely rather than calling this at all: no node, no edge. Confirmed
+  // by the professor as the desired bound on tree size (a certain no-op
+  // was bloating real examples with leaves that assert nothing new).
   function fireDropped(node, trigger, guardFork, guardReason, paramLabel) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
@@ -305,7 +310,11 @@ export function buildSET(classId, metaModel) {
           lastUnknownReason = describeUnresolvedGuard(guardText, ctxAttrIndex);
           fireTransition(node, t, trigger, `guard-${i}-true`, true, lastUnknownReason, ctxAttrIndex, paramOverrides, paramLabel); // can't rule in or out — fork, same as before
         }
-        if (!stopped) fireDropped(node, trigger, anyUnknown, lastUnknownReason, paramLabel);
+        // A certain drop (every member's guard fully evaluated false) is a
+        // provable no-op — the state can't change, so there's nothing to
+        // represent. Only an uncertain drop (anyUnknown) is worth its own
+        // leaf, since "dropped" is then one of several real possibilities.
+        if (!stopped && anyUnknown) fireDropped(node, trigger, anyUnknown, lastUnknownReason, paramLabel);
       }
     }
   }
