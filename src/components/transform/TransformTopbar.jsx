@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { useTransformStore } from '../../store/transformStore';
-import { useModelStore } from '../../store/modelStore';
+import { useModelStore, getAllAttributes } from '../../store/modelStore';
 import { runTransform } from '../../utils/runTransform';
 import { validateModelShape } from '../../utils/modelHelpers';
 import { useOutsideClick } from '../../utils/useOutsideClick';
@@ -35,6 +35,27 @@ function loadJsonFile(onLoad, onError, requireInstances = false) {
   input.click();
 }
 
+// A target attribute with lowerBound > 0 is required by its own meta-model
+// (see conformance.js's identical check for the modeling/IDE side, which
+// this mirrors) — mapping it as "omit" produces an object that fails that
+// requirement with no value at all. Nothing in the transform pipeline ever
+// checked lowerBound before, so this silently shipped non-conforming
+// output; computed here (not just after Running) so Run itself can be
+// blocked rather than merely warning after the fact.
+function omitRequiredViolations(rules, target) {
+  if (!target) return [];
+  const violations = [];
+  for (const rule of rules) {
+    const tgtAttrs = getAllAttributes(rule.targetClassId, target.metaModel);
+    for (const m of rule.attributeMappings) {
+      if (m.type !== 'omit') continue;
+      const attr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+      if (attr && attr.lowerBound > 0) violations.push({ rule, attr });
+    }
+  }
+  return violations;
+}
+
 function downloadJson(data, filename) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
@@ -55,7 +76,13 @@ export default function TransformTopbar() {
   const menuRef = useRef(null);
   useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
-  const canRun = !!(source && target && rules.length > 0);
+  const violations = omitRequiredViolations(rules, target);
+  const canRun = !!(source && target && rules.length > 0) && violations.length === 0;
+  const runBlockedReason = !source || !target || rules.length === 0
+    ? 'Load both models and add at least one rule'
+    : violations.length > 0
+      ? `${violations.length} required attribute${violations.length !== 1 ? 's are' : ' is'} mapped to Omit — fix in the rule editor before running`
+      : undefined;
 
   const showError = (msg) => {
     setError(msg);
@@ -130,7 +157,7 @@ export default function TransformTopbar() {
         onClick={handleRun}
         disabled={!canRun}
         style={btnStyle(canRun ? ACCENT : '#21262d', !canRun)}
-        title={!canRun ? 'Load both models and add at least one rule' : 'Run transformation'}
+        title={runBlockedReason ?? 'Run transformation'}
       >
         ▶ Run Transform
       </button>
@@ -184,7 +211,7 @@ export default function TransformTopbar() {
             <MenuItem
               onClick={() => { setMenuOpen(false); handleRun(); }}
               disabled={!canRun}
-              title={!canRun ? 'Load both models and add at least one rule' : undefined}
+              title={runBlockedReason}
             >
               ▶ Run Transform
             </MenuItem>

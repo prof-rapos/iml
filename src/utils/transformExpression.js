@@ -4,19 +4,30 @@
 // only copied. No eval() — a tiny tokeniser + recursive-descent parser.
 //
 // Grammar:
-//   expr   := term  (('+' | '-') term)*
-//   term   := factor (('*' | '/') factor)*
-//   factor := number | string | '{' ref '}' | '(' expr ')' | '-' factor
+//   expr       := ternary
+//   ternary    := comparison ('?' ternary ':' ternary)?
+//   comparison := arith (('>' | '<' | '>=' | '<=' | '==' | '!=') arith)?
+//   arith      := term (('+' | '-') term)*
+//   term       := factor (('*' | '/') factor)*
+//   factor     := number | string | '{' ref '}' | '(' expr ')' | '-' factor
 //
 // - {name}  resolves against `scope` (source attribute name → value).
 // - "text" or 'text' is a string literal.
 // - '+' adds when BOTH operands are numeric, otherwise concatenates.
 // - '-', '*', '/' are always numeric.
+// - comparisons compare numerically when BOTH operands look numeric,
+//   otherwise lexicographically as strings (so e.g. {name} > "M" works).
+// - a ternary's condition is truthy per truthy() below when it isn't itself
+//   a comparison (e.g. a bare {flag} ? "on" : "off" — a BOOLEAN attribute's
+//   own "true"/"false" string reads naturally here without needing
+//   {flag} == "true").
 //
 // Examples:
-//   {firstName} + " " + {lastName}   →  "Ada Lovelace"
-//   {price} * 1.1                    →  numeric
-//   ({a} + {b}) / 2                  →  numeric average
+//   {firstName} + " " + {lastName}       →  "Ada Lovelace"
+//   {price} * 1.1                        →  numeric
+//   ({a} + {b}) / 2                      →  numeric average
+//   {x} > 10 ? "large" : "small"
+//   {active} ? {name} : "(inactive)"
 
 // True when a value can participate in arithmetic (a number, or a numeric string).
 export function isNumericValue(v) {
@@ -37,6 +48,41 @@ function strify(v) {
 function add(a, b) {
   if (isNumericValue(a) && isNumericValue(b)) return Number(a) + Number(b);
   return strify(a) + strify(b);
+}
+
+// Numeric compare when both sides look numeric, else lexicographic string
+// compare (so a name/text comparison like {status} == "done" or
+// {name} > "M" is meaningful, not just always-false).
+function compare(a, b, op) {
+  let cmp;
+  if (isNumericValue(a) && isNumericValue(b)) {
+    const na = Number(a), nb = Number(b);
+    cmp = na < nb ? -1 : na > nb ? 1 : 0;
+  } else {
+    const sa = strify(a), sb = strify(b);
+    cmp = sa < sb ? -1 : sa > sb ? 1 : 0;
+  }
+  switch (op) {
+    case '>':  return cmp > 0;
+    case '<':  return cmp < 0;
+    case '>=': return cmp >= 0;
+    case '<=': return cmp <= 0;
+    case '==': return cmp === 0;
+    case '!=': return cmp !== 0;
+    default:   return false;
+  }
+}
+
+// Truthiness for a ternary condition that isn't itself a comparison (e.g. a
+// bare {flag} used directly) — mirrors how a BOOLEAN attribute's value is
+// actually represented elsewhere in this codebase (the strings "true"/
+// "false"), so {active} ? ... : ... reads naturally without needing
+// {active} == "true".
+function truthy(v) {
+  if (typeof v === 'boolean') return v;
+  if (typeof v === 'number') return v !== 0 && !Number.isNaN(v);
+  const s = String(v ?? '').trim();
+  return s !== '' && s !== '0' && s.toLowerCase() !== 'false';
 }
 
 function resolveRef(scope, name) {
@@ -65,6 +111,15 @@ function tokenize(input) {
       tokens.push({ t: 'str', v: s.slice(i + 1, end) });
       i = end + 1; continue;
     }
+    if (c === '?' || c === ':') { tokens.push({ t: 'op', v: c }); i++; continue; }
+    if ('<>=!'.includes(c)) {
+      const two = s.slice(i, i + 2);
+      if (two === '>=' || two === '<=' || two === '==' || two === '!=') {
+        tokens.push({ t: 'op', v: two }); i += 2; continue;
+      }
+      if (c === '>' || c === '<') { tokens.push({ t: 'op', v: c }); i++; continue; }
+      throw new Error(`Unexpected character "${c}" in expression`);
+    }
     if ('+-*/()'.includes(c)) { tokens.push({ t: 'op', v: c }); i++; continue; }
     if (/[0-9.]/.test(c)) {
       let j = i;
@@ -85,7 +140,32 @@ export function evalExpression(input, scope = {}) {
   const peek = () => tokens[pos];
   const next = () => tokens[pos++];
 
-  function parseExpr() {
+  const COMPARISON_OPS = ['>', '<', '>=', '<=', '==', '!='];
+
+  function parseTernary() {
+    const cond = parseComparison();
+    if (peek() && peek().t === 'op' && peek().v === '?') {
+      next();
+      const thenVal = parseTernary();
+      if (!peek() || peek().v !== ':') throw new Error('Expected ":" in ternary expression');
+      next();
+      const elseVal = parseTernary();
+      return truthy(cond) ? thenVal : elseVal;
+    }
+    return cond;
+  }
+
+  function parseComparison() {
+    const left = parseArith();
+    if (peek() && peek().t === 'op' && COMPARISON_OPS.includes(peek().v)) {
+      const op = next().v;
+      const right = parseArith();
+      return compare(left, right, op);
+    }
+    return left;
+  }
+
+  function parseArith() {
     let left = parseTerm();
     while (peek() && peek().t === 'op' && (peek().v === '+' || peek().v === '-')) {
       const op = next().v;
@@ -111,7 +191,7 @@ export function evalExpression(input, scope = {}) {
     if (tk.t === 'op' && tk.v === '-') { next(); return -Number(parseFactor()); }
     if (tk.t === 'op' && tk.v === '(') {
       next();
-      const v = parseExpr();
+      const v = parseTernary();
       if (!peek() || peek().v !== ')') throw new Error('Missing ")"');
       next();
       return v;
@@ -123,7 +203,7 @@ export function evalExpression(input, scope = {}) {
   }
 
   if (tokens.length === 0) return '';
-  const result = parseExpr();
+  const result = parseTernary();
   if (pos < tokens.length) throw new Error('Unexpected trailing input in expression');
   return strify(result);
 }

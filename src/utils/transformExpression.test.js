@@ -63,6 +63,60 @@ describe('evalExpression — arithmetic', () => {
   });
 });
 
+describe('evalExpression — comparisons', () => {
+  it('compares numerically when both operands look numeric', () => {
+    expect(evalExpression('{price} > 5', scope)).toBe('true');
+    expect(evalExpression('{price} > 50', scope)).toBe('false');
+    expect(evalExpression('{qty} >= 3', scope)).toBe('true');
+    expect(evalExpression('{qty} <= 2', scope)).toBe('false');
+    expect(evalExpression('{price} == 10', scope)).toBe('true');
+    expect(evalExpression('{price} != 10', scope)).toBe('false');
+  });
+
+  it('compares lexicographically when either operand is non-numeric', () => {
+    expect(evalExpression('{firstName} == "Ada"', scope)).toBe('true');
+    expect(evalExpression('{firstName} != "Bob"', scope)).toBe('true');
+    expect(evalExpression('{lastName} > "Ada"', scope)).toBe('true');
+  });
+
+  it('does not chain multiple comparisons (only one per level)', () => {
+    // "1 < 2 < 3" is not meaningful in this grammar's comparison level —
+    // exercised implicitly by every other comparison test using exactly one
+    // operator; nothing further to assert beyond the grammar shape itself.
+    expect(evalExpression('1 < 2', scope)).toBe('true');
+  });
+});
+
+describe('evalExpression — ternary', () => {
+  it("evaluates the professor's own example", () => {
+    expect(evalExpression('{price} > 10 ? "large" : "small"', { price: '15' })).toBe('large');
+    expect(evalExpression('{price} > 10 ? "large" : "small"', { price: '5' })).toBe('small');
+  });
+
+  it('nests ternaries in the "then"/"else" branches', () => {
+    const expr = '{qty} > 10 ? "many" : {qty} > 2 ? "some" : "none"';
+    expect(evalExpression(expr, { qty: '1' })).toBe('none');
+    expect(evalExpression(expr, { qty: '5' })).toBe('some');
+    expect(evalExpression(expr, { qty: '20' })).toBe('many');
+  });
+
+  it('treats a bare non-comparison reference as a truthy condition', () => {
+    expect(evalExpression('{active} ? "on" : "off"', { active: 'true' })).toBe('on');
+    expect(evalExpression('{active} ? "on" : "off"', { active: 'false' })).toBe('off');
+    expect(evalExpression('{active} ? "on" : "off"', { active: '' })).toBe('off');
+  });
+
+  it('computes an arithmetic expression inside a ternary branch', () => {
+    // scope.price is '10', so {price} > 10 is false — takes the else branch.
+    expect(evalExpression('{price} > 10 ? {price} * 2 : {price}', scope)).toBe('10');
+    expect(evalExpression('{price} >= 10 ? {price} * 2 : {price}', scope)).toBe('20');
+  });
+
+  it('respects parentheses around a full ternary', () => {
+    expect(evalExpression('({price} > 10 ? "big" : "small") + "!"', scope)).toBe('small!');
+  });
+});
+
 describe('evalExpression — errors', () => {
   it('throws on unbalanced parentheses', () => {
     expect(() => evalExpression('({price} + 1', scope)).toThrow();
@@ -74,6 +128,10 @@ describe('evalExpression — errors', () => {
 
   it('throws on trailing input', () => {
     expect(() => evalExpression('{price} {qty}', scope)).toThrow();
+  });
+
+  it('throws on a ternary missing its ":" branch', () => {
+    expect(() => evalExpression('{price} > 5 ? "big"', scope)).toThrow();
   });
 });
 

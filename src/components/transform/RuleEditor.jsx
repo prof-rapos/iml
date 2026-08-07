@@ -181,9 +181,15 @@ function RuleCard({ rule, source, target }) {
                       />
                       <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
                         refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
-                        {'  ·  '}use <code>+ - * /</code> and <code>"text"</code>
+                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>cond ? a : b</code>, and <code>"text"</code>
                       </div>
                     </>
+                  )}
+
+                  {m.type === 'omit' && ta.lowerBound > 0 && (
+                    <div style={{ flexBasis: '100%', fontSize: 10, color: '#e3b341', marginLeft: 136, lineHeight: 1.5 }}>
+                      ⚠ &quot;{ta.name}&quot; requires at least {ta.lowerBound} value{ta.lowerBound > 1 ? 's' : ''} — omitting it will produce a non-conforming target object.
+                    </div>
                   )}
                 </div>
               );

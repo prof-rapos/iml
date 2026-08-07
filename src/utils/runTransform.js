@@ -17,6 +17,21 @@ function coerceValue(srcVal, srcAttr, tgtAttr) {
   return tgtMulti ? converted : (converted[0] ?? '');
 }
 
+// Coerce a list of already-rendered expression results (one per fan-out
+// index, or a single one when nothing was multi-valued) to the target
+// attribute's type/multiplicity — the expression-mapping sibling of
+// coerceValue above. Each result gets its OWN numeric-vs-string inference
+// (evalExpression already renders every result to a string, so unlike
+// coerceValue there's no single upstream `srcAttr.type` to coerce from).
+function coerceExpressionResults(rawResults, tgtAttr) {
+  const converted = rawResults.map((raw) => {
+    const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
+    return convertSingle(raw, fromType, tgtAttr?.type ?? 'STRING');
+  });
+  const tgtMulti = tgtAttr ? tgtAttr.upperBound !== 1 : false;
+  return tgtMulti ? converted : (converted[0] ?? '');
+}
+
 // ── Value readers ─────────────────────────────────────────────────────────────
 // Read an attribute value from either format:
 //   current: attributeValues: { [attrId]: value | value[] }
@@ -89,22 +104,65 @@ export function runTransform(source, target, rules) {
             attributeValues[m.targetAttrId] = coerceValue(m.value ?? '', { type: 'STRING', upperBound: 1 }, tgtAttr);
           } else if (m.type === 'expression') {
             const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
-            // Scope: source attribute name → value (so expressions read {attrName}).
-            const scope = {};
-            for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
-            let raw;
-            try {
-              raw = evalExpression(m.expression ?? '', scope);
-            } catch (err) {
-              const msg = `Expression "${m.expression}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}": ${err.message}`;
-              console.warn(msg);
-              warnings.push(msg);
-              raw = '';
+            const exprText = m.expression ?? '';
+
+            // Which source attributes this expression actually references,
+            // and which of THOSE are multi-valued — determines whether the
+            // expression needs to run once per element (fanning out, like
+            // the `direct` mapping's own multi-valued handling above) or
+            // once overall, same as before. Without this, a multi-valued
+            // ref used to flow into evalExpression as a single space-joined
+            // string (see transformExpression.js's resolveRef), so e.g.
+            // `{x} * 2` over x=["3","4"] silently coerced to NaN → ''.
+            const refNames = [...exprText.matchAll(/\{([^}]+)\}/g)].map((r) => r[1].trim());
+            const multiRefs = refNames
+              .map((name) => srcAttrs.find((a) => a.name === name))
+              .filter((a) => a && a.upperBound !== 1);
+
+            let rawResults;
+            if (multiRefs.length === 0) {
+              const scope = {};
+              for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
+              try {
+                rawResults = [evalExpression(exprText, scope)];
+              } catch (err) {
+                const msg = `Expression "${exprText}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}": ${err.message}`;
+                console.warn(msg);
+                warnings.push(msg);
+                rawResults = [''];
+              }
+            } else {
+              // Fan out positionally: index i of one referenced multi-valued
+              // attribute lines up with index i of another, same assumption
+              // the rest of the model already makes for a multi-valued
+              // attribute's own values. Mismatched lengths truncate to the
+              // shortest (with a warning) rather than throwing.
+              const lengths = multiRefs.map((a) => (getAttrValue(srcObj, a.id) || []).length);
+              const len = Math.min(...lengths);
+              if (new Set(lengths).size > 1) {
+                const msg = `Expression "${exprText}" for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}": referenced attributes have mismatched lengths (${lengths.join(', ')}) — truncated to ${len}.`;
+                console.warn(msg);
+                warnings.push(msg);
+              }
+              rawResults = [];
+              for (let i = 0; i < len; i++) {
+                const scope = {};
+                for (const sa of srcAttrs) {
+                  const val = getAttrValue(srcObj, sa.id);
+                  scope[sa.name] = (sa.upperBound !== 1 && Array.isArray(val)) ? val[i] : val;
+                }
+                try {
+                  rawResults.push(evalExpression(exprText, scope));
+                } catch (err) {
+                  const msg = `Expression "${exprText}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}" (index ${i}): ${err.message}`;
+                  console.warn(msg);
+                  warnings.push(msg);
+                  rawResults.push('');
+                }
+              }
             }
-            // Treat a numeric result as DOUBLE so the target type coercion (e.g.
-            // truncation to INT) applies; otherwise treat it as a plain string.
-            const fromType = isNumericValue(raw) ? 'DOUBLE' : 'STRING';
-            attributeValues[m.targetAttrId] = coerceValue(raw, { type: fromType, upperBound: 1 }, tgtAttr);
+
+            attributeValues[m.targetAttrId] = coerceExpressionResults(rawResults, tgtAttr);
           } else {
             // 'omit' (or any unrecognized mapping type) — still initialize the
             // slot, matching every other object-creation path (addObject,

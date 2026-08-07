@@ -131,6 +131,103 @@ describe('runTransform — type + multiplicity coercion', () => {
     expect(result.instanceModels[0].objects[0].attributeValues.n).toBe('11');
   });
 
+  it('fans an expression out element-wise over a multi-valued source attribute', () => {
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'x', name: 'x', type: 'INT', lowerBound: 0, upperBound: -1 },
+        ] }],
+        relations: [],
+      },
+      instanceModels: [{
+        id: 'im1', kind: 'instancemodel', name: 'M',
+        objects: [{ id: 'o1', classId: 'S', name: 'obj1', attributeValues: { x: ['3', '4'] } }],
+        links: [],
+      }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'p', name: 'p', type: 'STRING', lowerBound: 0, upperBound: -1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'p', expression: '{x} * 2' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.p).toEqual(['6', '8']);
+  });
+
+  it('truncates to the shortest length (with a warning) when two referenced multi-valued attributes disagree', () => {
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'x', name: 'x', type: 'INT', lowerBound: 0, upperBound: -1 },
+          { id: 'y', name: 'y', type: 'INT', lowerBound: 0, upperBound: -1 },
+        ] }],
+        relations: [],
+      },
+      instanceModels: [{
+        id: 'im1', kind: 'instancemodel', name: 'M',
+        objects: [{ id: 'o1', classId: 'S', name: 'obj1', attributeValues: { x: ['1', '2', '3'], y: ['10', '20'] } }],
+        links: [],
+      }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'p', name: 'p', type: 'STRING', lowerBound: 0, upperBound: -1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'p', expression: '{x} + {y}' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.p).toEqual(['11', '22']);
+    expect(result.warnings.some((w) => w.includes('mismatched lengths'))).toBe(true);
+  });
+
+  it('still evaluates once (no fan-out) when a multi-valued source attribute exists but is not referenced by the expression', () => {
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'x', name: 'x', type: 'INT', lowerBound: 0, upperBound: 1 },
+          { id: 'tags', name: 'tags', type: 'STRING', lowerBound: 0, upperBound: -1 },
+        ] }],
+        relations: [],
+      },
+      instanceModels: [{
+        id: 'im1', kind: 'instancemodel', name: 'M',
+        objects: [{ id: 'o1', classId: 'S', name: 'obj1', attributeValues: { x: '5', tags: ['a', 'b'] } }],
+        links: [],
+      }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'n', name: 'n', type: 'INT', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'n', expression: '{x} * 2' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.n).toBe('10');
+  });
+
+  it('evaluates a ternary expression mapping end-to-end', () => {
+    const source = srcModel({
+      attr: { id: 'x', name: 'x', type: 'INT', lowerBound: 0, upperBound: 1 },
+      value: '15',
+    });
+    const target = tgtModel({ id: 'size', name: 'size', type: 'STRING', lowerBound: 0, upperBound: 1 });
+    const rules = [{
+      sourceClassId: 'S', targetClassId: 'T',
+      attributeMappings: [{ type: 'expression', targetAttrId: 'size', expression: '{x} > 10 ? "large" : "small"' }],
+      relationMappings: [],
+    }];
+
+    const result = runTransform(source, target, rules);
+    expect(result.instanceModels[0].objects[0].attributeValues.size).toBe('large');
+  });
+
   it('falls back to an empty value for a malformed expression', () => {
     const source = srcModel({
       attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
