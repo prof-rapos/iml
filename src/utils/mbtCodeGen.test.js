@@ -135,6 +135,64 @@ describe('generateConcreteTestFiles', () => {
   });
 });
 
+// Regression: a signal event whose path went through an enum-parameter fork
+// (see symbolicExecution.js's enumParamCombos) used to always call the
+// receiver with zero arguments — but the receiver interface method now
+// genuinely requires one for an ENUM-typed parameter (javaTypeForParam
+// resolves it to the real enum class, not a String fallback), so the
+// zero-args call wouldn't compile.
+describe('generateConcreteTestFiles — enum-parameter signal calls', () => {
+  const enumMetaModel = {
+    relations: [],
+    classes: [{
+      id: 'PL', name: 'Player', attributes: [],
+      ports: [{ id: 'pIn', name: 'game', protocolId: 'proto1' }],
+    }],
+    enumerations: [{ id: 'eMove', name: 'Move', literals: ['ROCK', 'PAPER', 'SCISSORS'] }],
+    protocols: [{
+      id: 'proto1', name: 'RPS',
+      signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [{ id: 'p1', name: 'move', type: 'ENUM', enumId: 'eMove' }] }],
+    }],
+    behaviours: {
+      PL: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sWaiting', kind: 'simple', name: 'Waiting', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sWaiting', trigger: '', guard: '', effect: '' },
+          { id: 't1', source: 'sWaiting', target: 'sWaiting', trigger: 'game.sendMove', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+  const enumCls = enumMetaModel.classes[0];
+
+  it('passes the fired literal as a real enum-typed argument, one call per branch', () => {
+    const result = buildSET('PL', enumMetaModel);
+    const leaves = [...result.nodesById.values()].filter((n) => n.id !== result.rootId);
+    const calls = leaves.map((leaf) => {
+      const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, enumCls, enumMetaModel);
+      return fileFor(files, mainClassPath.split('/').pop());
+    });
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().sendMove(Move.ROCK);'))).toBe(true);
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().sendMove(Move.PAPER);'))).toBe(true);
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().sendMove(Move.SCISSORS);'))).toBe(true);
+  });
+
+  it('still calls a no-param signal with empty parens (no regression)', () => {
+    const noParamModel = {
+      ...enumMetaModel,
+      protocols: [{ id: 'proto1', name: 'RPS', signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [] }] }],
+    };
+    const result = buildSET('PL', noParamModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, enumCls, noParamModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('capsule.getGameReceiver().sendMove();');
+  });
+});
+
 describe('generateConcreteTestFiles — DOUBLE attribute assertions', () => {
   // Regression: a whole-number DOUBLE value (e.g. a default of "20") was
   // previously emitted as a bare literal `20`, an int autoboxed to

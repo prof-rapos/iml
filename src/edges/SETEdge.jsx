@@ -3,12 +3,16 @@ import { useMbtStore } from '../store/mbtStore';
 
 const PATH_HIGHLIGHT = '#f59e0b';
 
-function eventLabel(event) {
+// paramLabel is only ever set on a signal event (see enumParamCombos in
+// symbolicExecution.js) — a timeout has no enum-bounded parameter to fork
+// on, so it's ignored there.
+function eventLabel(event, paramLabel) {
   if (!event) return '';
   if (event.kind === 'timeout') {
     return `${event.port}: timeout${event.msLabel ? ` (${event.msLabel}ms)` : ' (duration not statically known)'}`;
   }
-  return `${event.port}.${event.signal}`;
+  const base = `${event.port}.${event.signal}`;
+  return paramLabel ? `${base}(${paramLabel})` : base;
 }
 
 function branchLabel(branch) {
@@ -61,7 +65,7 @@ export default function SETEdge({
             display: 'inline-flex', alignItems: 'center', gap: 5,
           }}
         >
-          <span>{eventLabel(edge.event)}</span>
+          <span>{eventLabel(edge.event, edge.paramLabel)}</span>
           {bLabel && <span style={{ opacity: 0.75, fontStyle: 'italic', fontSize: 10 }}>{bLabel}</span>}
           {edge.guardFork && <span aria-label="guard fork, best effort" style={{ color: '#d97706' }}>⚠</span>}
         </div>

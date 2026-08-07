@@ -2,7 +2,7 @@ import { getAllAttributes } from './modelHelpers.js';
 import { pathToLeaf } from './symbolicExecution.js';
 import {
   generateJavaCode, toClassName, toPackageName, capitalize, safeId,
-  portFieldName, stateConstMap,
+  portFieldName, stateConstMap, resolveSignalParams, safeEnumConst,
 } from './javaCodeGen.js';
 import { getProtocolById } from '../store/modelStore.js';
 
@@ -172,7 +172,27 @@ function stubWireLines(cls, metaModel, varName) {
   return lines;
 }
 
-function testScriptLines(edgeChain, varName, schedulerVar) {
+// A signal event whose path went through an enum-parameter fork (see
+// enumParamCombos in symbolicExecution.js) carries the exact literal(s) that
+// fired it in edge.paramLabel (comma-joined if the signal ever had more than
+// one enum parameter, though realistically always exactly one) — resolves
+// those back into real Java argument expressions (EnumClass.LITERAL) so the
+// receiver call actually compiles. The receiver's method signature now
+// genuinely requires an argument for an ENUM parameter (javaTypeForParam
+// resolves it to the real enum class, not a fallback String), so the old
+// always-zero-args call would no longer compile for these.
+function signalCallArgs(edge, cls, metaModel) {
+  if (!edge.paramLabel) return '';
+  const triggerVal = `${edge.event.port}.${edge.event.signal}`;
+  const enumParams = resolveSignalParams(triggerVal, cls, metaModel).filter((p) => p.type === 'ENUM');
+  const literals = edge.paramLabel.split(', ');
+  return enumParams.map((p, i) => {
+    const enumDef = (metaModel.enumerations ?? []).find((e) => e.id === p.enumId);
+    return enumDef ? `${toClassName(enumDef.name)}.${safeEnumConst(literals[i])}` : literals[i];
+  }).join(', ');
+}
+
+function testScriptLines(edgeChain, varName, schedulerVar, cls, metaModel) {
   const lines = [];
   edgeChain.forEach((edge, i) => {
     if (edge.guardFork) {
@@ -184,7 +204,7 @@ function testScriptLines(edgeChain, varName, schedulerVar) {
     } else {
       lines.push(`        // Step ${i + 1}: receive ${edge.event.port}.${edge.event.signal}`);
       const cap = capitalize(edge.event.port);
-      lines.push(`        ${varName}.get${cap}Receiver().${safeId(edge.event.signal)}();`);
+      lines.push(`        ${varName}.get${cap}Receiver().${safeId(edge.event.signal)}(${signalCallArgs(edge, cls, metaModel)});`);
     }
   });
   return lines;
@@ -278,7 +298,7 @@ export function generateConcreteTestFiles(leafId, setResult, cls, metaModel) {
   lines.push(...stubWireLines(cls, metaModel, varName));
   lines.push(`        ${varName}.start();`);
   lines.push('');
-  lines.push(...testScriptLines(edgeChain, varName, schedulerVar));
+  lines.push(...testScriptLines(edgeChain, varName, schedulerVar, cls, metaModel));
   lines.push('');
   if (leaf.status === 'leaf-depth-bound') {
     lines.push('        System.out.println("(exploration limit reached — asserting the state reached so far; path continues beyond this point)");');
@@ -335,7 +355,7 @@ export function generateAllTestsFiles(setResult, cls, metaModel) {
     methodLines.push(`        ${cls.name} ${varName} = new ${cls.name}(${needsScheduler ? schedulerVar : ''});`);
     methodLines.push(...stubWireLines(cls, metaModel, varName));
     methodLines.push(`        ${varName}.start();`);
-    methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar));
+    methodLines.push(...testScriptLines(path.edgeChain, varName, schedulerVar, cls, metaModel));
     if (leaf.status === 'leaf-depth-bound') {
       methodLines.push('        System.out.println("(exploration limit reached — asserting the state reached so far; path continues beyond this point)");');
     }
