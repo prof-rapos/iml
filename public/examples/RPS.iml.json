@@ -29,7 +29,8 @@
           {
             "id": "iZ_XUZIe",
             "name": "p1Move",
-            "type": "STRING",
+            "type": "ENUM",
+            "enumId": "eMove",
             "visibility": "PUBLIC",
             "lowerBound": 0,
             "upperBound": 1,
@@ -38,7 +39,8 @@
           {
             "id": "Y9KYU-LU",
             "name": "p2Move",
-            "type": "STRING",
+            "type": "ENUM",
+            "enumId": "eMove",
             "visibility": "PUBLIC",
             "lowerBound": 0,
             "upperBound": 1,
@@ -119,7 +121,13 @@
         "targetHandle": "top"
       }
     ],
-    "enumerations": [],
+    "enumerations": [
+      {
+        "id": "eMove",
+        "name": "Move",
+        "literals": ["ROCK", "PAPER", "SCISSORS"]
+      }
+    ],
     "behaviours": {
       "qFhZ6MCS": {
         "states": [
@@ -191,7 +199,7 @@
             "target": "S7Q1AzgO",
             "trigger": "player2.sendMove",
             "guard": "",
-            "effect": "p2Move = move;\r\nlog.log(\"  \" + players.get(1).getName() + \" plays \" + p2Move);\r\n\r\nint winner = 0;\r\n\r\nif      (p1Move.equals(\"R\") && p2Move.equals(\"S\")) winner = 1;\r\nelse if (p1Move.equals(\"P\") && p2Move.equals(\"R\")) winner = 1;\r\nelse if (p1Move.equals(\"S\") && p2Move.equals(\"P\")) winner = 1;\r\nelse if (p1Move.equals(\"R\") && p2Move.equals(\"P\")) winner = 2;\r\nelse if (p1Move.equals(\"P\") && p2Move.equals(\"S\")) winner = 2;\r\nelse if (p1Move.equals(\"S\") && p2Move.equals(\"R\")) winner = 2;\r\n\r\nif (!p1Move.equals(p2Move)) gamesPlayed++;\r\n\r\n\r\nif (winner == 1) {\r\n    players.get(0).setGamesWon(players.get(0).getGamesWon() + 1);\r\n    log.log(players.get(0).getName() + \" wins the round.\");\r\n} else if (winner == 2) {\r\n    players.get(1).setGamesWon(players.get(1).getGamesWon() + 1);\r\n    log.log(players.get(1).getName() + \" wins the round.\");\r\n}",
+            "effect": "p2Move = move;\r\nlog.log(\"  \" + players.get(1).getName() + \" plays \" + p2Move);\r\n\r\nint winner = 0;\r\n\r\nif      (p1Move.equals(Move.ROCK) && p2Move.equals(Move.SCISSORS)) winner = 1;\r\nelse if (p1Move.equals(Move.PAPER) && p2Move.equals(Move.ROCK)) winner = 1;\r\nelse if (p1Move.equals(Move.SCISSORS) && p2Move.equals(Move.PAPER)) winner = 1;\r\nelse if (p1Move.equals(Move.ROCK) && p2Move.equals(Move.PAPER)) winner = 2;\r\nelse if (p1Move.equals(Move.PAPER) && p2Move.equals(Move.SCISSORS)) winner = 2;\r\nelse if (p1Move.equals(Move.SCISSORS) && p2Move.equals(Move.ROCK)) winner = 2;\r\n\r\nif (!p1Move.equals(p2Move)) gamesPlayed++;\r\n\r\n\r\nif (winner == 1) {\r\n    players.get(0).setGamesWon(players.get(0).getGamesWon() + 1);\r\n    log.log(players.get(0).getName() + \" wins the round.\");\r\n} else if (winner == 2) {\r\n    players.get(1).setGamesWon(players.get(1).getGamesWon() + 1);\r\n    log.log(players.get(1).getName() + \" wins the round.\");\r\n}",
             "sourceHandle": "left",
             "targetHandle": "bottom",
             "labelT": 0.65
@@ -232,7 +240,7 @@
             "target": "pGlR3zms",
             "trigger": "game.ready",
             "guard": "",
-            "effect": "java.util.Random random = new java.util.Random();\r\nint randomNumber = random.nextInt(3) + 1;\r\n\r\nString move = \"\";\r\n\r\nswitch(randomNumber) {\r\n  case 1:\r\n    move = \"R\";\r\n    break;\r\n  case 2:\r\n    move = \"P\";\r\n    break;\r\n  case 3:\r\n    move = \"S\";\r\n    break;\r\n}\r\n\r\ngame.sendMove(move);",
+            "effect": "java.util.Random random = new java.util.Random();\r\nint randomNumber = random.nextInt(3) + 1;\r\n\r\nMove move = Move.ROCK;\r\n\r\nswitch(randomNumber) {\r\n  case 1:\r\n    move = Move.ROCK;\r\n    break;\r\n  case 2:\r\n    move = Move.PAPER;\r\n    break;\r\n  case 3:\r\n    move = Move.SCISSORS;\r\n    break;\r\n}\r\n\r\ngame.sendMove(move);",
             "sourceHandle": "top",
             "targetHandle": "right"
           }
@@ -258,7 +266,8 @@
               {
                 "id": "ZsZbqpbs",
                 "name": "move",
-                "type": "STRING"
+                "type": "ENUM",
+                "enumId": "eMove"
               }
             ]
           }
