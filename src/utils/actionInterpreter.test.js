@@ -441,12 +441,35 @@ describe('evaluateCondition — STRING/ENUM equality', () => {
     expect(evaluateCondition('direction == lastDirection', twoStrings, values)).toBe(false);
   });
 
-  it('does NOT resolve attribute-vs-attribute for < <= > >= (only == / != ever compare two attributes)', () => {
+  // Regression: found live — a guard written exactly like a real model's
+  // "gamesPlayed < gamesToPlay" (comparing two INT attributes with a
+  // relational operator, not ==/!=) resolved to 'unknown' and therefore
+  // forked every time regardless of the actual values, meaning it never
+  // actually pruned anything — the guard existed in the model but had no
+  // effect on the SET at all.
+  it('resolves attribute-vs-attribute for < <= > >= once both sides are known', () => {
     const twoInts = new Map(attrIndex);
     twoInts.set('otherCount', { id: 'aOtherCount', type: 'INT' });
     const values = unknownValues();
     values.set('aCount', { kind: 'known', value: '5' });
     values.set('aOtherCount', { kind: 'known', value: '3' });
+    expect(evaluateCondition('count > otherCount', twoInts, values)).toBe(true);
+    expect(evaluateCondition('count < otherCount', twoInts, values)).toBe(false);
+    expect(evaluateCondition('count >= otherCount', twoInts, values)).toBe(true);
+    expect(evaluateCondition('count <= otherCount', twoInts, values)).toBe(false);
+  });
+
+  it('still returns unknown for a numeric comparison against an untracked identifier', () => {
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '5' });
+    expect(evaluateCondition('count > someLocal', attrIndex, values)).toBe('unknown');
+  });
+
+  it('still returns unknown for a numeric comparison when the RHS attribute is tracked but not yet known', () => {
+    const twoInts = new Map(attrIndex);
+    twoInts.set('otherCount', { id: 'aOtherCount', type: 'INT' });
+    const values = unknownValues();
+    values.set('aCount', { kind: 'known', value: '5' }); // aOtherCount left unknown
     expect(evaluateCondition('count > otherCount', twoInts, values)).toBe('unknown');
   });
 
@@ -515,12 +538,20 @@ describe('describeUnresolvedGuard', () => {
     expect(describeUnresolvedGuard('flagg', attrIndex)).toMatch(/isn't a tracked attribute/);
   });
 
-  it('flags an attribute-vs-attribute comparison distinctly from a typo', () => {
-    expect(describeUnresolvedGuard('count > price', attrIndex)).toMatch(/other than a fixed value/);
+  // A real attribute-vs-attribute comparison (both sides tracked) is now a
+  // resolvable shape for every operator (evaluateCondition resolves it once
+  // both values are known) — so it gets the same "not known yet" reason as
+  // any other tracked-but-unknown value, distinctly from a genuine typo.
+  it('flags an attribute-vs-attribute comparison as "not known yet", not as a typo', () => {
+    expect(describeUnresolvedGuard('count > price', attrIndex)).toMatch(/isn't known for certain/);
   });
 
   it('gives a "not yet known" reason for a tracked attribute with an unknown value', () => {
     expect(describeUnresolvedGuard('count > 5', attrIndex)).toMatch(/isn't known for certain/);
+  });
+
+  it('still flags a comparison against a genuinely untracked RHS identifier as unevaluable', () => {
+    expect(describeUnresolvedGuard('count > someUntrackedThing', attrIndex)).toMatch(/other than a fixed value/);
   });
 
   it('flags an unsupported guard shape (e.g. a compound boolean expression)', () => {

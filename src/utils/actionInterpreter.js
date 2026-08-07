@@ -144,18 +144,32 @@ export function evaluateCondition(condRaw, attrIndex, values) {
       return op === '==' ? lhsBool === rhsBool : lhsBool !== rhsBool;
     }
 
-    if (RE_NUMLIT.test(rhsTrim)) {
-      const lhs = Number(cur.value);
-      const rhs = Number(rhsTrim);
-      if (Number.isNaN(lhs) || Number.isNaN(rhs)) return 'unknown';
-      switch (op) {
-        case '<':  return lhs < rhs;
-        case '<=': return lhs <= rhs;
-        case '>':  return lhs > rhs;
-        case '>=': return lhs >= rhs;
-        case '==': return lhs === rhs;
-        case '!=': return lhs !== rhs;
-        default:   return 'unknown';
+    // Numeric comparison — the RHS can be a numeric literal OR another
+    // currently-known tracked identifier (an attribute, or a signal
+    // parameter injected for this one transition) whose value happens to
+    // be numeric, resolved via the same resolveValue the equality branch
+    // below uses. This is what makes a guard like "gamesPlayed <
+    // gamesToPlay" (comparing two INT attributes to each other) actually
+    // evaluable instead of forking every time regardless of the real
+    // values — a real gap found via live testing, not just a completeness
+    // nicety: without it, a guard written exactly this way never prunes
+    // anything, since a fork always includes "guard could still be true."
+    {
+      const rhsResolved = resolveValue(rhsTrim, attrIndex, values, attr);
+      if (rhsResolved !== undefined) {
+        const lhs = Number(cur.value);
+        const rhs = Number(rhsResolved);
+        if (!Number.isNaN(lhs) && !Number.isNaN(rhs)) {
+          switch (op) {
+            case '<':  return lhs < rhs;
+            case '<=': return lhs <= rhs;
+            case '>':  return lhs > rhs;
+            case '>=': return lhs >= rhs;
+            case '==': return lhs === rhs;
+            case '!=': return lhs !== rhs;
+            default:   return 'unknown';
+          }
+        }
       }
     }
 
@@ -215,17 +229,15 @@ export function evaluateCondition(condRaw, attrIndex, values) {
 
 // Static-only check for whether `text` is EITHER a literal OR (only for an
 // equality-shaped comparison — == / != / .equals(), the only ones
-// evaluateCondition ever resolves attribute-vs-attribute) a bare identifier
-// that at least resolves to a tracked attribute (regardless of whether it's
-// currently known — describeUnresolvedGuard has no access to the runtime
-// values map, see its own doc comment below). isEquality must mirror
-// evaluateCondition's own operator gating exactly, or this could claim
-// "just not known yet" for an operator (< <= > >=) that never actually
-// resolves an attribute-vs-attribute RHS at all.
-function isResolvableRhsShape(text, isEquality, attrIndex) {
+// evaluateCondition ever resolves attribute-vs-attribute, for every
+// comparison operator) a bare identifier that at least resolves to a
+// tracked attribute (regardless of whether it's currently known —
+// describeUnresolvedGuard has no access to the runtime values map, see its
+// own doc comment below).
+function isResolvableRhsShape(text, attrIndex) {
   if (text === 'true' || text === 'false') return true;
   if (RE_NUMLIT.test(text) || RE_STRLIT.test(text) || RE_ENUMLIT.test(text)) return true;
-  return isEquality && RE_IDENT_ONLY.test(text) && !!attrIndex.get(text);
+  return RE_IDENT_ONLY.test(text) && !!attrIndex.get(text);
 }
 
 // Called only once evaluateCondition has already returned 'unknown', to give
@@ -247,9 +259,8 @@ export function describeUnresolvedGuard(condRaw, attrIndex) {
       return `References "${ident}", which isn't a tracked attribute on this capsule — check for a typo.`;
     }
     const rhsTrim = rhsRaw.trim();
-    const isEq = op === '==' || op === '!=';
-    if (!isResolvableRhsShape(rhsTrim, isEq, attrIndex)) {
-      return `Compares "${ident}" ${op} "${rhsTrim}" — comparing against something other than a fixed value (e.g. another attribute) isn't evaluated.`;
+    if (!isResolvableRhsShape(rhsTrim, attrIndex)) {
+      return `Compares "${ident}" ${op} "${rhsTrim}" — comparing against something other than a fixed value or a tracked attribute isn't evaluated.`;
     }
     return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
   }
@@ -261,7 +272,7 @@ export function describeUnresolvedGuard(condRaw, attrIndex) {
       return `References "${ident}", which isn't a tracked attribute on this capsule — check for a typo.`;
     }
     const rhsTrim = rhsRaw.trim();
-    if (!isResolvableRhsShape(rhsTrim, true, attrIndex)) {
+    if (!isResolvableRhsShape(rhsTrim, attrIndex)) {
       return `Compares "${ident}.equals(${rhsTrim})" — comparing against something other than a fixed value or a tracked attribute isn't evaluated.`;
     }
     return 'The value isn\'t known for certain at this point in the model — an inherent limit of static analysis, not a mistake.';
