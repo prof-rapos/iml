@@ -3,10 +3,12 @@ import { useTransformStore } from '../../store/transformStore';
 import { useModelStore, getAllAttributes } from '../../store/modelStore';
 import { runTransform } from '../../utils/runTransform';
 import { validateModelShape } from '../../utils/modelHelpers';
+import { buildTransformSummaryPdf } from '../../utils/generateTransformReport';
 import { useOutsideClick } from '../../utils/useOutsideClick';
 import { TEXT, TEXT_DIM } from '../theme';
 import ModuleSwitcher from '../ModuleSwitcher';
 import { HomeButton, MenuSection, MenuItem } from '../topbarMenu';
+import ReportOptionsModal from '../ReportOptionsModal';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
 const ACCENT   = '#7c3aed';
@@ -73,6 +75,7 @@ export default function TransformTopbar() {
   const setAppView = useModelStore((s) => s.setAppView);
   const [error, setError] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   const menuRef = useRef(null);
   useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
@@ -104,6 +107,12 @@ export default function TransformTopbar() {
     } catch (err) {
       showError(`Transform failed: ${err.message}`);
     }
+  };
+
+  const handleGenerateSummaryReport = async ({ userName }) => {
+    const doc = buildTransformSummaryPdf({ source, target, rules, result, userName });
+    const safeName = (source?.metaModel?.name || 'transform').replace(/[^a-z0-9_-]+/gi, '_');
+    doc.save(`${safeName}-summary.pdf`);
   };
 
   return (
@@ -222,9 +231,26 @@ export default function TransformTopbar() {
             >
               ↓ Download Result
             </MenuItem>
+            <MenuItem
+              onClick={() => { setMenuOpen(false); setReportModalOpen(true); }}
+              disabled={!result}
+              title={!result ? 'Run the transform first' : undefined}
+            >
+              ▤ Export Summary Report…
+            </MenuItem>
           </div>
         )}
       </div>
+
+      {reportModalOpen && (
+        <ReportOptionsModal
+          mode="reduced"
+          title="Export Transformation Summary"
+          accentColor={ACCENT}
+          onGenerate={handleGenerateSummaryReport}
+          onClose={() => setReportModalOpen(false)}
+        />
+      )}
 
       {/* Error toast */}
       {error && (

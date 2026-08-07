@@ -1,0 +1,213 @@
+import { jsPDF } from 'jspdf';
+import { getAllAttributes } from '../store/modelStore';
+
+// A thin cursor-based writer over jsPDF's core text API — no autotable/extra
+// plugin, since every section here is really just headings + wrapped lines,
+// not a genuine grid layout. Tracks the current Y position and adds a page
+// automatically once content would overflow.
+class PdfWriter {
+  constructor(doc) {
+    this.doc = doc;
+    this.margin = 40;
+    this.y = this.margin;
+    this.pageWidth = doc.internal.pageSize.getWidth();
+    this.pageHeight = doc.internal.pageSize.getHeight();
+    this.contentWidth = this.pageWidth - this.margin * 2;
+  }
+
+  ensureSpace(h) {
+    if (this.y + h > this.pageHeight - this.margin) {
+      this.doc.addPage();
+      this.y = this.margin;
+    }
+  }
+
+  newPage() {
+    this.doc.addPage();
+    this.y = this.margin;
+  }
+
+  heading(text) {
+    this.ensureSpace(28);
+    this.doc.setFont(undefined, 'bold');
+    this.doc.setFontSize(16);
+    this.doc.text(text, this.margin, this.y);
+    this.y += 22;
+    this.doc.setFont(undefined, 'normal');
+  }
+
+  subheading(text) {
+    this.ensureSpace(18);
+    this.doc.setFont(undefined, 'bold');
+    this.doc.setFontSize(12);
+    this.doc.text(text, this.margin, this.y);
+    this.y += 16;
+    this.doc.setFont(undefined, 'normal');
+  }
+
+  // Wraps to contentWidth, adding a page mid-paragraph if needed.
+  line(text, { size = 10, indent = 0, mono = false, color = '#000000' } = {}) {
+    this.doc.setFont(undefined, mono ? 'courier' : 'helvetica');
+    this.doc.setFontSize(size);
+    this.doc.setTextColor(color);
+    const wrapped = this.doc.splitTextToSize(String(text ?? ''), this.contentWidth - indent);
+    for (const ln of wrapped) {
+      this.ensureSpace(size * 1.3);
+      this.doc.text(ln, this.margin + indent, this.y);
+      this.y += size * 1.3;
+    }
+    this.doc.setTextColor('#000000');
+  }
+
+  spacer(h = 10) {
+    this.y += h;
+  }
+
+  hr() {
+    this.ensureSpace(10);
+    this.doc.setDrawColor('#cccccc');
+    this.doc.line(this.margin, this.y, this.pageWidth - this.margin, this.y);
+    this.y += 10;
+  }
+}
+
+function typeLabel(attr, metaModel) {
+  if (attr.type !== 'ENUM') return attr.type;
+  return (metaModel.enumerations ?? []).find((e) => e.id === attr.enumId)?.name ?? 'ENUM';
+}
+
+function writeClassTable(w, metaModel) {
+  for (const cls of metaModel.classes) {
+    w.subheading(cls.name + (cls.isAbstract ? ' (abstract)' : ''));
+    const attrs = getAllAttributes(cls.id, metaModel);
+    if (attrs.length === 0) {
+      w.line('(no attributes)', { size: 10, indent: 10, color: '#666666' });
+    }
+    for (const a of attrs) {
+      const mult = a.upperBound === -1 ? `${a.lowerBound}..*` : `${a.lowerBound}..${a.upperBound}`;
+      w.line(`${a.name} : ${typeLabel(a, metaModel)} [${mult}]`, { size: 10, indent: 10, mono: true });
+    }
+    w.spacer(8);
+  }
+}
+
+function attributeMappingLabel(m, srcAttrs, tgtAttrs) {
+  const tgtAttr = tgtAttrs.find((a) => a.id === m.targetAttrId);
+  const tgtName = tgtAttr?.name ?? m.targetAttrId;
+  switch (m.type) {
+    case 'direct': {
+      const srcAttr = srcAttrs.find((a) => a.id === m.sourceAttrId);
+      return `${tgtName}  <-  direct: ${srcAttr?.name ?? '(unset)'}`;
+    }
+    case 'constant':
+      return `${tgtName}  <-  constant: "${m.value ?? ''}"`;
+    case 'expression':
+      return `${tgtName}  <-  expression: ${m.expression ?? ''}`;
+    default:
+      return `${tgtName}  <-  omit`;
+  }
+}
+
+function writeInstanceModels(w, instanceModels, metaModel) {
+  if (!instanceModels || instanceModels.length === 0) {
+    w.line('(none)', { size: 10, indent: 10, color: '#666666' });
+    return;
+  }
+  for (const im of instanceModels) {
+    w.subheading(`${im.name} (${im.objects.length} object${im.objects.length !== 1 ? 's' : ''})`);
+    for (const obj of im.objects) {
+      const cls = metaModel.classes.find((c) => c.id === obj.classId);
+      w.line(`${obj.name}  :  ${cls?.name ?? obj.classId}`, { size: 10, indent: 10 });
+      const attrs = getAllAttributes(obj.classId, metaModel);
+      for (const a of attrs) {
+        const v = obj.attributeValues?.[a.id];
+        const rendered = Array.isArray(v) ? `[${v.join(', ')}]` : String(v ?? '');
+        w.line(`${a.name} = ${rendered}`, { size: 9, indent: 20, mono: true, color: '#444444' });
+      }
+    }
+    w.spacer(8);
+  }
+}
+
+// Builds (but does not save/download) a jsPDF document summarizing one
+// Model Transformations run — source/target meta-models, the mapping
+// rules, the input instance model(s), the resulting output instance
+// model(s), and any warnings the run produced (expression failures,
+// omit-on-required violations). All data comes straight out of
+// transformStore.js's own shape — no field renames needed.
+export function buildTransformSummaryPdf({ source, target, rules, result, userName }) {
+  const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+  const w = new PdfWriter(doc);
+
+  // ── Title page ──────────────────────────────────────────────────────────
+  doc.setFont(undefined, 'bold');
+  doc.setFontSize(22);
+  doc.text('Model Transformation Summary', w.margin, 160);
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(13);
+  doc.text(`${source.metaModel.name || 'Source'}  ->  ${target.metaModel.name || 'Target'}`, w.margin, 190);
+  doc.setFontSize(11);
+  doc.setTextColor('#555555');
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, w.margin, 220);
+  if (userName) doc.text(`Generated by: ${userName}`, w.margin, 238);
+  doc.setTextColor('#000000');
+
+  // ── Source meta-model ───────────────────────────────────────────────────
+  w.newPage();
+  w.heading(`Source Meta-Model: ${source.metaModel.name || '(unnamed)'}`);
+  writeClassTable(w, source.metaModel);
+
+  // ── Target meta-model ───────────────────────────────────────────────────
+  w.newPage();
+  w.heading(`Target Meta-Model: ${target.metaModel.name || '(unnamed)'}`);
+  writeClassTable(w, target.metaModel);
+
+  // ── Rules ───────────────────────────────────────────────────────────────
+  w.newPage();
+  w.heading('Transformation Rules');
+  if (rules.length === 0) {
+    w.line('(no rules defined)', { size: 10, color: '#666666' });
+  }
+  for (const rule of rules) {
+    const srcCls = source.metaModel.classes.find((c) => c.id === rule.sourceClassId);
+    const tgtCls = target.metaModel.classes.find((c) => c.id === rule.targetClassId);
+    const srcAttrs = getAllAttributes(rule.sourceClassId, source.metaModel);
+    const tgtAttrs = getAllAttributes(rule.targetClassId, target.metaModel);
+    w.subheading(`${srcCls?.name ?? rule.sourceClassId}  ->  ${tgtCls?.name ?? rule.targetClassId}`);
+    for (const m of rule.attributeMappings) {
+      w.line(attributeMappingLabel(m, srcAttrs, tgtAttrs), { size: 10, indent: 10, mono: true });
+    }
+    for (const rm of rule.relationMappings ?? []) {
+      const tgtRel = target.metaModel.relations.find((r) => r.id === rm.targetRelId);
+      const srcRel = source.metaModel.relations.find((r) => r.id === rm.sourceRelId);
+      w.line(`relation ${tgtRel?.name ?? rm.targetRelId}  <-  ${srcRel?.name ?? '(none)'}`, { size: 10, indent: 10, mono: true });
+    }
+    w.spacer(8);
+  }
+
+  // ── Input instance models ──────────────────────────────────────────────
+  w.newPage();
+  w.heading('Input Instance Models');
+  writeInstanceModels(w, source.instanceModels, source.metaModel);
+
+  // ── Output instance models ─────────────────────────────────────────────
+  w.newPage();
+  w.heading('Output Instance Models');
+  if (result) {
+    writeInstanceModels(w, result.instanceModels, result.metaModel);
+  } else {
+    w.line('(transform has not been run)', { size: 10, color: '#666666' });
+  }
+
+  // ── Warnings ────────────────────────────────────────────────────────────
+  if (result?.warnings?.length) {
+    w.newPage();
+    w.heading('Warnings');
+    for (const msg of result.warnings) {
+      w.line(`• ${msg}`, { size: 10, color: '#a15c00' });
+      w.spacer(4);
+    }
+  }
+
+  return doc;
+}
