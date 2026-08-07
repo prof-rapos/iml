@@ -3,7 +3,7 @@ import { pathToLeaf } from './symbolicExecution.js';
 import {
   generateJavaCode, toClassName, toPackageName, capitalize, safeId,
   portFieldName, stateConstMap, resolveSignalParams, safeEnumConst,
-  isMultiRelation, getRelationFieldName,
+  isMultiRelation, getRelationFieldName, javaTypeForParam,
 } from './javaCodeGen.js';
 import { getProtocolById } from '../store/modelStore.js';
 
@@ -32,11 +32,14 @@ export function generateAbstractTestCase(leafId, setResult, metaModel) {
 
   const steps = edgeChain.map((edge) => {
     const args = edge.event.kind === 'signal' ? signalCallArgs(edge, cls, metaModel) : '';
+    const placeholderNote = edge.event.kind === 'signal' && hasPlaceholderArgs(edge, cls, metaModel)
+      ? ' (placeholder value — not tracked by the model)'
+      : '';
     return {
       kind: edge.event.kind, // 'timeout' | 'signal'
       label: edge.event.kind === 'timeout'
         ? `Timer fires on "${edge.event.port}"${edge.event.msLabel ? ` (~${edge.event.msLabel}ms)` : ' — duration not statically known'}`
-        : `Receive ${edge.event.port}.${edge.event.signal}(${args})`,
+        : `Receive ${edge.event.port}.${edge.event.signal}(${args})${placeholderNote}`,
       guardFork: edge.guardFork,
       guardReason: edge.guardReason ?? null,
     };
@@ -228,24 +231,57 @@ function compositionStubLines(cls, metaModel, varName) {
   return lines;
 }
 
-// A signal event whose path went through an enum-parameter fork (see
-// enumParamCombos in symbolicExecution.js) carries the exact literal(s) that
-// fired it in edge.paramLabel (comma-joined if the signal ever had more than
-// one enum parameter, though realistically always exactly one) — resolves
-// those back into real Java argument expressions (EnumClass.LITERAL) so the
-// receiver call actually compiles. The receiver's method signature now
-// genuinely requires an argument for an ENUM parameter (javaTypeForParam
-// resolves it to the real enum class, not a fallback String), so the old
-// always-zero-args call would no longer compile for these.
+// A fixed stand-in per Java type for a signal parameter MBT never tracks a
+// real value for — anything not ENUM-typed (see below). Chosen to be
+// visually obvious in generated output rather than blend in (an empty
+// string or bare 0 reads as "did the model forget to set this", not "this
+// value is intentionally arbitrary").
+function placeholderArgForType(javaTypeName) {
+  switch (javaTypeName) {
+    case 'int':     return '0';
+    case 'double':  return '0.0';
+    case 'boolean': return 'false';
+    default:        return '"PLACEHOLDER"';
+  }
+}
+
+// Resolves every parameter a signal declares into a real Java argument
+// expression, in declaration order, so the receiver call always compiles
+// against the now fully-typed receiver interface (javaTypeForParam gives
+// every parameter — ENUM included — a real, non-String-fallback type). Two
+// sources per parameter: an ENUM-typed one went through symbolicExecution.js's
+// enumParamCombos fork, so the exact literal it fired with is threaded
+// through as edge.paramLabel (comma-joined in declaration order across
+// however many enum parameters the signal has — realistically always
+// exactly one) — resolved back into `EnumClass.LITERAL`. Any other type
+// (STRING/INT/DOUBLE/BOOLEAN) has a genuinely unbounded runtime domain the
+// engine can't track, so it always gets a fixed placeholder instead — see
+// placeholderArgForType. Shared by both the abstract test case's human-
+// readable step label and the concrete Java test's actual method call, so
+// the two never disagree about what a branch "sent".
 function signalCallArgs(edge, cls, metaModel) {
-  if (!edge.paramLabel) return '';
   const triggerVal = `${edge.event.port}.${edge.event.signal}`;
-  const enumParams = resolveSignalParams(triggerVal, cls, metaModel).filter((p) => p.type === 'ENUM');
-  const literals = edge.paramLabel.split(', ');
-  return enumParams.map((p, i) => {
-    const enumDef = (metaModel.enumerations ?? []).find((e) => e.id === p.enumId);
-    return enumDef ? `${toClassName(enumDef.name)}.${safeEnumConst(literals[i])}` : literals[i];
+  const params = resolveSignalParams(triggerVal, cls, metaModel);
+  if (params.length === 0) return '';
+  const literals = edge.paramLabel ? edge.paramLabel.split(', ') : [];
+  let enumIdx = 0;
+  return params.map((p) => {
+    if (p.type === 'ENUM') {
+      const enumDef = (metaModel.enumerations ?? []).find((e) => e.id === p.enumId);
+      const literal = literals[enumIdx++];
+      return enumDef && literal ? `${toClassName(enumDef.name)}.${safeEnumConst(literal)}` : 'null';
+    }
+    return placeholderArgForType(javaTypeForParam(p, metaModel));
   }).join(', ');
+}
+
+// True when at least one of this signal's parameters got a placeholder arg
+// (i.e. isn't ENUM-typed) — used to flag the concrete test's receiver call
+// with an explanatory comment, since that argument's specific value is
+// arbitrary and not something the model actually determined.
+function hasPlaceholderArgs(edge, cls, metaModel) {
+  const triggerVal = `${edge.event.port}.${edge.event.signal}`;
+  return resolveSignalParams(triggerVal, cls, metaModel).some((p) => p.type !== 'ENUM');
 }
 
 function testScriptLines(edgeChain, varName, schedulerVar, cls, metaModel) {
@@ -259,6 +295,9 @@ function testScriptLines(edgeChain, varName, schedulerVar, cls, metaModel) {
       lines.push(`        ${schedulerVar}.fireNext();`);
     } else {
       lines.push(`        // Step ${i + 1}: receive ${edge.event.port}.${edge.event.signal}`);
+      if (hasPlaceholderArgs(edge, cls, metaModel)) {
+        lines.push('        // NOTE: placeholder argument(s) below — MBT only tracks ENUM-typed signal parameters; this value is arbitrary, not something the model determined');
+      }
       const cap = capitalize(edge.event.port);
       lines.push(`        ${varName}.get${cap}Receiver().${safeId(edge.event.signal)}(${signalCallArgs(edge, cls, metaModel)});`);
     }

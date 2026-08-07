@@ -213,6 +213,96 @@ describe('generateConcreteTestFiles — enum-parameter signal calls', () => {
   });
 });
 
+// Regression: a signal parameter that ISN'T ENUM-typed (STRING/INT/DOUBLE/
+// BOOLEAN) has a genuinely unbounded runtime domain — symbolicExecution.js's
+// enumParamCombos only ever forks/labels ENUM parameters, so signalCallArgs
+// used to fall back to zero arguments for these. That used to compile only
+// because the receiver method itself was untyped; now that javaTypeForParam
+// gives every parameter (ENUM included) a real type, a zero-arg call against
+// a method that requires arguments doesn't compile at all. Fixed via a
+// fixed, clearly-labeled placeholder per Java type.
+describe('generateConcreteTestFiles / generateAbstractTestCase — non-enum signal parameters get placeholder arguments', () => {
+  const mixedMetaModel = {
+    relations: [],
+    classes: [{
+      id: 'PL', name: 'Player', attributes: [],
+      ports: [{ id: 'pIn', name: 'game', protocolId: 'proto1' }],
+    }],
+    enumerations: [{ id: 'eMove', name: 'Move', literals: ['ROCK', 'PAPER', 'SCISSORS'] }],
+    protocols: [{
+      id: 'proto1', name: 'RPS',
+      signals: [{
+        id: 'sig1', name: 'configure', direction: 'in',
+        params: [
+          { id: 'p1', name: 'label', type: 'STRING' },
+          { id: 'p2', name: 'count', type: 'INT' },
+          { id: 'p3', name: 'ratio', type: 'DOUBLE' },
+          { id: 'p4', name: 'active', type: 'BOOLEAN' },
+          { id: 'p5', name: 'move', type: 'ENUM', enumId: 'eMove' },
+        ],
+      }],
+    }],
+    behaviours: {
+      PL: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sWaiting', kind: 'simple', name: 'Waiting', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sWaiting', trigger: '', guard: '', effect: '' },
+          { id: 't1', source: 'sWaiting', target: 'sWaiting', trigger: 'game.configure', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+  const mixedCls = mixedMetaModel.classes[0];
+
+  it('gives every non-enum parameter a type-correct placeholder and the enum parameter its fired literal, in declaration order', () => {
+    const result = buildSET('PL', mixedMetaModel);
+    const leaves = [...result.nodesById.values()].filter((n) => n.id !== result.rootId);
+    const calls = leaves.map((leaf) => {
+      const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, mixedCls, mixedMetaModel);
+      return fileFor(files, mainClassPath.split('/').pop());
+    });
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().configure("PLACEHOLDER", 0, 0.0, false, Move.ROCK);'))).toBe(true);
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().configure("PLACEHOLDER", 0, 0.0, false, Move.PAPER);'))).toBe(true);
+    expect(calls.some((t) => t.includes('capsule.getGameReceiver().configure("PLACEHOLDER", 0, 0.0, false, Move.SCISSORS);'))).toBe(true);
+  });
+
+  it('flags the placeholder call with an explanatory comment in the generated Java', () => {
+    const result = buildSET('PL', mixedMetaModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, mixedCls, mixedMetaModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toMatch(/NOTE: placeholder argument/);
+  });
+
+  it('abstract test case step shows the placeholder args and flags them as not tracked', () => {
+    const result = buildSET('PL', mixedMetaModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId);
+    const tc = generateAbstractTestCase(leaf.id, result, mixedMetaModel);
+    expect(tc.steps[0].label).toContain('game.configure("PLACEHOLDER", 0, 0.0, false, Move.');
+    expect(tc.steps[0].label).toContain('placeholder value — not tracked by the model');
+  });
+
+  it('a signal with only non-enum parameters (no enum fork at all) still gets placeholder arguments, not zero args', () => {
+    const stringOnlyModel = {
+      ...mixedMetaModel,
+      protocols: [{
+        id: 'proto1', name: 'RPS',
+        // same trigger name ("configure") as the fixture's transition — only
+        // the parameter list changes, to isolate "no enum param at all"
+        signals: [{ id: 'sig1', name: 'configure', direction: 'in', params: [{ id: 'p1', name: 'newName', type: 'STRING' }] }],
+      }],
+    };
+    const result = buildSET('PL', stringOnlyModel);
+    const leaf = [...result.nodesById.values()].find((n) => n.id !== result.rootId);
+    const { files, mainClassPath } = generateConcreteTestFiles(leaf.id, result, mixedCls, stringOnlyModel);
+    const test = fileFor(files, mainClassPath.split('/').pop());
+    expect(test).toContain('capsule.getGameReceiver().configure("PLACEHOLDER");');
+  });
+});
+
 // Regression: action code that reaches into a composition-derived field
 // (e.g. "players.get(0).getName()", the RPS example's own winner
 // computation) threw at runtime — MBT builds the capsule under test in

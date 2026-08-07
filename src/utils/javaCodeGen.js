@@ -104,7 +104,7 @@ function javaTypeForAttr(attr, metaModel) {
 // though the UI lets you pick one — the receiver method/field ended up typed
 // wrong (String, not the actual enum) and any real Java that assigned an enum
 // constant to it wouldn't compile.
-function javaTypeForParam(param, metaModel) {
+export function javaTypeForParam(param, metaModel) {
   if (param.type !== 'ENUM') return javaType(param.type);
   const e = (metaModel.enumerations ?? []).find((en) => en.id === param.enumId);
   return e ? toClassName(e.name) : javaType(param.type);
