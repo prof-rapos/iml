@@ -163,7 +163,13 @@ const PADDING = 60;
 // returns — waits two animation frames afterward so the browser has
 // actually painted the deselected state before anything below reads the
 // DOM (bounds measurement, then the capture itself).
-export async function exportFlowImage({ container, format = 'jpeg', backgroundColor, filename, beforeCapture }) {
+//
+// Pure — returns the captured image, does NOT trigger a download. Split out
+// from exportFlowImage() (below, the thin download-triggering wrapper the
+// three topbars use) so the "Generate Report" pipeline can capture a whole
+// sequence of diagrams (mounted one at a time in an off-screen host) and
+// embed each one into a PDF, without a stray file downloading per diagram.
+export async function captureFlowImageDataUrl({ container, format = 'jpeg', backgroundColor, beforeCapture }) {
   if (beforeCapture) {
     beforeCapture();
     await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -195,13 +201,21 @@ export async function exportFlowImage({ container, format = 'jpeg', backgroundCo
         transform: `translate(${-minX + PADDING}px, ${-minY + PADDING}px) scale(1)`,
       },
     });
-
-    const a = document.createElement('a');
-    a.href = dataUrl;
-    a.download = filename;
-    a.click();
+    return { dataUrl, width, height };
   } finally {
     if (markerDefs) viewport.removeChild(markerDefs);
     viewport.removeChild(backgroundRect);
   }
+}
+
+// Thin download-triggering wrapper — what the three topbars (Structural/
+// Behavioural/MBT) actually call. Kept as a separate function (rather than
+// a `download: true` flag on captureFlowImageDataUrl) so its signature/
+// behavior for those existing callers doesn't change at all.
+export async function exportFlowImage({ container, format = 'jpeg', backgroundColor, filename, beforeCapture }) {
+  const { dataUrl } = await captureFlowImageDataUrl({ container, format, backgroundColor, beforeCapture });
+  const a = document.createElement('a');
+  a.href = dataUrl;
+  a.download = filename;
+  a.click();
 }

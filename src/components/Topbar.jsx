@@ -6,8 +6,21 @@ import { useGenerateMenu } from './useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from './topbarMenu';
 import ModuleSwitcher from './ModuleSwitcher';
 import LoadExampleModal from './LoadExampleModal';
+import ReportOptionsModal from './ReportOptionsModal';
+import { generateFullReport } from '../utils/generateFullReport';
 
 const BORDER = 'rgba(255,255,255,0.10)';
+const REPORT_ACCENT = '#2563eb';
+
+const REPORT_SECTIONS = [
+  { key: 'metamodel', label: 'Meta-Model' },
+  { key: 'instances', label: 'Instance Models' },
+  { key: 'structure', label: 'Composite Structure' },
+  { key: 'statemachines', label: 'State Machines' },
+  { key: 'code', label: 'Generated Code' },
+  { key: 'set', label: 'SET (Symbolic Execution Tree)' },
+  { key: 'tests', label: 'Generated Tests' },
+];
 
 export default function Topbar() {
   const mode = useModelStore((s) => s.mode);
@@ -22,6 +35,8 @@ export default function Topbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   const [exampleModalOpen, setExampleModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const instanceModels = useModelStore((s) => s.instanceModels);
 
   const { menuSection: generateMenuSection, dialog: generateDialog } =
     useGenerateMenu({ defaultScope: 'structural', closeMenu: () => setMenuOpen(false) });
@@ -67,6 +82,10 @@ export default function Topbar() {
     } catch (err) {
       alert('Export failed: ' + err.message);
     }
+  };
+
+  const handleGenerateReport = async ({ userName, selectedKeys }) => {
+    await generateFullReport({ metaModel, instanceModels, userName, selectedKeys });
   };
 
   return (
@@ -129,6 +148,7 @@ export default function Topbar() {
             <MenuDivider />
             <MenuItem onClick={() => handleExportImage('jpeg')}>Export JPG</MenuItem>
             <MenuItem onClick={() => handleExportImage('svg')}>Export SVG (vector)</MenuItem>
+            <MenuItem onClick={() => { setReportModalOpen(true); setMenuOpen(false); }}>Generate Report…</MenuItem>
             <MenuDivider />
             {generateMenuSection}
           </div>
@@ -137,6 +157,16 @@ export default function Topbar() {
 
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleLoad} />
       {exampleModalOpen && <LoadExampleModal onClose={() => setExampleModalOpen(false)} />}
+      {reportModalOpen && (
+        <ReportOptionsModal
+          mode="full"
+          title="Generate Report"
+          accentColor={REPORT_ACCENT}
+          sections={REPORT_SECTIONS}
+          onGenerate={handleGenerateReport}
+          onClose={() => setReportModalOpen(false)}
+        />
+      )}
     </div>
 
     {generateDialog}

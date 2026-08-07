@@ -12,7 +12,12 @@ import { layoutTree } from '../utils/treeLayout.js';
 // EXPLICIT action — on capsule selection or a manual rebuild — not on every
 // unrelated model edit. The module-scope subscription below is only a cheap
 // staleness CHECK (does capsuleId still resolve?), not a rebuild trigger.
-function toFlowNodesEdges(setResult, positions) {
+// Exported so the "Generate Report" pipeline can build SET nodes/edges for
+// a headless capture (see ReportRenderHost.jsx) without driving this
+// store's own UI-oriented capsuleId/rebuild() flow, which is async-
+// scheduled for reasons (spinner, staleness checks) that don't apply to a
+// one-shot batch render.
+export function toFlowNodesEdges(setResult, positions) {
   const nodes = [...setResult.nodesById.values()].map((n) => ({
     id: n.id,
     type: 'setNode',
