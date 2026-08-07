@@ -196,7 +196,6 @@ export default function SETViewerPanel() {
               onNodesChange={onNodesChange}
               nodeTypes={nodeTypes}
               edgeTypes={edgeTypes}
-              nodesDraggable={false}
               nodesConnectable={false}
               elementsSelectable
             >
