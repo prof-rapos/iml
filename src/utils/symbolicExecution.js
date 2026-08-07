@@ -1,6 +1,6 @@
 import { nanoid } from 'nanoid';
-import { getAllAttributes } from './modelHelpers.js';
-import { safeId } from './javaCodeGen.js';
+import { getAllAttributes, getEnum } from './modelHelpers.js';
+import { safeId, resolveSignalParams } from './javaCodeGen.js';
 import { applyActionCode, evaluateCondition, describeUnresolvedGuard } from './actionInterpreter.js';
 
 // Subsumption-based symbolic execution over one capsule class's state
@@ -114,25 +114,43 @@ export function buildSET(classId, metaModel) {
     return id;
   }
 
-  function makeEdge(sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason) {
+  function makeEdge(sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason, paramLabel) {
     const id = nanoid(8);
-    edgesById.set(id, { id, sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason: guardReason ?? null });
+    edgesById.set(id, { id, sourceNodeId, targetNodeId, transitionId, branch, guardFork, event, guardReason: guardReason ?? null, paramLabel: paramLabel ?? null });
     return id;
   }
 
   // Applies one transition (effect, then the target state's entry action) and
   // creates the resulting child node — either a fresh 'open' node (which gets
   // recursively expanded) or a 'leaf-subsumed'/'leaf-final' node.
-  function fireTransition(node, t, trigger, branch, guardFork, guardReason) {
+  //
+  // ctxAttrIndex/paramOverrides/paramLabel come from the caller's enum-
+  // parameter fork (see enumParamCombos below) — ctxAttrIndex extends the
+  // capsule's own attrIndex with a synthetic entry for the signal parameter
+  // name so t.effect's action code (e.g. "p1Move = move;") can resolve it
+  // via the same resolveValue() path as any other tracked identifier;
+  // paramOverrides is the matching known-value entry, merged into the
+  // values map ONLY for that one applyActionCode(t.effect, ...) call and
+  // then stripped back out — it's a transient dispatch-local, not persistent
+  // capsule state, and must never leak into the subsumption signature. It's
+  // deliberately NOT carried into the target state's entry() action: real
+  // generated Java calls enterX() as a separate method, so the signal
+  // parameter's local variable is genuinely out of scope there too — this
+  // mirrors that exactly rather than being more capable than the real code.
+  function fireTransition(node, t, trigger, branch, guardFork, guardReason, ctxAttrIndex, paramOverrides, paramLabel) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
     const targetState = machine.states.find((s) => s.id === t.target);
 
-    let childValues = applyActionCode(t.effect, attrIndex, node.attrValues);
+    const effectValues = paramOverrides ? new Map([...node.attrValues, ...paramOverrides]) : node.attrValues;
+    let childValues = applyActionCode(t.effect, ctxAttrIndex ?? attrIndex, effectValues);
+    if (paramOverrides) {
+      for (const key of paramOverrides.keys()) childValues.delete(key);
+    }
 
     if (targetState?.kind === 'final') {
       const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'leaf-final');
-      const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
+      const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason, paramLabel);
       nodesById.get(childId).parentEdgeId = edgeId;
       return;
     }
@@ -144,13 +162,13 @@ export function buildSET(classId, metaModel) {
     if (existingId) {
       const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'leaf-subsumed');
       nodesById.get(childId).subsumedByNodeId = existingId;
-      const edgeId = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
+      const edgeId = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason, paramLabel);
       nodesById.get(childId).parentEdgeId = edgeId;
       return;
     }
 
     const childId = makeNode(targetState.id, childValues, node.depth + 1, null, 'open');
-    const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason);
+    const edgeId  = makeEdge(node.id, childId, t.id, branch, guardFork, event, guardReason, paramLabel);
     const childNode = nodesById.get(childId);
     childNode.parentEdgeId = edgeId;
     visited.set(sig, childId);
@@ -163,13 +181,72 @@ export function buildSET(classId, metaModel) {
   // is false when every member's guard was fully evaluated to false (the
   // drop is certain), true when at least one member couldn't be evaluated
   // (the drop is only one of the possible outcomes).
-  function fireDropped(node, trigger, guardFork, guardReason) {
+  function fireDropped(node, trigger, guardFork, guardReason, paramLabel) {
     const sourceState = machine.states.find((s) => s.id === node.stateId);
     const event = eventFor(trigger, sourceState?.entry);
     const droppedId = makeNode(node.stateId, node.attrValues, node.depth + 1, null, 'leaf-subsumed');
     nodesById.get(droppedId).subsumedByNodeId = node.id;
-    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', guardFork, event, guardReason);
+    const edgeId = makeEdge(node.id, droppedId, null, 'all-guards-false', guardFork, event, guardReason, paramLabel);
     nodesById.get(droppedId).parentEdgeId = edgeId;
+  }
+
+  // One fork per combination of every ENUM-typed parameter on this trigger's
+  // signal (realistically always exactly one parameter, but this stays
+  // correct if a signal ever declares more than one) — a small, bounded
+  // domain the tool actually knows, unlike a STRING/INT parameter's
+  // genuinely unbounded runtime value. Returns [null] (a single "no
+  // injection" entry) when the signal has no enum parameters at all, so the
+  // caller's loop doesn't need a separate code path for that far more common
+  // case. Each real combo carries: attrIndexExt (the capsule's attrIndex
+  // plus a synthetic entry per parameter name, so action code can resolve
+  // it like any other identifier), paramOverrides (the matching known-value
+  // entries, keyed by those synthetic ids), and label (for the SET edge —
+  // "ROCK", or "ROCK, PAPER" if there were ever two).
+  //
+  // Memoized per trigger string: this is invariant across every node in the
+  // tree (it only depends on triggerVal/cls/metaModel, none of which change
+  // during one buildSET call), but `expand()` calls it once per trigger
+  // group per node — recomputing it from scratch was cheap per call but
+  // measurably added up across a several-thousand-node tree. Safe to share
+  // the returned Maps across every node that fires this trigger: everything
+  // downstream only ever reads from paramOverrides/attrIndexExt, never
+  // mutates them.
+  const comboCache = new Map();
+  function enumParamCombos(triggerVal) {
+    const cached = comboCache.get(triggerVal);
+    if (cached) return cached;
+
+    const enumParams = resolveSignalParams(triggerVal, cls, metaModel)
+      .map((p) => ({ p, enumDef: p.type === 'ENUM' ? getEnum(p.enumId, metaModel) : null }))
+      .filter((x) => x.enumDef && x.enumDef.literals?.length > 0);
+    if (enumParams.length === 0) {
+      comboCache.set(triggerVal, [null]);
+      return [null];
+    }
+
+    let combos = [[]];
+    for (const { p, enumDef } of enumParams) {
+      const next = [];
+      for (const combo of combos) {
+        for (const literal of enumDef.literals) next.push([...combo, { name: p.name, literal }]);
+      }
+      combos = next;
+    }
+
+    const result = combos.map((entries) => {
+      const attrIndexExt = new Map(attrIndex);
+      const paramOverrides = new Map();
+      const labels = [];
+      for (const { name, literal } of entries) {
+        const synthId = `__sigparam_${triggerVal}_${name}`;
+        attrIndexExt.set(name, { id: synthId, type: 'ENUM' });
+        paramOverrides.set(synthId, { kind: 'known', value: literal });
+        labels.push(literal);
+      }
+      return { attrIndexExt, paramOverrides, label: labels.join(', ') };
+    });
+    comboCache.set(triggerVal, result);
+    return result;
   }
 
   function expand(node) {
@@ -196,29 +273,40 @@ export function buildSET(classId, metaModel) {
     }
 
     for (const [trigger, group] of groups) {
-      let stopped = false;   // an unconditional or a fully-evaluated-true guard fired for certain — matches dispatch()'s if/else-if: nothing after it can run
-      let anyUnknown = false; // at least one member's guard couldn't be evaluated, so "none of them fired" is only a possible outcome, not certain
-      let lastUnknownReason = null; // informational only — see describeUnresolvedGuard
-      for (let i = 0; i < group.length; i++) {
-        const t = group[i];
-        const guardText = t.guard && t.guard.trim();
-        if (!guardText) {
-          fireTransition(node, t, trigger, 'unconditional', false);
-          stopped = true;
-          break;
+      // Every combo below runs the SAME guard-evaluation/firing logic that
+      // already existed — the only thing that changes per combo is which
+      // attrIndex/values context guards and effects see (plain, or extended
+      // with one enum-parameter's value injected as a known identifier).
+      for (const combo of enumParamCombos(trigger)) {
+        const ctxAttrIndex   = combo ? combo.attrIndexExt : attrIndex;
+        const ctxValues       = combo ? new Map([...node.attrValues, ...combo.paramOverrides]) : node.attrValues;
+        const paramOverrides = combo ? combo.paramOverrides : null;
+        const paramLabel     = combo ? combo.label : null;
+
+        let stopped = false;   // an unconditional or a fully-evaluated-true guard fired for certain — matches dispatch()'s if/else-if: nothing after it can run
+        let anyUnknown = false; // at least one member's guard couldn't be evaluated, so "none of them fired" is only a possible outcome, not certain
+        let lastUnknownReason = null; // informational only — see describeUnresolvedGuard
+        for (let i = 0; i < group.length; i++) {
+          const t = group[i];
+          const guardText = t.guard && t.guard.trim();
+          if (!guardText) {
+            fireTransition(node, t, trigger, 'unconditional', false, null, ctxAttrIndex, paramOverrides, paramLabel);
+            stopped = true;
+            break;
+          }
+          const evaluated = evaluateCondition(guardText, ctxAttrIndex, ctxValues);
+          if (evaluated === true) {
+            fireTransition(node, t, trigger, `guard-${i}-true`, false, null, ctxAttrIndex, paramOverrides, paramLabel); // certain, given every earlier member was false
+            stopped = true;
+            break;
+          }
+          if (evaluated === false) continue; // certainly does not fire — no edge, no impossible branch
+          anyUnknown = true;
+          lastUnknownReason = describeUnresolvedGuard(guardText, ctxAttrIndex);
+          fireTransition(node, t, trigger, `guard-${i}-true`, true, lastUnknownReason, ctxAttrIndex, paramOverrides, paramLabel); // can't rule in or out — fork, same as before
         }
-        const evaluated = evaluateCondition(guardText, attrIndex, node.attrValues);
-        if (evaluated === true) {
-          fireTransition(node, t, trigger, `guard-${i}-true`, false); // certain, given every earlier member was false
-          stopped = true;
-          break;
-        }
-        if (evaluated === false) continue; // certainly does not fire — no edge, no impossible branch
-        anyUnknown = true;
-        lastUnknownReason = describeUnresolvedGuard(guardText, attrIndex);
-        fireTransition(node, t, trigger, `guard-${i}-true`, true, lastUnknownReason); // can't rule in or out — fork, same as before
+        if (!stopped) fireDropped(node, trigger, anyUnknown, lastUnknownReason, paramLabel);
       }
-      if (!stopped) fireDropped(node, trigger, anyUnknown, lastUnknownReason);
     }
   }
 

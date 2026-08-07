@@ -529,3 +529,109 @@ describe('signatureOf', () => {
     expect(signatureOf('sA', a)).not.toBe(signatureOf('sA', b));
   });
 });
+
+// A signal parameter with a bounded (ENUM) domain forks the tree once per
+// literal, instead of the parameter always degrading to unknown — the RPS
+// example's "player1.sendMove(move)" case, where `move` is a Move enum with
+// literals ROCK/PAPER/SCISSORS.
+describe('buildSET — enum-bounded signal parameters fork one branch per literal', () => {
+  const metaModel = {
+    relations: [],
+    classes: [{
+      id: 'PL', name: 'Player', attributes: [],
+      ports: [{ id: 'pIn', name: 'game', protocolId: 'proto1' }],
+    }],
+    enumerations: [{ id: 'eMove', name: 'Move', literals: ['ROCK', 'PAPER', 'SCISSORS'] }],
+    protocols: [{
+      id: 'proto1', name: 'RPS',
+      signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [{ id: 'p1', name: 'move', type: 'ENUM', enumId: 'eMove' }] }],
+    }],
+    behaviours: {
+      PL: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sWaiting', kind: 'simple', name: 'Waiting', entry: '', exit: '' },
+        ],
+        transitions: [
+          { id: 'tInit', source: 'sInit', target: 'sWaiting', trigger: '', guard: '', effect: '' },
+          { id: 't1', source: 'sWaiting', target: 'sWaiting', trigger: 'game.sendMove', guard: '', effect: '' },
+        ],
+      },
+    },
+  };
+
+  it('creates exactly one edge per enum literal, each labeled with its value', () => {
+    const result = buildSET('PL', metaModel);
+    const outgoing = edgesArr(result).filter((e) => e.sourceNodeId === result.rootId);
+    expect(outgoing).toHaveLength(3);
+    expect(outgoing.map((e) => e.paramLabel).sort()).toEqual(['PAPER', 'ROCK', 'SCISSORS']);
+  });
+
+  it('still subsumes correctly per branch when there is no attribute for the enum literal to affect', () => {
+    // Nothing in this fixture tracks the move value, so all 3 forked
+    // branches land back on the exact same (state, values) signature —
+    // each should subsume straight back to the root as its own edge, not
+    // collapse into one edge or crash.
+    const result = buildSET('PL', metaModel);
+    const subsumed = nodeByStatus(result, 'leaf-subsumed');
+    expect(subsumed).toHaveLength(3);
+    for (const n of subsumed) expect(n.subsumedByNodeId).toBe(result.rootId);
+  });
+
+  it('threads the enum value through effect action code (the p1Move = move; shape)', () => {
+    const withAttr = {
+      ...metaModel,
+      classes: [{
+        id: 'PL', name: 'Player', attributes: [{ id: 'aLast', name: 'lastMove', type: 'ENUM', enumId: 'eMove' }],
+        ports: metaModel.classes[0].ports,
+      }],
+      behaviours: {
+        PL: {
+          ...metaModel.behaviours.PL,
+          transitions: metaModel.behaviours.PL.transitions.map((t) =>
+            t.id === 't1' ? { ...t, effect: 'lastMove = move;' } : t
+          ),
+        },
+      },
+    };
+    const result = buildSET('PL', withAttr);
+    const children = edgesArr(result)
+      .filter((e) => e.sourceNodeId === result.rootId)
+      .map((e) => ({ label: e.paramLabel, value: result.nodesById.get(e.targetNodeId).attrValues.get('aLast') }));
+    for (const { label, value } of children) {
+      expect(value).toEqual({ kind: 'known', value: label });
+    }
+  });
+
+  it('does not leak the synthetic parameter entry into the child node\'s attrValues', () => {
+    const withAttr = {
+      ...metaModel,
+      classes: [{
+        id: 'PL', name: 'Player', attributes: [{ id: 'aLast', name: 'lastMove', type: 'ENUM', enumId: 'eMove' }],
+        ports: metaModel.classes[0].ports,
+      }],
+      behaviours: {
+        PL: {
+          ...metaModel.behaviours.PL,
+          transitions: metaModel.behaviours.PL.transitions.map((t) =>
+            t.id === 't1' ? { ...t, effect: 'lastMove = move;' } : t
+          ),
+        },
+      },
+    };
+    const result = buildSET('PL', withAttr);
+    const child = nodesArr(result).find((n) => n.id !== result.rootId);
+    expect([...child.attrValues.keys()]).toEqual(['aLast']);
+  });
+
+  it('falls back to a single (non-forked) edge for a signal with no enum parameters (no regression)', () => {
+    const noParamModel = {
+      ...metaModel,
+      protocols: [{ id: 'proto1', name: 'RPS', signals: [{ id: 'sig1', name: 'sendMove', direction: 'in', params: [] }] }],
+    };
+    const result = buildSET('PL', noParamModel);
+    const outgoing = edgesArr(result).filter((e) => e.sourceNodeId === result.rootId);
+    expect(outgoing).toHaveLength(1);
+    expect(outgoing[0].paramLabel).toBeNull();
+  });
+});
