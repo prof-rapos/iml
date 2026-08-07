@@ -12,6 +12,17 @@ const BORDER  = 'rgba(255,255,255,0.10)';
 const ACCENT  = '#2563eb';
 const HEADER_BG = '#161b22';
 
+// Strips xterm's ANSI SGR/cursor sequences (color, dim, the "overwrite this
+// line" \x1b[2K\r trick used for the Compiling→✓ Compiled swap) so the
+// exported console log is a plain, portable text file rather than one full
+// of escape-code noise — a bare \r (no ANSI, just the raw carriage return
+// half of an in-place-overwrite trick) is dropped too, since there's no
+// terminal to overwrite in a static file.
+function stripAnsi(s) {
+  // eslint-disable-next-line no-control-regex -- \x1b (ESC) is the actual byte an ANSI escape sequence starts with, not accidental
+  return String(s ?? '').replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '').replace(/\r/g, '');
+}
+
 const TERM_THEME = {
   background:        '#0d1117',
   foreground:        '#e6edf3',
@@ -42,6 +53,13 @@ export default function IDETerminal({ files }) {
   const fitRef      = useRef(null);  // FitAddon instance
   const wsRef       = useRef(null);  // WebSocket
   const dragRef     = useRef({ active: false, startY: 0, startH: 0 });
+  // Plain-text mirror of everything written to the terminal, for "Export
+  // Console Output" — xterm keeps its own buffer internally but doesn't
+  // expose it as a text snapshot, so every write is duplicated into this
+  // ref (ANSI-stripped) at the same call sites that write to the terminal.
+  const outputRef   = useRef('');
+  const write   = (s) => { termRef.current?.write(s); outputRef.current += stripAnsi(s); };
+  const writeln = (s) => { termRef.current?.write(s + '\r\n'); outputRef.current += stripAnsi(s) + '\n'; };
 
   const [height, setHeight]       = useState(260);
   const [collapsed, setCollapsed] = useState(false);
@@ -64,6 +82,7 @@ export default function IDETerminal({ files }) {
   // Initialise terminal once
   useEffect(() => {
     if (!mountRef.current) return;
+    outputRef.current = ''; // guard against a duplicated banner line if this effect ever re-runs (e.g. StrictMode dev double-invoke)
 
     const term = new Terminal({
       theme: TERM_THEME,
@@ -80,7 +99,14 @@ export default function IDETerminal({ files }) {
     term.open(mountRef.current);
     fit.fit();
 
-    term.writeln('\x1b[2mIML Java Terminal — click Run to execute\x1b[0m');
+    // Assigned before the first writeln below (not after, as it originally
+    // was) so the write()/writeln() wrappers — which read termRef.current,
+    // not a closure-local `term` — have something to write into for this
+    // very first banner line too.
+    termRef.current = term;
+    fitRef.current  = fit;
+
+    writeln('\x1b[2mIML Java Terminal — click Run to execute\x1b[0m');
 
     // Forward keystrokes to the running process
     term.onData((data) => {
@@ -95,9 +121,6 @@ export default function IDETerminal({ files }) {
         wsRef.current.send(JSON.stringify({ type: 'resize', cols, rows }));
       }
     });
-
-    termRef.current = term;
-    fitRef.current  = fit;
 
     // Re-fit when the container resizes
     const ro = new ResizeObserver(() => fit.fit());
@@ -124,7 +147,8 @@ export default function IDETerminal({ files }) {
     wsRef.current?.close();
 
     term.reset();
-    term.writeln(`\x1b[2m▶  ${selectedMain}\x1b[0m`);
+    outputRef.current = ''; // a fresh Run starts a fresh exportable log, not one accumulated across runs
+    writeln(`\x1b[2m▶  ${selectedMain}\x1b[0m`);
     setCollapsed(false);
     setRunning(true);
     setStatus('connecting');
@@ -140,7 +164,7 @@ export default function IDETerminal({ files }) {
     // no indication anything was still happening.
     const coldStartTimer = setTimeout(() => {
       if (wsRef.current === ws && ws.readyState === WebSocket.CONNECTING) {
-        term.write('\x1b[2m[Still connecting — the runner may be cold-starting, this can take up to ~30s…]\x1b[0m\r\n');
+        write('\x1b[2m[Still connecting — the runner may be cold-starting, this can take up to ~30s…]\x1b[0m\r\n');
       }
     }, 8000);
 
@@ -176,7 +200,7 @@ export default function IDETerminal({ files }) {
         // — the exception is swallowed by the browser's event dispatch, so
         // status/running never update and the UI looks permanently stuck
         // with no explanation. Surface it instead.
-        term.writeln('\r\n\x1b[31m[Received an unreadable response from the runner — it may be restarting. Try again in a moment.]\x1b[0m');
+        writeln('\r\n\x1b[31m[Received an unreadable response from the runner — it may be restarting. Try again in a moment.]\x1b[0m');
         setRunning(false);
         setStatus('error');
         return;
@@ -184,26 +208,26 @@ export default function IDETerminal({ files }) {
 
       switch (msg.type) {
         case 'data':
-          term.write(msg.data);
+          write(msg.data);
           break;
         case 'status':
           setStatus(msg.phase);
           if (msg.phase === 'compiling') {
-            term.write('\x1b[2mCompiling…\x1b[0m');
+            write('\x1b[2mCompiling…\x1b[0m');
           } else if (msg.phase === 'running') {
             // Overwrite the "Compiling…" line with a success tick, then blank line
-            term.write('\x1b[2K\r\x1b[32m✓ Compiled\x1b[0m\r\n\n');
+            write('\x1b[2K\r\x1b[32m✓ Compiled\x1b[0m\r\n\n');
           }
           break;
         case 'error':
-          term.write(`\x1b[31m${msg.data}\x1b[0m`);
+          write(`\x1b[31m${msg.data}\x1b[0m`);
           setRunning(false);
           setStatus('error');
           break;
         case 'exit':
           setRunning(false);
           setStatus(msg.code === 0 ? 'done' : 'error');
-          term.writeln(
+          writeln(
             `\r\n\x1b[2m[Exited with code ${msg.code}]\x1b[0m`
           );
           break;
@@ -213,7 +237,7 @@ export default function IDETerminal({ files }) {
     ws.onerror = () => {
       clearTimeout(coldStartTimer);
       if (wsRef.current !== ws) return; // see onmessage — a stale socket's own error, not the active run's
-      term.writeln('\x1b[31mConnection error — is the runner service up?\x1b[0m');
+      writeln('\x1b[31mConnection error — is the runner service up?\x1b[0m');
       setRunning(false);
       setStatus('error');
     };
@@ -226,7 +250,7 @@ export default function IDETerminal({ files }) {
       if (runningRef.current) {
         setRunning(false);
         setStatus('error');
-        term.writeln('\r\n\x1b[31m[Connection closed unexpectedly]\x1b[0m');
+        writeln('\r\n\x1b[31m[Connection closed unexpectedly]\x1b[0m');
       }
     };
   };
@@ -236,12 +260,29 @@ export default function IDETerminal({ files }) {
       wsRef.current.send(JSON.stringify({ type: 'kill' }));
     }
     wsRef.current?.close();
-    termRef.current?.writeln('\r\n\x1b[33m[Killed]\x1b[0m');
+    writeln('\r\n\x1b[33m[Killed]\x1b[0m');
     setRunning(false);
     setStatus('ready');
   };
 
-  const handleClear = () => termRef.current?.reset();
+  const handleClear = () => {
+    termRef.current?.reset();
+    outputRef.current = '';
+  };
+
+  // "Proof of execution" — a plain-text snapshot of everything the terminal
+  // has shown for the current run (or since last Clear), downloaded the same
+  // way every other export in this app triggers a browser download (blob +
+  // object URL + a clicked, throwaway <a download>).
+  const handleExportOutput = () => {
+    const blob = new Blob([outputRef.current], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `console-output-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   // ── Drag-to-resize ────────────────────────────────────────────────────────
   const onDragStart = (e) => {
@@ -351,6 +392,14 @@ export default function IDETerminal({ files }) {
           <span style={{ fontSize: 10, color: statusColor, fontWeight: 500, minWidth: 64, textAlign: 'right' }}>
             {statusLabel}
           </span>
+
+          <button
+            onClick={handleExportOutput}
+            title="Download this terminal's output as a text file — proof of execution"
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_DIM, fontSize: 11, padding: '0 2px', fontFamily: 'inherit' }}
+          >
+            Export
+          </button>
 
           <button onClick={handleClear} style={{ background: 'none', border: 'none', cursor: 'pointer', color: TEXT_DIM, fontSize: 11, padding: '0 2px', fontFamily: 'inherit' }}>
             Clear
