@@ -31,12 +31,17 @@ function mountReportRenderHost() {
   };
 }
 
+// Doesn't force a fresh page per file — a short file (many of the support
+// files, e.g. Move.java) would otherwise waste almost a whole page. Instead
+// just ensures enough room for the heading + a couple of lines; codeBlock()
+// itself handles pagination for anything longer than what's left.
 function embedSourceFiles(w, files) {
-  for (const f of files) {
-    w.newPage();
+  files.forEach((f, i) => {
+    if (i > 0) { w.spacer(6); w.hr(); w.spacer(6); }
+    w.ensureSpace(40);
     w.subheading(f.path);
-    for (const line of f.content.split('\n')) w.line(line, { size: 8, mono: true });
-  }
+    w.codeBlock(f.content.split('\n'));
+  });
 }
 
 // Builds and downloads the full meta-model report — every section the

@@ -47,18 +47,28 @@ const ReportRenderHost = forwardRef(function ReportRenderHost(_, ref) {
   const setContainerRef = useRef(null);
 
   const setMode = useModelStore((s) => s.setMode);
+  const rebuildCanvas = useModelStore((s) => s.rebuildCanvas);
   const switchInstanceModel = useModelStore((s) => s.switchInstanceModel);
   const setCapsule = useBehaviourStore((s) => s.setCapsule);
 
   useImperativeHandle(ref, () => ({
+    // setMode() alone only flips the `mode` flag — it does NOT recompute
+    // modelStore's own nodes/edges (that's rebuildCanvas()'s job; the live
+    // Sidebar mode-switch tab always calls both together). Skipping
+    // rebuildCanvas here left this capture showing whatever nodes/edges
+    // were last built for a DIFFERENT mode/instance model — a real bug
+    // (report said "Meta-Model" but the image was really the last-viewed
+    // instance model), not just a settle-timing issue.
     async captureMetaModel() {
       setMode('metamodel');
+      rebuildCanvas('metamodel');
       await settle();
       return captureFlowImageDataUrl({ container: modelContainerRef.current });
     },
     async captureInstanceModel(imIndex) {
       setMode('instance');
       switchInstanceModel(imIndex);
+      rebuildCanvas('instance');
       await settle();
       return captureFlowImageDataUrl({ container: modelContainerRef.current });
     },
