@@ -5,6 +5,31 @@ import { tokenizeJavaLine, initJavaHighlightState } from './javaSyntaxHighlight'
 const CODE_BG = '#1e1e1e';
 const GUTTER_COLOR = '#858585';
 
+// jsPDF's standard 14 fonts (Courier included) only support WinAnsi's
+// single-byte range. javaCodeGen.js's own box-drawing section separators
+// (e.g. "// ── Capsule ports ──") use characters outside that range —
+// passing one through to doc.text() doesn't just render a missing-glyph
+// box for that one character, it corrupts the WHOLE line (jsPDF appears to
+// switch the entire string to a 2-byte encoding the single-byte Courier
+// font then misreads, spacing every character out with stray glyphs).
+// Map the handful of characters generated code actually uses to safe
+// ASCII lookalikes, and fall back to '?' for anything else out of range.
+const PDF_FONT_CHAR_MAP = {
+  '─': '-', '━': '-', '│': '|', '┃': '|', '┌': '+', '┐': '+', '└': '+', '┘': '+',
+  '├': '+', '┤': '+', '┬': '+', '┴': '+', '┼': '+', '═': '=', '║': '|',
+  '╔': '+', '╗': '+', '╚': '+', '╝': '+', '╠': '+', '╣': '+', '╦': '+', '╩': '+', '╬': '+',
+  '•': '*', '…': '...', '‘': "'", '’': "'", '“': '"', '”': '"', '–': '-', '—': '-',
+};
+
+function sanitizeForPdfFont(s) {
+  let out = '';
+  for (const ch of s) {
+    if (PDF_FONT_CHAR_MAP[ch]) { out += PDF_FONT_CHAR_MAP[ch]; continue; }
+    out += ch.codePointAt(0) > 255 ? '?' : ch;
+  }
+  return out;
+}
+
 // Shared cursor-based writer over jsPDF's core API — no autotable/extra
 // plugin dependency, since every report in this app is really headings +
 // wrapped lines + (for the full "Generate Report") embedded diagram
@@ -35,25 +60,28 @@ export class PdfWriter {
 
   heading(text) {
     this.ensureSpace(28);
-    this.doc.setFont(undefined, 'bold');
+    this.doc.setFont('helvetica', 'bold');
     this.doc.setFontSize(16);
     this.doc.text(text, this.margin, this.y);
     this.y += 22;
-    this.doc.setFont(undefined, 'normal');
+    this.doc.setFont('helvetica', 'normal');
   }
 
   subheading(text) {
     this.ensureSpace(18);
-    this.doc.setFont(undefined, 'bold');
+    this.doc.setFont('helvetica', 'bold');
     this.doc.setFontSize(12);
     this.doc.text(text, this.margin, this.y);
     this.y += 16;
-    this.doc.setFont(undefined, 'normal');
+    this.doc.setFont('helvetica', 'normal');
   }
 
   // Wraps to contentWidth, adding a page mid-paragraph if needed.
   line(text, { size = 10, indent = 0, mono = false, color = '#000000' } = {}) {
-    this.doc.setFont(undefined, mono ? 'courier' : 'helvetica');
+    // setFont(fontName, fontStyle) — the name/style order matters: jsPDF
+    // silently no-ops (falls back to whatever font was already active)
+    // if 'courier' lands in the style slot instead of the name slot.
+    this.doc.setFont(mono ? 'courier' : 'helvetica', 'normal');
     this.doc.setFontSize(size);
     this.doc.setTextColor(color);
     const wrapped = this.doc.splitTextToSize(String(text ?? ''), this.contentWidth - indent);
@@ -101,8 +129,10 @@ export class PdfWriter {
   // Renders a source file's lines as syntax-highlighted monospace text on
   // a dark background with a line-number gutter, matching the IDE's own
   // Monaco editor rather than plain black-on-white text. Deliberately does
-  // NOT word-wrap long lines (a real editor doesn't either) — an unusually
-  // long line just runs to the page edge rather than breaking mid-token.
+  // NOT word-wrap long lines (a real editor doesn't either) — instead a
+  // line that wouldn't fit within the page's right margin is clipped with
+  // a trailing "…" marker (computed in characters, since Courier is
+  // monospace) rather than being allowed to run off the page edge.
   //
   // Pre-splits into per-page chunks up front so each page's background
   // rectangle is sized exactly to the lines that land on it — painting one
@@ -112,11 +142,16 @@ export class PdfWriter {
   codeBlock(lines) {
     const size = 8;
     const lineHeight = size * 1.35;
-    this.doc.setFont(undefined, 'courier');
+    this.doc.setFont('courier', 'normal');
     this.doc.setFontSize(size);
     const charWidth = this.doc.getTextWidth('M');
     const gutterWidth = (String(lines.length).length + 2) * charWidth;
     const codeX = this.margin + gutterWidth;
+    const maxChars = Math.max(10, Math.floor((this.contentWidth - gutterWidth) / charWidth) - 1);
+    lines = lines.map((raw) => {
+      const clean = sanitizeForPdfFont(raw);
+      return clean.length > maxChars ? clean.slice(0, maxChars - 3) + '...' : clean;
+    });
 
     // Avoid stranding a sliver of code (and its background) right above a
     // page break — start fresh if less than 2 lines would fit here.
@@ -157,7 +192,7 @@ export class PdfWriter {
       }
     });
     this.doc.setTextColor('#000000');
-    this.doc.setFont(undefined, 'normal');
+    this.doc.setFont('helvetica', 'normal');
     this.y += 8;
   }
 }
