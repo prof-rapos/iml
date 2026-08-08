@@ -7,7 +7,12 @@ import { TEXT, TEXT_DIM } from './theme';
 
 const BORDER = 'rgba(255,255,255,0.10)';
 
-export default function LoadExampleModal({ onClose }) {
+// `onLoaded` (optional) fires only when a model actually loaded — distinct
+// from `onClose`, which also fires on a plain cancel (X, click-outside).
+// Callers with their own stale-reference cleanup to do (e.g. Behavioural's
+// selected capsule) must hook `onLoaded`, not `onClose`, or a no-op cancel
+// would silently clear state the user never asked to change.
+export default function LoadExampleModal({ onClose, onLoaded }) {
   const loadFromJSON = useModelStore((s) => s.loadFromJSON);
   const notify = useModelStore((s) => s.notify);
   const [loadingFile, setLoadingFile] = useState(null);
@@ -21,6 +26,7 @@ export default function LoadExampleModal({ onClose }) {
       const shapeError = validateModelShape(data, true);
       if (shapeError) throw new Error(shapeError);
       loadFromJSON(data);
+      onLoaded?.();
       onClose();
     } catch (err) {
       notify(`Couldn't load "${ex.name}": ${err.message}`);

@@ -8,13 +8,23 @@ import { generateAllTestsFiles } from '../../utils/mbtCodeGen';
 import { useOutsideClick } from '../../utils/useOutsideClick';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 import ModuleSwitcher from '../ModuleSwitcher';
+import LoadExampleModal from '../LoadExampleModal';
+import ReportOptionsModal from '../ReportOptionsModal';
+import { generateFullReport } from '../../utils/generateFullReport';
+import { REPORT_SECTIONS } from '../reportSections';
 import { TEXT } from '../theme';
 
 const BORDER = 'rgba(255,255,255,0.10)';
+// Matches TestCaseExplorerPanel.jsx's 'final' status color — this module's
+// identity color (also the home page's Model-Based Testing icon color).
+const REPORT_ACCENT = '#dc2626';
 
 export default function MBTTopbar() {
-  const setAppView = useModelStore((s) => s.setAppView);
-  const metaModel  = useModelStore((s) => s.metaModel);
+  const setAppView   = useModelStore((s) => s.setAppView);
+  const metaModel     = useModelStore((s) => s.metaModel);
+  const instanceModels = useModelStore((s) => s.instanceModels);
+  const getFullJSON  = useModelStore((s) => s.getFullJSON);
+  const loadFromJSON = useModelStore((s) => s.loadFromJSON);
   const notify     = useModelStore((s) => s.notify);
   const capsuleId  = useMbtStore((s) => s.capsuleId);
   const setResult  = useMbtStore((s) => s.setResult);
@@ -22,8 +32,11 @@ export default function MBTTopbar() {
   const deselectAllNodes = useMbtStore((s) => s.deselectAll);
   const { loadFiles: ideLoadFiles } = useIdeStore();
 
+  const fileRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [exampleModalOpen, setExampleModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
   useOutsideClick(menuRef, () => setMenuOpen(false), menuOpen);
 
   // Shared by both menu actions — 100% path coverage as one bundle (every
@@ -59,6 +72,36 @@ export default function MBTTopbar() {
     a.download = `${metaModel.name || 'model'}-tests.zip`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleExportIml = () => {
+    setMenuOpen(false);
+    const blob = new Blob([JSON.stringify(getFullJSON(), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${metaModel.name || 'model'}.iml.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportIml = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        loadFromJSON(JSON.parse(ev.target.result));
+        // mbtStore's own subscription already clears a stale capsuleId
+        // whenever metaModel changes — no manual reset needed here.
+      } catch { notify('Invalid JSON file.'); }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleGenerateReport = async ({ userName, selectedKeys }) => {
+    await generateFullReport({ metaModel, instanceModels, userName, selectedKeys });
   };
 
   // Same pattern as Structural/Behavioural's export (Topbar.jsx,
@@ -120,15 +163,34 @@ export default function MBTTopbar() {
             background: '#1e293b', border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: 7, boxShadow: '0 8px 24px rgba(0,0,0,0.4)', minWidth: 180, overflow: 'hidden',
           }}>
-            <MenuSection label="Generate" />
-            <MenuItem onClick={handleGenerateAllTests}>Generate All Tests</MenuItem>
-            <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
+            <MenuSection label="Model" />
+            <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
+            <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
+            <MenuItem onClick={() => { setExampleModalOpen(true); setMenuOpen(false); }}>Load Example Model…</MenuItem>
             <MenuDivider />
             <MenuItem onClick={() => handleExportImage('jpeg')} disabled={!capsuleId} title={!capsuleId ? 'Select a capsule and build its tree first' : undefined}>Export JPG</MenuItem>
             <MenuItem onClick={() => handleExportImage('svg')} disabled={!capsuleId} title={!capsuleId ? 'Select a capsule and build its tree first' : undefined}>Export SVG (vector)</MenuItem>
+            <MenuItem onClick={() => { setReportModalOpen(true); setMenuOpen(false); }}>Generate Report…</MenuItem>
+            <MenuDivider />
+            <MenuSection label="Generate" />
+            <MenuItem onClick={handleGenerateAllTests}>Generate All Tests</MenuItem>
+            <MenuItem onClick={handleExportZip}>Export as ZIP</MenuItem>
           </div>
         )}
       </div>
+
+      <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportIml} />
+      {exampleModalOpen && <LoadExampleModal onClose={() => setExampleModalOpen(false)} />}
+      {reportModalOpen && (
+        <ReportOptionsModal
+          mode="full"
+          title="Generate Report"
+          accentColor={REPORT_ACCENT}
+          sections={REPORT_SECTIONS}
+          onGenerate={handleGenerateReport}
+          onClose={() => setReportModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

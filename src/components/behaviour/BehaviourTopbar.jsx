@@ -8,8 +8,14 @@ import { useOutsideClick } from '../../utils/useOutsideClick';
 import { useGenerateMenu } from '../useGenerateMenu';
 import { MenuSection, MenuDivider, MenuItem, HomeButton } from '../topbarMenu';
 import ModuleSwitcher from '../ModuleSwitcher';
+import LoadExampleModal from '../LoadExampleModal';
+import ReportOptionsModal from '../ReportOptionsModal';
+import { generateFullReport } from '../../utils/generateFullReport';
+import { REPORT_SECTIONS } from '../reportSections';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
+// Matches BehaviourSidebar.jsx's own ACCENT — this module's identity color.
+const REPORT_ACCENT = '#d97706';
 
 export default function BehaviourTopbar() {
   const classes         = useModelStore((s) => s.metaModel.classes);
@@ -55,6 +61,8 @@ export default function BehaviourTopbar() {
   const fileRef = useRef(null);
   const menuRef = useRef(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [exampleModalOpen, setExampleModalOpen] = useState(false);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
 
   // Defaults to 'behavioural' here (vs. 'structural' in the main Topbar) —
   // this is the editor where the state machines/ports actually live.
@@ -101,6 +109,17 @@ export default function BehaviourTopbar() {
     } catch (err) {
       alert('Export failed: ' + err.message);
     }
+  };
+
+  // Fires only on an actual load (not a plain cancel) — see LoadExampleModal's
+  // own onLoaded doc comment. Mirrors handleImportIml's cleanup.
+  const handleExampleLoaded = () => {
+    setCapsule(null);
+    rebuildStructure();
+  };
+
+  const handleGenerateReport = async ({ userName, selectedKeys }) => {
+    await generateFullReport({ metaModel, instanceModels, userName, selectedKeys });
   };
 
   return (
@@ -186,9 +205,11 @@ export default function BehaviourTopbar() {
             <MenuSection label="Model" />
             <MenuItem onClick={() => { fileRef.current.click(); setMenuOpen(false); }}>Import IML</MenuItem>
             <MenuItem onClick={handleExportIml}>Export IML</MenuItem>
+            <MenuItem onClick={() => { setExampleModalOpen(true); setMenuOpen(false); }}>Load Example Model…</MenuItem>
             <MenuDivider />
             <MenuItem onClick={() => handleExportImage('jpeg')} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export JPG</MenuItem>
             <MenuItem onClick={() => handleExportImage('svg')} disabled={subView === 'statemachine' ? !capsuleId : !currentIM}>Export SVG (vector)</MenuItem>
+            <MenuItem onClick={() => { setReportModalOpen(true); setMenuOpen(false); }}>Generate Report…</MenuItem>
             <MenuDivider />
             {generateMenuSection}
           </div>
@@ -196,6 +217,19 @@ export default function BehaviourTopbar() {
       </div>
 
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImportIml} />
+      {exampleModalOpen && (
+        <LoadExampleModal onClose={() => setExampleModalOpen(false)} onLoaded={handleExampleLoaded} />
+      )}
+      {reportModalOpen && (
+        <ReportOptionsModal
+          mode="full"
+          title="Generate Report"
+          accentColor={REPORT_ACCENT}
+          sections={REPORT_SECTIONS}
+          onGenerate={handleGenerateReport}
+          onClose={() => setReportModalOpen(false)}
+        />
+      )}
     </div>
 
     {generateDialog}

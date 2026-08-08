@@ -8,19 +8,10 @@ import ModuleSwitcher from './ModuleSwitcher';
 import LoadExampleModal from './LoadExampleModal';
 import ReportOptionsModal from './ReportOptionsModal';
 import { generateFullReport } from '../utils/generateFullReport';
+import { REPORT_SECTIONS } from './reportSections';
 
 const BORDER = 'rgba(255,255,255,0.10)';
 const REPORT_ACCENT = '#2563eb';
-
-const REPORT_SECTIONS = [
-  { key: 'metamodel', label: 'Meta-Model' },
-  { key: 'instances', label: 'Instance Models' },
-  { key: 'structure', label: 'Composite Structure' },
-  { key: 'statemachines', label: 'State Machines' },
-  { key: 'code', label: 'Generated Code' },
-  { key: 'set', label: 'SET (Symbolic Execution Tree)' },
-  { key: 'tests', label: 'Generated Tests' },
-];
 
 export default function Topbar() {
   const mode = useModelStore((s) => s.mode);
