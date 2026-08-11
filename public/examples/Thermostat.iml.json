@@ -123,5 +123,38 @@
       ]
     }
   ],
-  "layouts": {}
+  "layouts": {
+    "mm": {
+      "cThermostat": { "x": 300, "y": 80 },
+      "cSensor": { "x": 300, "y": 380 }
+    },
+    "sm-cThermostat": {
+      "sThInit": { "x": 100, "y": 320 },
+      "sThIdle": { "x": 500, "y": 300 }
+    },
+    "sm-cSensor": {
+      "sSeInit": { "x": 100, "y": 300 },
+      "sSeReporting": { "x": 480, "y": 300 }
+    },
+    "im-imColdRoom": {
+      "oThermostat1": { "x": 400, "y": 60 },
+      "oSensor1a": { "x": 100, "y": 340 },
+      "oSensor1b": { "x": 700, "y": 340 }
+    },
+    "im-imHotRoom": {
+      "oThermostat2": { "x": 400, "y": 60 },
+      "oSensor2a": { "x": 100, "y": 340 },
+      "oSensor2b": { "x": 700, "y": 340 }
+    },
+    "cs-imColdRoom": {
+      "oThermostat1": { "x": 420, "y": 150 },
+      "oSensor1a": { "x": 80, "y": 40 },
+      "oSensor1b": { "x": 80, "y": 280 }
+    },
+    "cs-imHotRoom": {
+      "oThermostat2": { "x": 420, "y": 150 },
+      "oSensor2a": { "x": 80, "y": 40 },
+      "oSensor2b": { "x": 80, "y": 280 }
+    }
+  }
 }

@@ -55,11 +55,11 @@
         "transitions": [
           { "id": "tElStart", "source": "sElInit", "target": "sElIdle", "trigger": "", "guard": "", "effect": "", "sourceHandle": "right", "targetHandle": "left" },
           { "id": "tElCallSame", "source": "sElIdle", "target": "sElIdle", "trigger": "rider.callElevator", "guard": "floor == currentFloor", "effect": "log.log(\"Already at floor \" + floor + \".\");", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 },
-          { "id": "tElCallDiff", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.callElevator", "guard": "floor != currentFloor", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "right", "targetHandle": "left" },
-          { "id": "tElSelect", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.selectFloor", "guard": "", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "bottom", "targetHandle": "left" },
+          { "id": "tElCallDiff", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.callElevator", "guard": "floor != currentFloor", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "right", "targetHandle": "left", "labelT": 0.25 },
+          { "id": "tElSelect", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.selectFloor", "guard": "", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "bottom", "targetHandle": "left", "labelT": 0.5 },
           { "id": "tElUp", "source": "sElMoving", "target": "sElMoving", "trigger": "timer.timeout", "guard": "currentFloor < targetFloor", "effect": "currentFloor = currentFloor + 1;\nlog.log(\"Passing floor \" + currentFloor + \".\");\ntimer.informIn(500);", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.4 },
           { "id": "tElDown", "source": "sElMoving", "target": "sElMoving", "trigger": "timer.timeout", "guard": "currentFloor > targetFloor", "effect": "currentFloor = currentFloor - 1;\nlog.log(\"Passing floor \" + currentFloor + \".\");\ntimer.informIn(500);", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.6 },
-          { "id": "tElArrive", "source": "sElMoving", "target": "sElIdle", "trigger": "timer.timeout", "guard": "currentFloor == targetFloor", "effect": "log.log(\"Arrived at floor \" + currentFloor + \".\");", "sourceHandle": "left", "targetHandle": "right" }
+          { "id": "tElArrive", "source": "sElMoving", "target": "sElIdle", "trigger": "timer.timeout", "guard": "currentFloor == targetFloor", "effect": "log.log(\"Arrived at floor \" + currentFloor + \".\");", "sourceHandle": "bottom", "targetHandle": "right", "labelT": 0.8 }
         ]
       },
       "cRider": {
@@ -120,5 +120,37 @@
       ]
     }
   ],
-  "layouts": {}
+  "layouts": {
+    "mm": {
+      "cElevator": { "x": 100, "y": 100 },
+      "cRider": { "x": 500, "y": 100 }
+    },
+    "sm-cElevator": {
+      "sElInit": { "x": 100, "y": 380 },
+      "sElIdle": { "x": 560, "y": 340 },
+      "sElMoving": { "x": 1180, "y": 340 }
+    },
+    "sm-cRider": {
+      "sRiInit": { "x": 100, "y": 300 },
+      "sRiWaiting": { "x": 460, "y": 300 },
+      "sRiRiding": { "x": 820, "y": 300 },
+      "sRiDone": { "x": 1180, "y": 300 }
+    },
+    "im-imGroundToFifth": {
+      "oElevator1": { "x": 120, "y": 150 },
+      "oRider1": { "x": 520, "y": 150 }
+    },
+    "im-imTopToBottom": {
+      "oElevator2": { "x": 120, "y": 150 },
+      "oRider2": { "x": 520, "y": 150 }
+    },
+    "cs-imGroundToFifth": {
+      "oElevator1": { "x": 120, "y": 150 },
+      "oRider1": { "x": 520, "y": 150 }
+    },
+    "cs-imTopToBottom": {
+      "oElevator2": { "x": 120, "y": 150 },
+      "oRider2": { "x": 520, "y": 150 }
+    }
+  }
 }

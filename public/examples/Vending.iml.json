@@ -57,9 +57,9 @@
         "transitions": [
           { "id": "tVmStart", "source": "sVmInit", "target": "sVmIdle", "trigger": "", "guard": "", "effect": "log.log(\"Ready. Price: \" + price + \" cents.\");", "sourceHandle": "right", "targetHandle": "left" },
           { "id": "tVmInsert", "source": "sVmIdle", "target": "sVmIdle", "trigger": "customer.insertCoin", "guard": "", "effect": "credit = credit + cents;\nlog.log(\"Credit: \" + credit + \" cents.\");", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 },
-          { "id": "tVmSelectOk", "source": "sVmIdle", "target": "sVmDispensing", "trigger": "customer.selectItem", "guard": "credit >= price", "effect": "int change = credit - price;\nlog.log(\"Dispensing \" + item + \".\");\ncustomer.dispense(item);\nif (change > 0) {\n  log.log(\"Returning change: \" + change + \" cents.\");\n  customer.refund(change);\n}\ncredit = 0;\ntimer.informIn(800);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tVmSelectOk", "source": "sVmIdle", "target": "sVmDispensing", "trigger": "customer.selectItem", "guard": "credit >= price", "effect": "int change = credit - price;\nlog.log(\"Dispensing \" + item + \".\");\ncustomer.dispense(item);\nif (change > 0) {\n  log.log(\"Returning change: \" + change + \" cents.\");\n  customer.refund(change);\n}\ncredit = 0;\ntimer.informIn(800);", "sourceHandle": "right", "targetHandle": "left", "labelT": 0.3 },
           { "id": "tVmSelectShort", "source": "sVmIdle", "target": "sVmIdle", "trigger": "customer.selectItem", "guard": "credit < price", "effect": "log.log(\"Insufficient credit for \" + item + \" - need \" + (price - credit) + \" more cents.\");", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.5 },
-          { "id": "tVmDone", "source": "sVmDispensing", "target": "sVmIdle", "trigger": "timer.timeout", "guard": "", "effect": "log.log(\"Ready for next customer.\");", "sourceHandle": "left", "targetHandle": "right" }
+          { "id": "tVmDone", "source": "sVmDispensing", "target": "sVmIdle", "trigger": "timer.timeout", "guard": "", "effect": "log.log(\"Ready for next customer.\");", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.15 }
         ]
       },
       "cCustomer": {
@@ -119,5 +119,36 @@
       ]
     }
   ],
-  "layouts": {}
+  "layouts": {
+    "mm": {
+      "cVendingMachine": { "x": 100, "y": 100 },
+      "cCustomer": { "x": 500, "y": 100 },
+      "eItem": { "x": 900, "y": 100 }
+    },
+    "sm-cVendingMachine": {
+      "sVmInit": { "x": 100, "y": 320 },
+      "sVmIdle": { "x": 480, "y": 300 },
+      "sVmDispensing": { "x": 960, "y": 300 }
+    },
+    "sm-cCustomer": {
+      "sCuInit": { "x": 100, "y": 300 },
+      "sCuShopping": { "x": 480, "y": 300 }
+    },
+    "im-imAmpleFunds": {
+      "oMachine1": { "x": 120, "y": 150 },
+      "oCustomer1": { "x": 520, "y": 150 }
+    },
+    "im-imShortFunds": {
+      "oMachine2": { "x": 120, "y": 150 },
+      "oCustomer2": { "x": 520, "y": 150 }
+    },
+    "cs-imAmpleFunds": {
+      "oMachine1": { "x": 120, "y": 150 },
+      "oCustomer1": { "x": 520, "y": 150 }
+    },
+    "cs-imShortFunds": {
+      "oMachine2": { "x": 120, "y": 150 },
+      "oCustomer2": { "x": 520, "y": 150 }
+    }
+  }
 }
