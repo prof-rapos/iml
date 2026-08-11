@@ -6,6 +6,7 @@ import {
   getAllRelations as _getAllRelations,
   convertAttrValue,
   validateModelShape,
+  attrDefaultValue,
 } from '../utils/modelHelpers.js';
 import { validateConformance } from '../utils/conformance.js';
 import { saveAutosave } from '../utils/autosave.js';
@@ -495,8 +496,7 @@ export const useModelStore = create((set, get) => ({
           ...im,
           objects: im.objects.map((o) => {
             if (!affected.has(o.classId)) return o;
-            const hasDef = full.defaultValue !== undefined && String(full.defaultValue).trim() !== '';
-            const initVal = full.upperBound !== 1 ? [] : (hasDef ? String(full.defaultValue) : '');
+            const initVal = full.upperBound !== 1 ? [] : attrDefaultValue(full, s.metaModel);
             return { ...o, attributeValues: { ...o.attributeValues, [attrId]: initVal } };
           }),
         })),
@@ -900,8 +900,7 @@ export const useModelStore = create((set, get) => ({
     const allAttrs = getAllAttributes(classId, mm);
     const attributeValues = {};
     for (const a of allAttrs) {
-      const hasDef = a.defaultValue !== undefined && String(a.defaultValue).trim() !== '';
-      attributeValues[a.id] = a.upperBound !== 1 ? [] : (hasDef ? String(a.defaultValue) : '');
+      attributeValues[a.id] = a.upperBound !== 1 ? [] : attrDefaultValue(a, mm);
     }
     // Auto-increment against every object already in this instance model
     // (not just same-class) — matching every other auto-named entity in the

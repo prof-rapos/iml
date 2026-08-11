@@ -86,6 +86,24 @@ export function typeDefault(type, metaAttr) {
   }
 }
 
+// The 3rd tier `typeDefault` doesn't reach: an ENUM attribute with no
+// explicit `attr.defaultValue` needs its enum's first literal (a real,
+// pickable value), not '' — `typeDefault` alone can't resolve that since it
+// has no metaModel to look the enum up in. This is the fallback that should
+// seed a brand-new attribute slot (a freshly-added object, or an existing
+// object backfilled after a new attribute is added to its class) — without
+// it, a required ENUM/INT/DOUBLE/BOOLEAN attribute with no default starts
+// out as conformance's "required attribute is empty" error the instant the
+// object exists, before the user has done anything wrong.
+export function attrDefaultValue(attr, metaModel) {
+  if (attr.type === 'ENUM') {
+    const hasDef = attr.defaultValue !== undefined && String(attr.defaultValue).trim() !== '';
+    if (hasDef) return String(attr.defaultValue);
+    return getEnum(attr.enumId, metaModel)?.literals?.[0] ?? '';
+  }
+  return typeDefault(attr.type, attr);
+}
+
 // Convert a single string value from one IML primitive type to another.
 // Empty values stay empty. metaAttr is optional; used as the defaultValue fallback.
 export function convertSingle(val, fromType, toType, metaAttr) {

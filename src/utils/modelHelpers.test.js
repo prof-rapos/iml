@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getAllAttributes,
   typeDefault,
+  attrDefaultValue,
   convertSingle,
   convertAttrValue,
   getEnum,
@@ -78,6 +79,36 @@ describe('typeDefault', () => {
 
   it('ignores a blank meta default and falls back to the type zero', () => {
     expect(typeDefault('INT', { defaultValue: '   ' })).toBe('0');
+  });
+});
+
+describe('attrDefaultValue', () => {
+  const mmWithEnum = {
+    classes: [],
+    relations: [],
+    enumerations: [{ id: 'e1', name: 'Size', literals: ['S', 'M', 'L'] }],
+  };
+
+  it('uses the type zero-value for a non-enum attribute with no default', () => {
+    expect(attrDefaultValue({ type: 'INT' }, mmWithEnum)).toBe('0');
+    expect(attrDefaultValue({ type: 'BOOLEAN' }, mmWithEnum)).toBe('false');
+    expect(attrDefaultValue({ type: 'STRING' }, mmWithEnum)).toBe('');
+  });
+
+  it('prefers an explicit defaultValue when set, for any type', () => {
+    expect(attrDefaultValue({ type: 'INT', defaultValue: '42' }, mmWithEnum)).toBe('42');
+  });
+
+  it('falls back to the enum\'s first literal when an ENUM attribute has no default', () => {
+    expect(attrDefaultValue({ type: 'ENUM', enumId: 'e1' }, mmWithEnum)).toBe('S');
+  });
+
+  it('prefers an explicit defaultValue over the first literal for an ENUM attribute', () => {
+    expect(attrDefaultValue({ type: 'ENUM', enumId: 'e1', defaultValue: 'L' }, mmWithEnum)).toBe('L');
+  });
+
+  it('falls back to "" for an ENUM attribute whose enum cannot be resolved', () => {
+    expect(attrDefaultValue({ type: 'ENUM', enumId: 'missing' }, mmWithEnum)).toBe('');
   });
 });
 
