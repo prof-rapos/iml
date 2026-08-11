@@ -117,6 +117,56 @@ describe('evalExpression — ternary', () => {
   });
 });
 
+describe('evalExpression — functions', () => {
+  it('uppercases and lowercases', () => {
+    expect(evalExpression('upper({firstName})', scope)).toBe('ADA');
+    expect(evalExpression('lower({lastName})', scope)).toBe('lovelace');
+  });
+
+  it('trims whitespace', () => {
+    expect(evalExpression('trim({padded})', { padded: '  hi  ' })).toBe('hi');
+  });
+
+  it('rounds a numeric expression', () => {
+    expect(evalExpression('round({price} * 1.15)', scope)).toBe('12');
+    expect(evalExpression('round(2.4)', scope)).toBe('2');
+    expect(evalExpression('round(2.5)', scope)).toBe('3');
+  });
+
+  it('takes an absolute value', () => {
+    expect(evalExpression('abs(-{qty})', scope)).toBe('3');
+  });
+
+  it('measures string length', () => {
+    expect(evalExpression('len({firstName})', scope)).toBe('3');
+  });
+
+  it('matches function names case-insensitively', () => {
+    expect(evalExpression('UPPER({firstName})', scope)).toBe('ADA');
+  });
+
+  it('nests functions and composes with other operators', () => {
+    expect(evalExpression('upper(trim({padded}))', { padded: '  ada  ' })).toBe('ADA');
+    expect(evalExpression('upper({firstName}) + " " + upper({lastName})', scope)).toBe('ADA LOVELACE');
+  });
+
+  it('accepts a function call as a ternary condition/branch', () => {
+    expect(evalExpression('len({firstName}) > 2 ? upper({firstName}) : {firstName}', scope)).toBe('ADA');
+  });
+
+  it('throws on an unknown function', () => {
+    expect(() => evalExpression('shout({firstName})', scope)).toThrow();
+  });
+
+  it('throws on a bare identifier that is not a function call', () => {
+    expect(() => evalExpression('upper', scope)).toThrow();
+  });
+
+  it('throws on a function call missing its closing paren', () => {
+    expect(() => evalExpression('upper({firstName}', scope)).toThrow();
+  });
+});
+
 describe('evalExpression — errors', () => {
   it('throws on unbalanced parentheses', () => {
     expect(() => evalExpression('({price} + 1', scope)).toThrow();

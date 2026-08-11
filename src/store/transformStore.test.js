@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { useTransformStore } from './transformStore.js';
+import { useTransformStore, attrsCompatible, findEnumMismatch } from './transformStore.js';
 
 // A source model whose class has three enum attributes (all typed by one "Size"
 // enum) plus a plain string, and a target whose same-named attributes reference
@@ -65,5 +65,57 @@ describe('transformStore.addRule — enum-aware auto-mapping', () => {
     // Non-enum attributes still auto-map by name + type.
     expect(byTarget('t4').type).toBe('direct');
     expect(byTarget('t4').sourceAttrId).toBe('s4');
+  });
+});
+
+describe('attrsCompatible', () => {
+  const srcAttrs = source.metaModel.classes[0].attributes;
+  const tgtAttrs = target.metaModel.classes[0].attributes;
+  const byId = (attrs, id) => attrs.find((a) => a.id === id);
+
+  it('matches when name, type, and (for enums) the enum itself correspond', () => {
+    expect(attrsCompatible(source.metaModel, target.metaModel, byId(srcAttrs, 's1'), byId(tgtAttrs, 't1'))).toBe(true);
+  });
+
+  it('rejects a same-named enum whose literals differ', () => {
+    expect(attrsCompatible(source.metaModel, target.metaModel, byId(srcAttrs, 's2'), byId(tgtAttrs, 't2'))).toBe(false);
+  });
+
+  it('rejects a differently-named enum even with identical literals', () => {
+    expect(attrsCompatible(source.metaModel, target.metaModel, byId(srcAttrs, 's3'), byId(tgtAttrs, 't3'))).toBe(false);
+  });
+});
+
+describe('findEnumMismatch', () => {
+  const srcAttrs = source.metaModel.classes[0].attributes;
+  const tgtAttrs = target.metaModel.classes[0].attributes;
+  const byId = (attrs, id) => attrs.find((a) => a.id === id);
+
+  it('explains a same-named enum attribute skipped for different literals', () => {
+    const result = findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, byId(tgtAttrs, 't2'));
+    expect(result).not.toBeNull();
+    expect(result.sourceAttr.id).toBe('s2');
+    expect(result.sourceEnum.name).toBe('Size');
+    expect(result.targetEnum.name).toBe('Size');
+  });
+
+  it('explains a same-named enum attribute skipped for a differently-named enum', () => {
+    const result = findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, byId(tgtAttrs, 't3'));
+    expect(result).not.toBeNull();
+    expect(result.sourceEnum.name).toBe('Size');
+    expect(result.targetEnum.name).toBe('Grade');
+  });
+
+  it('returns null when the attribute would already auto-map', () => {
+    expect(findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, byId(tgtAttrs, 't1'))).toBeNull();
+  });
+
+  it('returns null when there is no same-named source candidate at all', () => {
+    const noMatch = { id: 'tX', name: 'nonexistent', type: 'ENUM', enumId: 'te1' };
+    expect(findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, noMatch)).toBeNull();
+  });
+
+  it('returns null for a non-enum target attribute', () => {
+    expect(findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, byId(tgtAttrs, 't4'))).toBeNull();
   });
 });

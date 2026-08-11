@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useTransformStore } from '../../store/transformStore';
+import { useTransformStore, findEnumMismatch } from '../../store/transformStore';
 import { getAllAttributes, getAllRelations } from '../../store/modelStore';
 import { useOverlayClose } from '../../utils/useOverlayClose';
 import { TEXT, TEXT_DIM } from '../theme';
@@ -131,6 +131,7 @@ function RuleCard({ rule, source, target }) {
             </div>
             {tgtAttrs.map((ta) => {
               const m = rule.attributeMappings.find((x) => x.targetAttrId === ta.id) ?? { type: 'omit', sourceAttrId: null, value: null };
+              const enumMismatch = m.type === 'omit' ? findEnumMismatch(source.metaModel, target.metaModel, srcAttrs, ta) : null;
               return (
                 <div key={ta.id} style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5, flexWrap: 'wrap' }}>
                   <span style={{ fontSize: 11, color: TEXT, minWidth: 130, flexShrink: 0 }}>
@@ -181,7 +182,7 @@ function RuleCard({ rule, source, target }) {
                       />
                       <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
                         refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
-                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>cond ? a : b</code>, and <code>"text"</code>
+                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>cond ? a : b</code>, <code>"text"</code>, and functions <code>upper() lower() trim() round() abs() len()</code>
                       </div>
                     </>
                   )}
@@ -189,6 +190,14 @@ function RuleCard({ rule, source, target }) {
                   {m.type === 'omit' && ta.lowerBound > 0 && (
                     <div style={{ flexBasis: '100%', fontSize: 10, color: '#e3b341', marginLeft: 136, lineHeight: 1.5 }}>
                       ⚠ &quot;{ta.name}&quot; requires at least {ta.lowerBound} value{ta.lowerBound > 1 ? 's' : ''} — omitting it will produce a non-conforming target object.
+                    </div>
+                  )}
+
+                  {enumMismatch && (
+                    <div style={{ flexBasis: '100%', fontSize: 10, color: '#e3b341', marginLeft: 136, lineHeight: 1.5 }}>
+                      ⚠ left unmapped: source has a same-named enum attribute &quot;{enumMismatch.sourceAttr.name}&quot;, but its enum
+                      {' '}&quot;{enumMismatch.sourceEnum?.name ?? '?'}&quot; doesn&apos;t match target&apos;s &quot;{enumMismatch.targetEnum?.name ?? '?'}&quot;
+                      {' '}(same name + literals required to auto-map) — map manually if the values correspond.
                     </div>
                   )}
                 </div>

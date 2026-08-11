@@ -10,6 +10,7 @@
 //   arith      := term (('+' | '-') term)*
 //   term       := factor (('*' | '/') factor)*
 //   factor     := number | string | '{' ref '}' | '(' expr ')' | '-' factor
+//               | IDENT '(' expr ')'
 //
 // - {name}  resolves against `scope` (source attribute name → value).
 // - "text" or 'text' is a string literal.
@@ -21,6 +22,8 @@
 //   a comparison (e.g. a bare {flag} ? "on" : "off" — a BOOLEAN attribute's
 //   own "true"/"false" string reads naturally here without needing
 //   {flag} == "true").
+// - a handful of single-argument functions (see FUNCTIONS below) can wrap
+//   any sub-expression, including another function call: upper(trim({name})).
 //
 // Examples:
 //   {firstName} + " " + {lastName}       →  "Ada Lovelace"
@@ -28,6 +31,8 @@
 //   ({a} + {b}) / 2                      →  numeric average
 //   {x} > 10 ? "large" : "small"
 //   {active} ? {name} : "(inactive)"
+//   upper({name})                        →  "ADA"
+//   round({price} * 1.15)                →  numeric, rounded
 
 // True when a value can participate in arithmetic (a number, or a numeric string).
 export function isNumericValue(v) {
@@ -85,6 +90,20 @@ function truthy(v) {
   return s !== '' && s !== '0' && s.toLowerCase() !== 'false';
 }
 
+// Single-argument functions callable from an expression, e.g. upper({name}).
+// Operate on the raw intermediate value (number or string, same as the
+// arithmetic/comparison operators above) rather than a pre-stringified one,
+// so e.g. round({price} * 1.15) sees the actual number, not "11.5".
+// Names are matched case-insensitively (see the 'ident' factor below).
+const FUNCTIONS = {
+  upper: (v) => strify(v).toUpperCase(),
+  lower: (v) => strify(v).toLowerCase(),
+  trim:  (v) => strify(v).trim(),
+  round: (v) => Math.round(Number(v)),
+  abs:   (v) => Math.abs(Number(v)),
+  len:   (v) => strify(v).length,
+};
+
 function resolveRef(scope, name) {
   const v = scope[name];
   if (v === undefined) return '';                       // unknown ref → empty
@@ -125,6 +144,12 @@ function tokenize(input) {
       let j = i;
       while (j < s.length && /[0-9.]/.test(s[j])) j++;
       tokens.push({ t: 'num', v: parseFloat(s.slice(i, j)) });
+      i = j; continue;
+    }
+    if (/[A-Za-z_]/.test(c)) {
+      let j = i;
+      while (j < s.length && /[A-Za-z0-9_]/.test(s[j])) j++;
+      tokens.push({ t: 'ident', v: s.slice(i, j) });
       i = j; continue;
     }
     throw new Error(`Unexpected character "${c}" in expression`);
@@ -199,6 +224,17 @@ export function evalExpression(input, scope = {}) {
     if (tk.t === 'num') { next(); return tk.v; }
     if (tk.t === 'str') { next(); return tk.v; }
     if (tk.t === 'ref') { next(); return resolveRef(scope, tk.v); }
+    if (tk.t === 'ident') {
+      next();
+      const fn = FUNCTIONS[tk.v.toLowerCase()];
+      if (!fn) throw new Error(`Unknown function "${tk.v}"`);
+      if (!peek() || peek().v !== '(') throw new Error(`Expected "(" after "${tk.v}"`);
+      next();
+      const arg = parseTernary();
+      if (!peek() || peek().v !== ')') throw new Error(`Missing ")" after ${tk.v}(...)`);
+      next();
+      return fn(arg);
+    }
     throw new Error(`Unexpected token "${tk.v}"`);
   }
 
