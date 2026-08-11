@@ -1,0 +1,124 @@
+{
+  "metaModel": {
+    "kind": "metamodel",
+    "name": "Elevator",
+    "classes": [
+      {
+        "id": "cElevator",
+        "name": "Elevator",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aCurrentFloor", "name": "currentFloor", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "1" },
+          { "id": "aTargetFloor", "name": "targetFloor", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "1" }
+        ],
+        "ports": [
+          { "id": "pRider", "name": "rider", "protocolId": "protoElevatorControl", "conjugated": false },
+          { "id": "pTimer", "name": "timer", "protocolId": "sys-timing", "conjugated": false },
+          { "id": "pLog", "name": "log", "protocolId": "sys-log", "conjugated": false }
+        ]
+      },
+      {
+        "id": "cRider",
+        "name": "Rider",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aStartFloor", "name": "startFloor", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "1" },
+          { "id": "aDestFloor", "name": "destFloor", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "1" },
+          { "id": "aBoarded", "name": "boarded", "type": "BOOLEAN", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "false" }
+        ],
+        "ports": [
+          { "id": "pElevator", "name": "elevator", "protocolId": "protoElevatorControl", "conjugated": true }
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "rCarries",
+        "kind": "REFERENCE",
+        "source": "cElevator",
+        "target": "cRider",
+        "name": "currentRider",
+        "sourceMultiplicity": "1",
+        "targetMultiplicity": "1",
+        "sourceHandle": "right",
+        "targetHandle": "left"
+      }
+    ],
+    "enumerations": [],
+    "behaviours": {
+      "cElevator": {
+        "states": [
+          { "id": "sElInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sElIdle", "kind": "simple", "name": "Idle", "entry": "log.log(\"Elevator ready at floor \" + currentFloor + \".\");\nrider.arrived(currentFloor);", "exit": "" },
+          { "id": "sElMoving", "kind": "simple", "name": "Moving", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tElStart", "source": "sElInit", "target": "sElIdle", "trigger": "", "guard": "", "effect": "", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tElCallSame", "source": "sElIdle", "target": "sElIdle", "trigger": "rider.callElevator", "guard": "floor == currentFloor", "effect": "log.log(\"Already at floor \" + floor + \".\");", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 },
+          { "id": "tElCallDiff", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.callElevator", "guard": "floor != currentFloor", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tElSelect", "source": "sElIdle", "target": "sElMoving", "trigger": "rider.selectFloor", "guard": "", "effect": "targetFloor = floor;\nlog.log(\"Moving to floor \" + floor + \".\");\ntimer.informIn(500);", "sourceHandle": "bottom", "targetHandle": "left" },
+          { "id": "tElUp", "source": "sElMoving", "target": "sElMoving", "trigger": "timer.timeout", "guard": "currentFloor < targetFloor", "effect": "currentFloor = currentFloor + 1;\nlog.log(\"Passing floor \" + currentFloor + \".\");\ntimer.informIn(500);", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.4 },
+          { "id": "tElDown", "source": "sElMoving", "target": "sElMoving", "trigger": "timer.timeout", "guard": "currentFloor > targetFloor", "effect": "currentFloor = currentFloor - 1;\nlog.log(\"Passing floor \" + currentFloor + \".\");\ntimer.informIn(500);", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.6 },
+          { "id": "tElArrive", "source": "sElMoving", "target": "sElIdle", "trigger": "timer.timeout", "guard": "currentFloor == targetFloor", "effect": "log.log(\"Arrived at floor \" + currentFloor + \".\");", "sourceHandle": "left", "targetHandle": "right" }
+        ]
+      },
+      "cRider": {
+        "states": [
+          { "id": "sRiInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sRiWaiting", "kind": "simple", "name": "Waiting", "entry": "elevator.callElevator(startFloor);", "exit": "" },
+          { "id": "sRiRiding", "kind": "simple", "name": "Riding", "entry": "", "exit": "" },
+          { "id": "sRiDone", "kind": "final", "name": "", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tRiStart", "source": "sRiInit", "target": "sRiWaiting", "trigger": "", "guard": "", "effect": "", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tRiBoard", "source": "sRiWaiting", "target": "sRiRiding", "trigger": "elevator.arrived", "guard": "floor == startFloor", "effect": "boarded = true;\nelevator.selectFloor(destFloor);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tRiArrive", "source": "sRiRiding", "target": "sRiDone", "trigger": "elevator.arrived", "guard": "floor == destFloor", "effect": "", "sourceHandle": "right", "targetHandle": "left" }
+        ]
+      }
+    },
+    "protocols": [
+      {
+        "id": "protoElevatorControl",
+        "name": "ElevatorControl",
+        "signals": [
+          { "id": "sigCall", "name": "callElevator", "direction": "in", "params": [ { "id": "prmFloor1", "name": "floor", "type": "INT" } ] },
+          { "id": "sigSelect", "name": "selectFloor", "direction": "in", "params": [ { "id": "prmFloor2", "name": "floor", "type": "INT" } ] },
+          { "id": "sigArrived", "name": "arrived", "direction": "out", "params": [ { "id": "prmFloor3", "name": "floor", "type": "INT" } ] }
+        ]
+      }
+    ]
+  },
+  "instanceModels": [
+    {
+      "id": "imGroundToFifth",
+      "kind": "instancemodel",
+      "name": "GroundToFifth",
+      "objects": [
+        { "id": "oElevator1", "classId": "cElevator", "name": "Elevator1", "attributeValues": { "aCurrentFloor": "1", "aTargetFloor": "1" } },
+        { "id": "oRider1", "classId": "cRider", "name": "Rider1", "attributeValues": { "aStartFloor": "1", "aDestFloor": "5", "aBoarded": "false" } }
+      ],
+      "links": [
+        { "id": "lCarries1", "relationId": "rCarries", "source": "oElevator1", "target": "oRider1", "sourceHandle": "right", "targetHandle": "left" }
+      ],
+      "connectors": [
+        { "id": "conEl1", "sourceObjectId": "oElevator1", "sourcePortId": "pRider", "targetObjectId": "oRider1", "targetPortId": "pElevator" }
+      ]
+    },
+    {
+      "id": "imTopToBottom",
+      "kind": "instancemodel",
+      "name": "TopToBottom",
+      "objects": [
+        { "id": "oElevator2", "classId": "cElevator", "name": "Elevator1", "attributeValues": { "aCurrentFloor": "5", "aTargetFloor": "5" } },
+        { "id": "oRider2", "classId": "cRider", "name": "Rider1", "attributeValues": { "aStartFloor": "5", "aDestFloor": "1", "aBoarded": "false" } }
+      ],
+      "links": [
+        { "id": "lCarries2", "relationId": "rCarries", "source": "oElevator2", "target": "oRider2", "sourceHandle": "right", "targetHandle": "left" }
+      ],
+      "connectors": [
+        { "id": "conEl2", "sourceObjectId": "oElevator2", "sourcePortId": "pRider", "targetObjectId": "oRider2", "targetPortId": "pElevator" }
+      ]
+    }
+  ],
+  "layouts": {}
+}

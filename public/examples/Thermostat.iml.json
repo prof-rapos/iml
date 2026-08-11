@@ -1,0 +1,127 @@
+{
+  "metaModel": {
+    "kind": "metamodel",
+    "name": "Thermostat",
+    "classes": [
+      {
+        "id": "cThermostat",
+        "name": "Thermostat",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aTargetTemp", "name": "targetTemp", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "70" },
+          { "id": "aCurrentAvg", "name": "currentAvg", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "70" },
+          { "id": "aTemp1", "name": "temp1", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "70" },
+          { "id": "aTemp2", "name": "temp2", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "70" },
+          { "id": "aMode", "name": "mode", "type": "ENUM", "enumId": "eMode", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "OFF" }
+        ],
+        "ports": [
+          { "id": "pSensor1", "name": "sensor1", "protocolId": "protoClimate", "conjugated": false },
+          { "id": "pSensor2", "name": "sensor2", "protocolId": "protoClimate", "conjugated": false },
+          { "id": "pTimer", "name": "timer", "protocolId": "sys-timing", "conjugated": false },
+          { "id": "pLog", "name": "log", "protocolId": "sys-log", "conjugated": false }
+        ]
+      },
+      {
+        "id": "cSensor",
+        "name": "Sensor",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aTempF", "name": "tempF", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "70" },
+          { "id": "aDrift", "name": "driftPerTick", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "0" }
+        ],
+        "ports": [
+          { "id": "pThermostat", "name": "thermostat", "protocolId": "protoClimate", "conjugated": true },
+          { "id": "pSensorTimer", "name": "timer", "protocolId": "sys-timing", "conjugated": false }
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "rHasSensors",
+        "kind": "COMPOSITION",
+        "source": "cThermostat",
+        "target": "cSensor",
+        "name": "sensors",
+        "sourceMultiplicity": "1",
+        "targetMultiplicity": "2",
+        "sourceHandle": "bottom",
+        "targetHandle": "top"
+      }
+    ],
+    "enumerations": [
+      { "id": "eMode", "name": "Mode", "literals": ["OFF", "HEATING", "COOLING"] }
+    ],
+    "behaviours": {
+      "cThermostat": {
+        "states": [
+          { "id": "sThInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sThIdle", "kind": "simple", "name": "Idle", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tThStart", "source": "sThInit", "target": "sThIdle", "trigger": "", "guard": "", "effect": "log.log(\"Thermostat ready. Target: \" + targetTemp + \"F.\");\ntimer.informIn(2000);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tThReport1", "source": "sThIdle", "target": "sThIdle", "trigger": "sensor1.report", "guard": "", "effect": "temp1 = tempF;\ncurrentAvg = (temp1 + temp2) / 2;\nlog.log(\"Sensor1: \" + temp1 + \"F, Avg: \" + currentAvg + \"F.\");", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.35 },
+          { "id": "tThReport2", "source": "sThIdle", "target": "sThIdle", "trigger": "sensor2.report", "guard": "", "effect": "temp2 = tempF;\ncurrentAvg = (temp1 + temp2) / 2;\nlog.log(\"Sensor2: \" + temp2 + \"F, Avg: \" + currentAvg + \"F.\");", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.35 },
+          { "id": "tThEvaluate", "source": "sThIdle", "target": "sThIdle", "trigger": "timer.timeout", "guard": "", "effect": "if (currentAvg < targetTemp - 2) {\n  mode = Mode.HEATING;\n  log.log(\"Too cold (\" + currentAvg + \"F) - heating on.\");\n} else if (currentAvg > targetTemp + 2) {\n  mode = Mode.COOLING;\n  log.log(\"Too hot (\" + currentAvg + \"F) - cooling on.\");\n} else {\n  mode = Mode.OFF;\n  log.log(\"Comfortable (\" + currentAvg + \"F) - HVAC off.\");\n}\ntimer.informIn(2000);", "sourceHandle": "right", "targetHandle": "left", "labelT": 0.65 }
+        ]
+      },
+      "cSensor": {
+        "states": [
+          { "id": "sSeInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sSeReporting", "kind": "simple", "name": "Reporting", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tSeStart", "source": "sSeInit", "target": "sSeReporting", "trigger": "", "guard": "", "effect": "timer.informIn(1000);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tSeTick", "source": "sSeReporting", "target": "sSeReporting", "trigger": "timer.timeout", "guard": "", "effect": "tempF = tempF + driftPerTick;\nthermostat.report(tempF);\ntimer.informIn(1000);", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 }
+        ]
+      }
+    },
+    "protocols": [
+      {
+        "id": "protoClimate",
+        "name": "Climate",
+        "signals": [
+          { "id": "sigReport", "name": "report", "direction": "in", "params": [ { "id": "prmTempF", "name": "tempF", "type": "INT" } ] }
+        ]
+      }
+    ]
+  },
+  "instanceModels": [
+    {
+      "id": "imColdRoom",
+      "kind": "instancemodel",
+      "name": "ColdRoom",
+      "objects": [
+        { "id": "oThermostat1", "classId": "cThermostat", "name": "Thermostat1", "attributeValues": { "aTargetTemp": "70", "aCurrentAvg": "56", "aTemp1": "55", "aTemp2": "58", "aMode": "OFF" } },
+        { "id": "oSensor1a", "classId": "cSensor", "name": "SensorA", "attributeValues": { "aTempF": "55", "aDrift": "1" } },
+        { "id": "oSensor1b", "classId": "cSensor", "name": "SensorB", "attributeValues": { "aTempF": "58", "aDrift": "1" } }
+      ],
+      "links": [
+        { "id": "lHas1a", "relationId": "rHasSensors", "source": "oThermostat1", "target": "oSensor1a", "sourceHandle": "bottom", "targetHandle": "top" },
+        { "id": "lHas1b", "relationId": "rHasSensors", "source": "oThermostat1", "target": "oSensor1b", "sourceHandle": "bottom", "targetHandle": "top" }
+      ],
+      "connectors": [
+        { "id": "conTh1a", "sourceObjectId": "oSensor1a", "sourcePortId": "pThermostat", "targetObjectId": "oThermostat1", "targetPortId": "pSensor1" },
+        { "id": "conTh1b", "sourceObjectId": "oSensor1b", "sourcePortId": "pThermostat", "targetObjectId": "oThermostat1", "targetPortId": "pSensor2" }
+      ]
+    },
+    {
+      "id": "imHotRoom",
+      "kind": "instancemodel",
+      "name": "HotRoom",
+      "objects": [
+        { "id": "oThermostat2", "classId": "cThermostat", "name": "Thermostat1", "attributeValues": { "aTargetTemp": "70", "aCurrentAvg": "83", "aTemp1": "85", "aTemp2": "82", "aMode": "OFF" } },
+        { "id": "oSensor2a", "classId": "cSensor", "name": "SensorA", "attributeValues": { "aTempF": "85", "aDrift": "-1" } },
+        { "id": "oSensor2b", "classId": "cSensor", "name": "SensorB", "attributeValues": { "aTempF": "82", "aDrift": "-1" } }
+      ],
+      "links": [
+        { "id": "lHas2a", "relationId": "rHasSensors", "source": "oThermostat2", "target": "oSensor2a", "sourceHandle": "bottom", "targetHandle": "top" },
+        { "id": "lHas2b", "relationId": "rHasSensors", "source": "oThermostat2", "target": "oSensor2b", "sourceHandle": "bottom", "targetHandle": "top" }
+      ],
+      "connectors": [
+        { "id": "conTh2a", "sourceObjectId": "oSensor2a", "sourcePortId": "pThermostat", "targetObjectId": "oThermostat2", "targetPortId": "pSensor1" },
+        { "id": "conTh2b", "sourceObjectId": "oSensor2b", "sourcePortId": "pThermostat", "targetObjectId": "oThermostat2", "targetPortId": "pSensor2" }
+      ]
+    }
+  ],
+  "layouts": {}
+}

@@ -1,0 +1,123 @@
+{
+  "metaModel": {
+    "kind": "metamodel",
+    "name": "Vending",
+    "classes": [
+      {
+        "id": "cVendingMachine",
+        "name": "VendingMachine",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aCredit", "name": "credit", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "0" },
+          { "id": "aPrice", "name": "price", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "150" }
+        ],
+        "ports": [
+          { "id": "pCustomer", "name": "customer", "protocolId": "protoVending", "conjugated": false },
+          { "id": "pTimer", "name": "timer", "protocolId": "sys-timing", "conjugated": false },
+          { "id": "pLog", "name": "log", "protocolId": "sys-log", "conjugated": false }
+        ]
+      },
+      {
+        "id": "cCustomer",
+        "name": "Customer",
+        "isAbstract": false,
+        "attributes": [
+          { "id": "aBudget", "name": "budget", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "200" },
+          { "id": "aLastItem", "name": "lastItemReceived", "type": "ENUM", "enumId": "eItem", "visibility": "PUBLIC", "lowerBound": 0, "upperBound": 1, "defaultValue": "" },
+          { "id": "aChange", "name": "changeReceived", "type": "INT", "visibility": "PUBLIC", "lowerBound": 1, "upperBound": 1, "defaultValue": "0" }
+        ],
+        "ports": [
+          { "id": "pMachine", "name": "machine", "protocolId": "protoVending", "conjugated": true }
+        ]
+      }
+    ],
+    "relations": [
+      {
+        "id": "rServes",
+        "kind": "REFERENCE",
+        "source": "cVendingMachine",
+        "target": "cCustomer",
+        "name": "servedCustomer",
+        "sourceMultiplicity": "1",
+        "targetMultiplicity": "1",
+        "sourceHandle": "right",
+        "targetHandle": "left"
+      }
+    ],
+    "enumerations": [
+      { "id": "eItem", "name": "Item", "literals": ["SODA", "CHIPS", "CANDY"] }
+    ],
+    "behaviours": {
+      "cVendingMachine": {
+        "states": [
+          { "id": "sVmInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sVmIdle", "kind": "simple", "name": "Idle", "entry": "", "exit": "" },
+          { "id": "sVmDispensing", "kind": "simple", "name": "Dispensing", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tVmStart", "source": "sVmInit", "target": "sVmIdle", "trigger": "", "guard": "", "effect": "log.log(\"Ready. Price: \" + price + \" cents.\");", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tVmInsert", "source": "sVmIdle", "target": "sVmIdle", "trigger": "customer.insertCoin", "guard": "", "effect": "credit = credit + cents;\nlog.log(\"Credit: \" + credit + \" cents.\");", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 },
+          { "id": "tVmSelectOk", "source": "sVmIdle", "target": "sVmDispensing", "trigger": "customer.selectItem", "guard": "credit >= price", "effect": "int change = credit - price;\nlog.log(\"Dispensing \" + item + \".\");\ncustomer.dispense(item);\nif (change > 0) {\n  log.log(\"Returning change: \" + change + \" cents.\");\n  customer.refund(change);\n}\ncredit = 0;\ntimer.informIn(800);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tVmSelectShort", "source": "sVmIdle", "target": "sVmIdle", "trigger": "customer.selectItem", "guard": "credit < price", "effect": "log.log(\"Insufficient credit for \" + item + \" - need \" + (price - credit) + \" more cents.\");", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.5 },
+          { "id": "tVmDone", "source": "sVmDispensing", "target": "sVmIdle", "trigger": "timer.timeout", "guard": "", "effect": "log.log(\"Ready for next customer.\");", "sourceHandle": "left", "targetHandle": "right" }
+        ]
+      },
+      "cCustomer": {
+        "states": [
+          { "id": "sCuInit", "kind": "initial", "name": "", "entry": "", "exit": "" },
+          { "id": "sCuShopping", "kind": "simple", "name": "Shopping", "entry": "", "exit": "" }
+        ],
+        "transitions": [
+          { "id": "tCuStart", "source": "sCuInit", "target": "sCuShopping", "trigger": "", "guard": "", "effect": "machine.insertCoin(budget);\nmachine.selectItem(Item.SODA);", "sourceHandle": "right", "targetHandle": "left" },
+          { "id": "tCuDispense", "source": "sCuShopping", "target": "sCuShopping", "trigger": "machine.dispense", "guard": "", "effect": "lastItemReceived = item;", "sourceHandle": "top", "targetHandle": "top", "labelT": 0.5 },
+          { "id": "tCuRefund", "source": "sCuShopping", "target": "sCuShopping", "trigger": "machine.refund", "guard": "", "effect": "changeReceived = cents;", "sourceHandle": "bottom", "targetHandle": "bottom", "labelT": 0.5 }
+        ]
+      }
+    },
+    "protocols": [
+      {
+        "id": "protoVending",
+        "name": "Vending",
+        "signals": [
+          { "id": "sigInsertCoin", "name": "insertCoin", "direction": "in", "params": [ { "id": "prmCents1", "name": "cents", "type": "INT" } ] },
+          { "id": "sigSelectItem", "name": "selectItem", "direction": "in", "params": [ { "id": "prmItem1", "name": "item", "type": "ENUM", "enumId": "eItem" } ] },
+          { "id": "sigDispense", "name": "dispense", "direction": "out", "params": [ { "id": "prmItem2", "name": "item", "type": "ENUM", "enumId": "eItem" } ] },
+          { "id": "sigRefund", "name": "refund", "direction": "out", "params": [ { "id": "prmCents2", "name": "cents", "type": "INT" } ] }
+        ]
+      }
+    ]
+  },
+  "instanceModels": [
+    {
+      "id": "imAmpleFunds",
+      "kind": "instancemodel",
+      "name": "AmpleFunds",
+      "objects": [
+        { "id": "oMachine1", "classId": "cVendingMachine", "name": "Machine1", "attributeValues": { "aCredit": "0", "aPrice": "150" } },
+        { "id": "oCustomer1", "classId": "cCustomer", "name": "AmpleCustomer", "attributeValues": { "aBudget": "200", "aLastItem": "", "aChange": "0" } }
+      ],
+      "links": [
+        { "id": "lServes1", "relationId": "rServes", "source": "oMachine1", "target": "oCustomer1", "sourceHandle": "right", "targetHandle": "left" }
+      ],
+      "connectors": [
+        { "id": "conVend1", "sourceObjectId": "oMachine1", "sourcePortId": "pCustomer", "targetObjectId": "oCustomer1", "targetPortId": "pMachine" }
+      ]
+    },
+    {
+      "id": "imShortFunds",
+      "kind": "instancemodel",
+      "name": "ShortFunds",
+      "objects": [
+        { "id": "oMachine2", "classId": "cVendingMachine", "name": "Machine1", "attributeValues": { "aCredit": "0", "aPrice": "150" } },
+        { "id": "oCustomer2", "classId": "cCustomer", "name": "ShortCustomer", "attributeValues": { "aBudget": "100", "aLastItem": "", "aChange": "0" } }
+      ],
+      "links": [
+        { "id": "lServes2", "relationId": "rServes", "source": "oMachine2", "target": "oCustomer2", "sourceHandle": "right", "targetHandle": "left" }
+      ],
+      "connectors": [
+        { "id": "conVend2", "sourceObjectId": "oMachine2", "sourcePortId": "pCustomer", "targetObjectId": "oCustomer2", "targetPortId": "pMachine" }
+      ]
+    }
+  ],
+  "layouts": {}
+}
