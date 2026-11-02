@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTransformStore, findEnumMismatch } from '../../store/transformStore';
 import { getAllAttributes, getAllRelations } from '../../store/modelStore';
 import { useOverlayClose } from '../../utils/useOverlayClose';
+import { evalExpression } from '../../utils/transformExpression';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -13,6 +14,25 @@ const CARD_BG   = '#1c2128';
 const typeLabel = (attr, metaModel) => attr.type === 'ENUM'
   ? ((metaModel.enumerations ?? []).find((e) => e.id === attr.enumId)?.name ?? 'ENUM')
   : attr.type;
+
+// Why an expression mapping would fail or silently produce '', for showing
+// under the input as the user types: a syntax error, or a {ref} that names no
+// attribute on the source class (an unknown ref evaluates to '' with no
+// error, so a typo would otherwise only show up as an empty target value).
+// Evaluating against an empty scope is enough — the only failures are syntactic.
+function expressionProblem(expression, srcAttrs) {
+  const text = expression ?? '';
+  if (!text.trim()) return null;
+  const types = Object.fromEntries(srcAttrs.map((a) => [a.name, a.type]));
+  try {
+    evalExpression(text, {}, types);
+  } catch (err) {
+    return err.message;
+  }
+  const known = new Set(srcAttrs.map((a) => a.name));
+  const unknown = [...text.matchAll(/\{([^}]+)\}/g)].map((r) => r[1].trim()).filter((n) => !known.has(n));
+  return unknown.length ? `unknown attribute ${[...new Set(unknown)].map((n) => `{${n}}`).join(', ')} — evaluates to empty` : null;
+}
 
 const SELECT_STYLE = {
   background: '#21262d', border: `1px solid ${BORDER}`, color: TEXT,
@@ -182,8 +202,17 @@ function RuleCard({ rule, source, target }) {
                       />
                       <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
                         refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
-                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, negation <code>!{'{'}flag{'}'}</code>, <code>cond ? a : b</code>, <code>"text"</code>, and functions <code>upper() lower() trim() round() abs() len()</code>
+                        {'  ·  '}operators <code>+ - * / %</code>, <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>&amp;&amp; || !</code>, <code>cond ? a : b</code>, <code>"text"</code>
+                        {'  ·  '}functions (call as <code>upper(x)</code> or <code>x.upper()</code>): <code>upper lower trim len substring charAt indexOf contains startsWith endsWith equals equalsIgnoreCase isEmpty isBlank replace round floor ceil abs min max coalesce match</code>
                       </div>
+                      {(() => {
+                        const problem = expressionProblem(m.expression, srcAttrs);
+                        return problem && (
+                          <div style={{ flexBasis: '100%', fontSize: 10, color: '#f85149', marginLeft: 136, lineHeight: 1.5 }}>
+                            ✖ {problem}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
 

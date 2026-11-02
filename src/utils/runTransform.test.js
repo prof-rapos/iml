@@ -249,6 +249,40 @@ describe('runTransform — type + multiplicity coercion', () => {
     expect(run('false', '!{x}', 'BOOLEAN')).toBe('true');
   });
 
+  it('uses attribute types: STRING stays text, string functions and match() work end-to-end', () => {
+    const enums = [{ id: 'e1', name: 'Status', literals: ['A', 'I'] }];
+    const source = {
+      metaModel: {
+        classes: [{ id: 'S', name: 'S', attributes: [
+          { id: 'zip',  name: 'zip',  type: 'STRING', lowerBound: 0, upperBound: 1 },
+          { id: 'stat', name: 'stat', type: 'ENUM', enumId: 'e1', lowerBound: 0, upperBound: 1 },
+        ] }],
+        relations: [],
+        enumerations: enums,
+      },
+      instanceModels: [{ id: 'im1', kind: 'instancemodel', name: 'M', links: [], objects: [
+        { id: 'o1', classId: 'S', name: 'obj1', attributeValues: { zip: '12345', stat: 'A' } },
+      ] }],
+      layouts: {},
+    };
+    const target = tgtModel({ id: 'r', name: 'r', type: 'STRING', lowerBound: 0, upperBound: 1 });
+    const run = (expression) => {
+      const rules = [{
+        sourceClassId: 'S', targetClassId: 'T',
+        attributeMappings: [{ type: 'expression', targetAttrId: 'r', expression }],
+        relationMappings: [],
+      }];
+      const result = runTransform(source, target, rules);
+      expect(result.warnings).toEqual([]);
+      return result.instanceModels[0].objects[0].attributeValues.r;
+    };
+
+    expect(run('{zip}.substring(0, 3)')).toBe('123');
+    expect(run('{zip} + {zip}')).toBe('1234512345');   // STRING never adds, even when numeric-looking
+    expect(run('{stat}.match("A", "Active", "I", "Inactive")')).toBe('Active');
+    expect(run('{stat}.equals("A") ? 1 : 0')).toBe('1');
+  });
+
   it('falls back to an empty value for a malformed expression', () => {
     const source = srcModel({
       attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },
