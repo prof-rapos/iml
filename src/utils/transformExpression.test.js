@@ -117,6 +117,28 @@ describe('evalExpression — ternary', () => {
   });
 });
 
+describe('evalExpression — negation', () => {
+  it('negates a BOOLEAN attribute value', () => {
+    expect(evalExpression('!{x}', { x: 'true' })).toBe('false');
+    expect(evalExpression('!{x}', { x: 'false' })).toBe('true');
+    expect(evalExpression('!{x}', { x: '' })).toBe('true');
+  });
+
+  it('negates a comparison in parentheses and works as a ternary condition', () => {
+    expect(evalExpression('!({price} > 10)', { price: '5' })).toBe('true');
+    expect(evalExpression('!{active} ? "off" : "on"', { active: 'true' })).toBe('on');
+  });
+
+  it('allows double negation and still supports !=', () => {
+    expect(evalExpression('!!{x}', { x: 'true' })).toBe('true');
+    expect(evalExpression('{a} != {b}', { a: '1', b: '2' })).toBe('true');
+  });
+
+  it('still throws on a bare "!" with nothing after it', () => {
+    expect(() => evalExpression('!', {})).toThrow();
+  });
+});
+
 describe('evalExpression — functions', () => {
   it('uppercases and lowercases', () => {
     expect(evalExpression('upper({firstName})', scope)).toBe('ADA');

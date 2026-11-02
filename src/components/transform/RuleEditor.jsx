@@ -182,7 +182,7 @@ function RuleCard({ rule, source, target }) {
                       />
                       <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
                         refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
-                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>cond ? a : b</code>, <code>"text"</code>, and functions <code>upper() lower() trim() round() abs() len()</code>
+                        {'  ·  '}use <code>+ - * /</code>, comparisons <code>&gt; &lt; &gt;= &lt;= == !=</code>, negation <code>!{'{'}flag{'}'}</code>, <code>cond ? a : b</code>, <code>"text"</code>, and functions <code>upper() lower() trim() round() abs() len()</code>
                       </div>
                     </>
                   )}

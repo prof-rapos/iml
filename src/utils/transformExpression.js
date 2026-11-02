@@ -10,7 +10,7 @@
 //   arith      := term (('+' | '-') term)*
 //   term       := factor (('*' | '/') factor)*
 //   factor     := number | string | '{' ref '}' | '(' expr ')' | '-' factor
-//               | IDENT '(' expr ')'
+//               | '!' factor | IDENT '(' expr ')'
 //
 // - {name}  resolves against `scope` (source attribute name → value).
 // - "text" or 'text' is a string literal.
@@ -22,6 +22,8 @@
 //   a comparison (e.g. a bare {flag} ? "on" : "off" — a BOOLEAN attribute's
 //   own "true"/"false" string reads naturally here without needing
 //   {flag} == "true").
+// - '!' negates its operand's truthy() value, rendering "true"/"false" — so
+//   !{flag} on a BOOLEAN attribute flips it and coerces back to a BOOLEAN target.
 // - a handful of single-argument functions (see FUNCTIONS below) can wrap
 //   any sub-expression, including another function call: upper(trim({name})).
 //
@@ -31,6 +33,7 @@
 //   ({a} + {b}) / 2                      →  numeric average
 //   {x} > 10 ? "large" : "small"
 //   {active} ? {name} : "(inactive)"
+//   !{active}                            →  "true" / "false"
 //   upper({name})                        →  "ADA"
 //   round({price} * 1.15)                →  numeric, rounded
 
@@ -136,7 +139,7 @@ function tokenize(input) {
       if (two === '>=' || two === '<=' || two === '==' || two === '!=') {
         tokens.push({ t: 'op', v: two }); i += 2; continue;
       }
-      if (c === '>' || c === '<') { tokens.push({ t: 'op', v: c }); i++; continue; }
+      if (c === '>' || c === '<' || c === '!') { tokens.push({ t: 'op', v: c }); i++; continue; }
       throw new Error(`Unexpected character "${c}" in expression`);
     }
     if ('+-*/()'.includes(c)) { tokens.push({ t: 'op', v: c }); i++; continue; }
@@ -214,6 +217,7 @@ export function evalExpression(input, scope = {}) {
     const tk = peek();
     if (!tk) throw new Error('Unexpected end of expression');
     if (tk.t === 'op' && tk.v === '-') { next(); return -Number(parseFactor()); }
+    if (tk.t === 'op' && tk.v === '!') { next(); return !truthy(parseFactor()); }
     if (tk.t === 'op' && tk.v === '(') {
       next();
       const v = parseTernary();
