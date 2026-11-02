@@ -97,44 +97,72 @@ const toIndex = (v, fallback) => {
   const n = Math.trunc(Number(v));
   return Number.isNaN(n) ? fallback : n;
 };
-const def = (min, max, run) => ({ min, max, run });
+// `doc` feeds the rule editor's reference popover (FUNCTION_REFERENCE below):
+// [group, signature, description, example]. The signature names the receiver
+// (first argument) so it reads as a function call; any function can also be
+// written as receiver.name(rest). A "?" marks an optional argument.
+const def = (min, max, run, doc) => ({ min, max, run, doc });
+
+const TEXT = 'Text', NUMBER = 'Numbers', GENERAL = 'General';
 
 const FUNCTIONS = {
   // text
-  upper:            def(1, 1, (s) => strify(s).toUpperCase()),
-  lower:            def(1, 1, (s) => strify(s).toLowerCase()),
-  trim:             def(1, 1, (s) => strify(s).trim()),
-  len:              def(1, 1, (s) => strify(s).length),
+  upper:            def(1, 1, (s) => strify(s).toUpperCase(),
+    [TEXT, 'upper(text)', 'Converts to upper case.', '{name}.upper()  →  "ADA"']),
+  lower:            def(1, 1, (s) => strify(s).toLowerCase(),
+    [TEXT, 'lower(text)', 'Converts to lower case.', '{name}.lower()  →  "ada"']),
+  trim:             def(1, 1, (s) => strify(s).trim(),
+    [TEXT, 'trim(text)', 'Removes leading and trailing spaces.', '"  hi ".trim()  →  "hi"']),
+  len:              def(1, 1, (s) => strify(s).length,
+    [TEXT, 'len(text)', 'Number of characters.', '{name}.len()  →  3']),
   substring:        def(2, 3, (s, begin, end) => {
     const t = strify(s);
     const from = clamp(toIndex(begin, 0), 0, t.length);
     const to = end === undefined ? t.length : clamp(toIndex(end, t.length), 0, t.length);
     return from <= to ? t.slice(from, to) : '';
-  }),
-  charAt:           def(2, 2, (s, i) => strify(s).charAt(toIndex(i, 0))),
-  indexOf:          def(2, 3, (s, t, from) => strify(s).indexOf(strify(t), from === undefined ? 0 : Math.max(0, toIndex(from, 0)))),
-  contains:         def(2, 2, (s, t) => strify(s).includes(strify(t))),
-  startsWith:       def(2, 2, (s, t) => strify(s).startsWith(strify(t))),
-  endsWith:         def(2, 2, (s, t) => strify(s).endsWith(strify(t))),
-  equals:           def(2, 2, (a, b) => strify(a) === strify(b)),
-  equalsIgnoreCase: def(2, 2, (a, b) => strify(a).toLowerCase() === strify(b).toLowerCase()),
-  isEmpty:          def(1, 1, (s) => strify(s) === ''),
-  isBlank:          def(1, 1, (s) => strify(s).trim() === ''),
+  }, [TEXT, 'substring(text, begin, end?)',
+    'Characters from position begin up to, but not including, end (default: to the end). Positions start at 0; out-of-range values are clamped, never an error.',
+    '{code}.substring(0, 4)  →  "ABCD" for "ABCDEFG"']),
+  charAt:           def(2, 2, (s, i) => strify(s).charAt(toIndex(i, 0)),
+    [TEXT, 'charAt(text, index)', 'The single character at position index (0-based); empty if out of range.', '{code}.charAt(1)  →  "B" for "ABC"']),
+  indexOf:          def(2, 3, (s, t, from) => strify(s).indexOf(strify(t), from === undefined ? 0 : Math.max(0, toIndex(from, 0))),
+    [TEXT, 'indexOf(text, find, from?)', 'Position of the first occurrence of find at or after from (default 0), or -1 if absent.', '{code}.indexOf("-")  →  3 for "ABC-12"']),
+  contains:         def(2, 2, (s, t) => strify(s).includes(strify(t)),
+    [TEXT, 'contains(text, find)', 'true if find appears anywhere in text.', '{email}.contains("@")  →  true']),
+  startsWith:       def(2, 2, (s, t) => strify(s).startsWith(strify(t)),
+    [TEXT, 'startsWith(text, prefix)', 'true if text begins with prefix.', '{code}.startsWith("AB")']),
+  endsWith:         def(2, 2, (s, t) => strify(s).endsWith(strify(t)),
+    [TEXT, 'endsWith(text, suffix)', 'true if text ends with suffix.', '{file}.endsWith(".java")']),
+  equals:           def(2, 2, (a, b) => strify(a) === strify(b),
+    [TEXT, 'equals(a, b)', 'true if both have exactly the same text (case-sensitive). Same as a == b.', '{s}.equals("A") ? 1 : 0']),
+  equalsIgnoreCase: def(2, 2, (a, b) => strify(a).toLowerCase() === strify(b).toLowerCase(),
+    [TEXT, 'equalsIgnoreCase(a, b)', 'Like equals, ignoring upper/lower case.', '{s}.equalsIgnoreCase("yes")']),
+  isEmpty:          def(1, 1, (s) => strify(s) === '',
+    [TEXT, 'isEmpty(text)', 'true if text has no characters.', '{nick}.isEmpty() ? {name} : {nick}']),
+  isBlank:          def(1, 1, (s) => strify(s).trim() === '',
+    [TEXT, 'isBlank(text)', 'true if text is empty or only spaces.', '{nick}.isBlank()']),
   // Replaces every occurrence of a literal substring (like Java's String.replace).
-  replace:          def(3, 3, (s, t, r) => (strify(t) === '' ? strify(s) : strify(s).split(strify(t)).join(strify(r)))),
+  replace:          def(3, 3, (s, t, r) => (strify(t) === '' ? strify(s) : strify(s).split(strify(t)).join(strify(r))),
+    [TEXT, 'replace(text, find, with)', 'Replaces every occurrence of find with the replacement text (not a pattern).', '{phone}.replace("-", "")  →  "5551234"']),
   // numeric
   round:            def(1, 2, (v, places) => {
     const f = 10 ** clamp(toIndex(places, 0), 0, 12);
     return Math.round(Number(v) * f) / f;
-  }),
-  abs:              def(1, 1, (v) => Math.abs(Number(v))),
-  floor:            def(1, 1, (v) => Math.floor(Number(v))),
-  ceil:             def(1, 1, (v) => Math.ceil(Number(v))),
-  min:              def(2, Infinity, (...a) => Math.min(...a.map(Number))),
-  max:              def(2, Infinity, (...a) => Math.max(...a.map(Number))),
+  }, [NUMBER, 'round(number, places?)', 'Rounds to places decimal places (default 0, a whole number).', 'round({price} * 1.15, 2)']),
+  abs:              def(1, 1, (v) => Math.abs(Number(v)),
+    [NUMBER, 'abs(number)', 'Absolute value (drops the minus sign).', 'abs({delta})']),
+  floor:            def(1, 1, (v) => Math.floor(Number(v)),
+    [NUMBER, 'floor(number)', 'Rounds down to a whole number.', 'floor(2.9)  →  2']),
+  ceil:             def(1, 1, (v) => Math.ceil(Number(v)),
+    [NUMBER, 'ceil(number)', 'Rounds up to a whole number.', 'ceil(2.1)  →  3']),
+  min:              def(2, Infinity, (...a) => Math.min(...a.map(Number)),
+    [NUMBER, 'min(a, b, ...)', 'The smallest of two or more numbers.', 'min({qty}, 10)']),
+  max:              def(2, Infinity, (...a) => Math.max(...a.map(Number)),
+    [NUMBER, 'max(a, b, ...)', 'The largest of two or more numbers.', 'max({qty}, 0)']),
   // general
   // First argument that isn't empty, else ''.
-  coalesce:         def(1, Infinity, (...a) => a.find((v) => strify(v) !== '') ?? ''),
+  coalesce:         def(1, Infinity, (...a) => a.find((v) => strify(v) !== '') ?? '',
+    [GENERAL, 'coalesce(a, b, ...)', 'The first value that is not empty — handy for defaults.', 'coalesce({nick}, {name}, "(none)")']),
   // {v}.match(k1, r1, k2, r2, ..., [default]) — a lookup table, e.g. for
   // remapping enum literals. Returns the result paired with the first key equal
   // to v; otherwise the trailing default if one was given, else v unchanged.
@@ -143,17 +171,28 @@ const FUNCTIONS = {
       if (strify(rest[i]) === strify(v)) return rest[i + 1];
     }
     return rest.length % 2 === 1 ? rest[rest.length - 1] : v;
-  }),
+  }, [GENERAL, 'match(value, key1, result1, key2, result2, ..., default?)',
+    'Lookup table: returns the result next to the first key equal to value. With a trailing default it is used when nothing matches; without one the value passes through unchanged. Good for remapping enum literals.',
+    '{status}.match("A", "Active", "I", "Inactive", "Unknown")']),
 };
 
 // Java-flavoured aliases for the names above.
-const ALIASES = { touppercase: 'upper', tolowercase: 'lower', length: 'len' };
+const ALIASES = { toUpperCase: 'upper', toLowerCase: 'lower', length: 'len' };
 
 const FUNCTION_LOOKUP = new Map(Object.entries(FUNCTIONS).map(([name, f]) => [name.toLowerCase(), f]));
+const ALIAS_LOOKUP = new Map(Object.entries(ALIASES).map(([alias, name]) => [alias.toLowerCase(), name.toLowerCase()]));
 const lookupFunction = (name) => {
   const key = name.toLowerCase();
-  return FUNCTION_LOOKUP.get(ALIASES[key] ?? key);
+  return FUNCTION_LOOKUP.get(ALIAS_LOOKUP.get(key) ?? key);
 };
+
+// Reference data for the rule editor's popover — derived from the table above
+// so the documentation can't drift from what actually evaluates.
+export const FUNCTION_REFERENCE = Object.entries(FUNCTIONS).map(([name, f]) => {
+  const [group, signature, description, example] = f.doc;
+  const aliases = Object.entries(ALIASES).filter(([, target]) => target === name).map(([alias]) => alias);
+  return { name, group, signature, description, example, aliases };
+});
 
 function describeArity(f, isMethod) {
   // For the method form the receiver isn't something the user types in the parens.

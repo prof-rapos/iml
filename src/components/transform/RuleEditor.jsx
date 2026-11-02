@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTransformStore, findEnumMismatch } from '../../store/transformStore';
 import { getAllAttributes, getAllRelations } from '../../store/modelStore';
 import { useOverlayClose } from '../../utils/useOverlayClose';
-import { evalExpression } from '../../utils/transformExpression';
+import { evalExpression, FUNCTION_REFERENCE } from '../../utils/transformExpression';
 import { TEXT, TEXT_DIM } from '../theme';
 
 const BORDER   = 'rgba(255,255,255,0.10)';
@@ -32,6 +32,68 @@ function expressionProblem(expression, srcAttrs) {
   const known = new Set(srcAttrs.map((a) => a.name));
   const unknown = [...text.matchAll(/\{([^}]+)\}/g)].map((r) => r[1].trim()).filter((n) => !known.has(n));
   return unknown.length ? `unknown attribute ${[...new Set(unknown)].map((n) => `{${n}}`).join(', ')} — evaluates to empty` : null;
+}
+
+const OPERATORS = [
+  ['+  -  *  /  %', 'Arithmetic. + adds numbers but joins text.'],
+  ['==  !=  >  <  >=  <=', 'Comparison — gives true or false. Text compares as text, numbers as numbers.'],
+  ['&&  ||  !', 'And, or, not.'],
+  ['cond ? a : b', 'Pick a when cond is true, otherwise b. Can be nested.'],
+  ['"text"  123  true', 'Literal text, number or boolean.'],
+];
+
+const REF_MONO = { fontFamily: 'ui-monospace, Consolas, monospace' };
+
+// Click-to-open cheat sheet under an expression input: attribute refs, operators
+// and every function's parameters. In-flow (not a floating popover) so it can't
+// be clipped by the rule card or drift away on scroll, and it never covers the
+// input being edited. Content comes from FUNCTION_REFERENCE, so it can't drift
+// from what the evaluator actually accepts.
+function ExpressionHelp({ srcAttrs }) {
+  const [open, setOpen] = useState(false);
+  const groups = [...new Set(FUNCTION_REFERENCE.map((f) => f.group))];
+  return (
+    <div style={{ flexBasis: '100%', marginLeft: 136, fontSize: 10, color: TEXT_DIM, lineHeight: 1.5 }}>
+      <span>refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}</span>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        style={{ marginLeft: 8, padding: '0 7px', fontSize: 10, borderRadius: 10, cursor: 'pointer', color: open ? '#fff' : '#a78bfa', background: open ? ACCENT : 'transparent', border: `1px solid ${ACCENT}` }}
+      >ƒ Reference {open ? '▴' : '▾'}</button>
+
+      {open && (
+        // Pulled left over the (empty) label column so the reference gets the card's full width.
+        <div style={{ marginTop: 4, marginLeft: -124, maxHeight: 260, overflowY: 'auto', background: '#161b22', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '8px 10px', color: TEXT }}>
+          <div style={{ color: TEXT_DIM, marginBottom: 8 }}>
+            Any function can be written <code style={REF_MONO}>name(a, b)</code> or <code style={REF_MONO}>a.name(b)</code> — e.g. <code style={REF_MONO}>upper({'{'}name{'}'})</code> is the same as <code style={REF_MONO}>{'{'}name{'}'}.upper()</code>. A <code style={REF_MONO}>?</code> after a parameter means it is optional.
+          </div>
+
+          <div style={{ fontWeight: 700, color: TEXT, margin: '6px 0 3px' }}>Operators</div>
+          {OPERATORS.map(([op, desc]) => (
+            <div key={op} style={{ display: 'flex', gap: 8, marginBottom: 2 }}>
+              <code style={{ ...REF_MONO, color: '#79c0ff', flex: '0 0 150px' }}>{op}</code>
+              <span style={{ color: TEXT_DIM }}>{desc}</span>
+            </div>
+          ))}
+
+          {groups.map((g) => (
+            <div key={g}>
+              <div style={{ fontWeight: 700, color: TEXT, margin: '10px 0 3px' }}>{g} functions</div>
+              {FUNCTION_REFERENCE.filter((f) => f.group === g).map((f) => (
+                <div key={f.name} style={{ marginBottom: 6 }}>
+                  <code style={{ ...REF_MONO, color: '#79c0ff' }}>{f.signature}</code>
+                  {f.aliases.length > 0 && <span style={{ color: TEXT_DIM }}>{'  '}also {f.aliases.map((a) => a + '()').join(', ')}</span>}
+                  <div style={{ color: TEXT_DIM }}>{f.description}</div>
+                  <code style={{ ...REF_MONO, color: '#e3b341' }}>{f.example}</code>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 const SELECT_STYLE = {
@@ -200,11 +262,7 @@ function RuleCard({ rule, source, target }) {
                         placeholder={'{first} + " " + {last}'}
                         style={{ ...INPUT_STYLE, flex: 1, minWidth: 120 }}
                       />
-                      <div style={{ flexBasis: '100%', fontSize: 10, color: TEXT_DIM, marginLeft: 136, lineHeight: 1.5 }}>
-                        refs: {srcAttrs.map((sa) => `{${sa.name}}`).join(', ') || '—'}
-                        {'  ·  '}operators <code>+ - * / %</code>, <code>&gt; &lt; &gt;= &lt;= == !=</code>, <code>&amp;&amp; || !</code>, <code>cond ? a : b</code>, <code>"text"</code>
-                        {'  ·  '}functions (call as <code>upper(x)</code> or <code>x.upper()</code>): <code>upper lower trim len substring charAt indexOf contains startsWith endsWith equals equalsIgnoreCase isEmpty isBlank replace round floor ceil abs min max coalesce match</code>
-                      </div>
+                      <ExpressionHelp srcAttrs={srcAttrs} />
                       {(() => {
                         const problem = expressionProblem(m.expression, srcAttrs);
                         return problem && (

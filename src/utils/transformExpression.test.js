@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { evalExpression, isNumericValue } from './transformExpression.js';
+import { evalExpression, isNumericValue, FUNCTION_REFERENCE } from './transformExpression.js';
 
 const scope = {
   firstName: 'Ada',
@@ -445,5 +445,29 @@ describe('isNumericValue', () => {
     expect(isNumericValue('Ada')).toBe(false);
     expect(isNumericValue('')).toBe(false);
     expect(isNumericValue('  ')).toBe(false);
+  });
+});
+
+describe('FUNCTION_REFERENCE (rule editor popover data)', () => {
+  it('documents every function with a signature, description and example', () => {
+    expect(FUNCTION_REFERENCE.length).toBeGreaterThan(20);
+    for (const f of FUNCTION_REFERENCE) {
+      expect(f.signature.startsWith(f.name + '('), f.name).toBe(true);
+      expect(f.description.length, f.name).toBeGreaterThan(10);
+      expect(f.example.length, f.name).toBeGreaterThan(0);
+    }
+  });
+
+  it('only ships examples that actually parse and evaluate', () => {
+    for (const f of FUNCTION_REFERENCE) {
+      const expr = f.example.split('  →')[0];
+      expect(() => evalExpression(expr, {}, {}), f.name + ': ' + expr).not.toThrow();
+    }
+  });
+
+  it('lists aliases that resolve to the same function', () => {
+    const upper = FUNCTION_REFERENCE.find((f) => f.name === 'upper');
+    expect(upper.aliases).toEqual(['toUpperCase']);
+    expect(evalExpression('"a".toUpperCase()', {})).toBe('A');
   });
 });
