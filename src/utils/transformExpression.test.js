@@ -171,12 +171,12 @@ describe('evalExpression — typed BOOLEAN references', () => {
 
 describe('evalExpression — functions', () => {
   it('uppercases and lowercases', () => {
-    expect(evalExpression('upper({firstName})', scope)).toBe('ADA');
-    expect(evalExpression('lower({lastName})', scope)).toBe('lovelace');
+    expect(evalExpression('{firstName}.toUpperCase()', scope)).toBe('ADA');
+    expect(evalExpression('{lastName}.toLowerCase()', scope)).toBe('lovelace');
   });
 
   it('trims whitespace', () => {
-    expect(evalExpression('trim({padded})', { padded: '  hi  ' })).toBe('hi');
+    expect(evalExpression('{padded}.trim()', { padded: '  hi  ' })).toBe('hi');
   });
 
   it('rounds a numeric expression', () => {
@@ -190,20 +190,20 @@ describe('evalExpression — functions', () => {
   });
 
   it('measures string length', () => {
-    expect(evalExpression('len({firstName})', scope)).toBe('3');
+    expect(evalExpression('{firstName}.length()', scope)).toBe('3');
   });
 
   it('matches function names case-insensitively', () => {
-    expect(evalExpression('UPPER({firstName})', scope)).toBe('ADA');
+    expect(evalExpression('{firstName}.TOUPPERCASE()', scope)).toBe('ADA');
   });
 
   it('nests functions and composes with other operators', () => {
-    expect(evalExpression('upper(trim({padded}))', { padded: '  ada  ' })).toBe('ADA');
-    expect(evalExpression('upper({firstName}) + " " + upper({lastName})', scope)).toBe('ADA LOVELACE');
+    expect(evalExpression('{padded}.trim().toUpperCase()', { padded: '  ada  ' })).toBe('ADA');
+    expect(evalExpression('{firstName}.toUpperCase() + " " + {lastName}.toUpperCase()', scope)).toBe('ADA LOVELACE');
   });
 
   it('accepts a function call as a ternary condition/branch', () => {
-    expect(evalExpression('len({firstName}) > 2 ? upper({firstName}) : {firstName}', scope)).toBe('ADA');
+    expect(evalExpression('{firstName}.length() > 2 ? {firstName}.toUpperCase() : {firstName}', scope)).toBe('ADA');
   });
 
   it('throws on an unknown function', () => {
@@ -211,11 +211,11 @@ describe('evalExpression — functions', () => {
   });
 
   it('throws on a bare identifier that is not a function call', () => {
-    expect(() => evalExpression('upper', scope)).toThrow();
+    expect(() => evalExpression('round', scope)).toThrow();
   });
 
   it('throws on a function call missing its closing paren', () => {
-    expect(() => evalExpression('upper({firstName}', scope)).toThrow();
+    expect(() => evalExpression('round({price}', scope)).toThrow();
   });
 });
 
@@ -225,21 +225,30 @@ describe('evalExpression — method-call syntax', () => {
     expect(evalExpression('{s}.equals("A") ? 1 : 0', { s: 'B' })).toBe('0');
   });
 
-  it('treats the method form and the function form as identical', () => {
-    expect(evalExpression('{s}.upper()', { s: 'ada' })).toBe('ADA');
-    expect(evalExpression('upper({s})', { s: 'ada' })).toBe('ADA');
-    expect(evalExpression('{s}.substring(1, 3)', { s: 'abcdef' })).toBe('bc');
-    expect(evalExpression('substring({s}, 1, 3)', { s: 'abcdef' })).toBe('bc');
-  });
-
-  it('accepts Java-style aliases', () => {
+  it('uses the Java names for text methods', () => {
     expect(evalExpression('{s}.toUpperCase()', { s: 'ada' })).toBe('ADA');
     expect(evalExpression('{s}.toLowerCase()', { s: 'ADA' })).toBe('ada');
     expect(evalExpression('{s}.length()', { s: 'ada' })).toBe('3');
+    expect(evalExpression('{s}.substring(1, 3)', { s: 'abcdef' })).toBe('bc');
+  });
+
+  it('gives each function exactly one spelling', () => {
+    // text operations are methods, not functions...
+    expect(() => evalExpression('substring({s}, 1, 3)', { s: 'abcdef' })).toThrow(/is a method/);
+    expect(() => evalExpression('toUpperCase({s})', { s: 'a' })).toThrow(/is a method/);
+    // ...and number/combining operations are functions, not methods
+    expect(() => evalExpression('{x}.round(1)', { x: '2.25' })).toThrow(/plain function/);
+    expect(() => evalExpression('{a}.max(2)', { a: '1' })).toThrow(/plain function/);
+  });
+
+  it('points the pre-rename names at their replacements', () => {
+    expect(() => evalExpression('upper({s})', { s: 'a' })).toThrow(/toUpperCase/);
+    expect(() => evalExpression('{s}.lower()', { s: 'a' })).toThrow(/toLowerCase/);
+    expect(() => evalExpression('len({s})', { s: 'a' })).toThrow(/length/);
   });
 
   it('chains calls and works on literals and parenthesised expressions', () => {
-    expect(evalExpression('{s}.trim().upper()', { s: '  ada ' })).toBe('ADA');
+    expect(evalExpression('{s}.trim().toUpperCase()', { s: '  ada ' })).toBe('ADA');
     expect(evalExpression('"abc".length()', {})).toBe('3');
     expect(evalExpression('({a} + {b}).substring(0, 3)', { a: 'abc', b: 'def' })).toBe('abc');
   });
@@ -295,7 +304,6 @@ describe('evalExpression — string functions', () => {
 
   it('coalesce returns the first non-empty value', () => {
     expect(evalExpression('coalesce({a}, {b}, "none")', { a: '', b: 'B' })).toBe('B');
-    expect(evalExpression('{a}.coalesce("none")', { a: '' })).toBe('none');
     expect(evalExpression('coalesce({a}, {b})', { a: '', b: '' })).toBe('');
   });
 
@@ -318,7 +326,7 @@ describe('evalExpression — numeric additions', () => {
   it('rounds to a number of decimal places', () => {
     expect(evalExpression('round(3.14159, 2)', {})).toBe('3.14');
     expect(evalExpression('round(2.5)', {})).toBe('3');
-    expect(evalExpression('{x}.round(1)', { x: '2.25' })).toBe('2.3');
+    expect(evalExpression('round({x}, 1)', { x: '2.25' })).toBe('2.3');
   });
 
   it('floors, ceils, and takes min/max', () => {
@@ -395,10 +403,11 @@ describe('evalExpression — typed references', () => {
 });
 
 describe('evalExpression — function errors', () => {
-  it('reports the wrong number of arguments, excluding the receiver for methods', () => {
+  it('reports the wrong number of arguments, never counting the receiver', () => {
     expect(() => evalExpression('{s}.substring()', { s: 'x' })).toThrow(/1 to 2 arguments/);
-    expect(() => evalExpression('substring({s})', { s: 'x' })).toThrow(/2 to 3 arguments/);
-    expect(() => evalExpression('{s}.upper(1)', { s: 'x' })).toThrow(/0 arguments/);
+    expect(() => evalExpression('{s}.toUpperCase(1)', { s: 'x' })).toThrow(/0 arguments/);
+    expect(() => evalExpression('round()', {})).toThrow(/1 to 2 arguments/);
+    expect(() => evalExpression('max(1)', {})).toThrow(/at least 2 arguments/);
   });
 
   it('throws on an unknown method', () => {
@@ -407,7 +416,7 @@ describe('evalExpression — function errors', () => {
 
   it('throws on a missing method name or missing parens', () => {
     expect(() => evalExpression('{s}.', { s: 'x' })).toThrow();
-    expect(() => evalExpression('{s}.upper', { s: 'x' })).toThrow();
+    expect(() => evalExpression('{s}.toUpperCase', { s: 'x' })).toThrow();
     expect(() => evalExpression('{s}.contains("a"', { s: 'x' })).toThrow();
   });
 
@@ -452,7 +461,9 @@ describe('FUNCTION_REFERENCE (rule editor popover data)', () => {
   it('documents every function with a signature, description and example', () => {
     expect(FUNCTION_REFERENCE.length).toBeGreaterThan(20);
     for (const f of FUNCTION_REFERENCE) {
-      expect(f.signature.startsWith(f.name + '('), f.name).toBe(true);
+      // a method is documented on a value ("{text}.name(...)"), a function bare ("name(...)")
+      expect(f.signature.includes(f.kind === 'method' ? '}.' + f.name + '(' : f.name + '('), f.name).toBe(true);
+      expect(f.signature.startsWith(f.kind === 'method' ? '{' : f.name + '('), f.name).toBe(true);
       expect(f.description.length, f.name).toBeGreaterThan(10);
       expect(f.example.length, f.name).toBeGreaterThan(0);
     }
@@ -465,9 +476,10 @@ describe('FUNCTION_REFERENCE (rule editor popover data)', () => {
     }
   });
 
-  it('lists aliases that resolve to the same function', () => {
-    const upper = FUNCTION_REFERENCE.find((f) => f.name === 'upper');
-    expect(upper.aliases).toEqual(['toUpperCase']);
-    expect(evalExpression('"a".toUpperCase()', {})).toBe('A');
+  it('marks which spelling each entry uses', () => {
+    expect(FUNCTION_REFERENCE.find((f) => f.name === 'substring').kind).toBe('method');
+    expect(FUNCTION_REFERENCE.find((f) => f.name === 'round').kind).toBe('function');
+    expect(FUNCTION_REFERENCE.find((f) => f.name === 'match').kind).toBe('method');
+    expect(FUNCTION_REFERENCE.find((f) => f.name === 'coalesce').kind).toBe('function');
   });
 });

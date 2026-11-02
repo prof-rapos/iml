@@ -19,13 +19,12 @@
 //
 // - {name}  resolves against `scope` (source attribute name → value).
 // - "text" or 'text' is a string literal.
-// - Functions can be called two ways that mean exactly the same thing — the
-//   function form  substring({s}, 0, 4)  and the Java-style method form
-//   {s}.substring(0, 4)  (the receiver simply becomes the first argument).
-//   Both are kept on purpose for now (the method form matches the Java the
-//   rest of the tool generates; the function form predates it) — revisit
-//   whether to keep both once real usage shows which one people reach for.
-//   Function names are matched case-insensitively. See FUNCTIONS below.
+// - Functions come in two kinds, each with exactly one spelling, Java-style:
+//     methods   — done to a value:   {s}.toUpperCase(), {s}.substring(0, 4)
+//     functions — computed from args: round({x}, 2), max(a, b), coalesce(a, b)
+//   Names are matched case-insensitively. See FUNCTIONS below. (Earlier
+//   versions also accepted upper(x) / len(x) / substring(x, 0, 4); that
+//   duplicate spelling was dropped — the error message names the replacement.)
 // - '+' adds when BOTH operands are numbers, otherwise concatenates.
 // - '-', '*', '/', '%' are always numeric.
 // - comparisons compare numerically when both operands are numeric, otherwise
@@ -53,7 +52,7 @@
 //   {s}.equals("A") ? 1 : 0
 //   {code}.substring(0, 4)               →  first four characters
 //   {a} > 0 && !{done}                   →  "true" / "false"
-//   upper({name})  or  {name}.upper()    →  "ADA"
+//   {name}.toUpperCase()                 →  "ADA"
 //   round({price} * 1.15, 2)             →  numeric, 2 decimal places
 //   {status}.match("A", "Active", "I", "Inactive", "Unknown")
 
@@ -86,130 +85,144 @@ function truthy(v) {
 }
 
 // ── Functions ─────────────────────────────────────────────────────────────────
-// Each takes its arguments as raw intermediate values (number / boolean / string,
+// Two kinds, each with exactly ONE spelling (Java style):
+//   method    — something done TO a value, called on it:  {s}.substring(0, 4)
+//   function  — computes from the arguments given:        round({x}, 2), max(a, b)
+// A method's implementation receives the value it is called on as its FIRST
+// argument. Arguments are raw intermediate values (number / boolean / string,
 // same as the operators) rather than pre-stringified ones, so e.g.
-// round({price} * 1.15) sees the actual number. The FIRST argument is the
-// "receiver" when called as {s}.name(...). Out-of-range indices are clamped
-// rather than throwing (unlike Java) so one short value in a big model doesn't
-// raise a warning per object.
+// round({price} * 1.15) sees the actual number. Out-of-range indices are
+// clamped rather than throwing (unlike Java) so one short value in a big model
+// doesn't raise a warning per object.
 const clamp = (n, lo, hi) => Math.min(Math.max(n, lo), hi);
 const toIndex = (v, fallback) => {
   const n = Math.trunc(Number(v));
   return Number.isNaN(n) ? fallback : n;
 };
-// `doc` feeds the rule editor's reference popover (FUNCTION_REFERENCE below):
-// [group, signature, description, example]. The signature names the receiver
-// (first argument) so it reads as a function call; any function can also be
-// written as receiver.name(rest). A "?" marks an optional argument.
-const def = (min, max, run, doc) => ({ min, max, run, doc });
 
-const TEXT = 'Text', NUMBER = 'Numbers', GENERAL = 'General';
+// `min`/`max` are the argument counts as the user types them (a method's
+// receiver is not counted). `doc` feeds the rule editor's reference panel
+// (FUNCTION_REFERENCE below): [group, signature, description, example]; a "?"
+// after a parameter marks it optional.
+const method = (min, max, run, doc) => ({ kind: 'method', min, max, run, doc });
+const func = (min, max, run, doc) => ({ kind: 'function', min, max, run, doc });
+
+const TEXT = 'Text methods', NUMBER = 'Number functions', GENERAL = 'General';
 
 const FUNCTIONS = {
-  // text
-  upper:            def(1, 1, (s) => strify(s).toUpperCase(),
-    [TEXT, 'upper(text)', 'Converts to upper case.', '{name}.upper()  →  "ADA"']),
-  lower:            def(1, 1, (s) => strify(s).toLowerCase(),
-    [TEXT, 'lower(text)', 'Converts to lower case.', '{name}.lower()  →  "ada"']),
-  trim:             def(1, 1, (s) => strify(s).trim(),
-    [TEXT, 'trim(text)', 'Removes leading and trailing spaces.', '"  hi ".trim()  →  "hi"']),
-  len:              def(1, 1, (s) => strify(s).length,
-    [TEXT, 'len(text)', 'Number of characters.', '{name}.len()  →  3']),
-  substring:        def(2, 3, (s, begin, end) => {
+  // text — methods, named as in Java
+  toUpperCase:      method(0, 0, (s) => strify(s).toUpperCase(),
+    [TEXT, '{text}.toUpperCase()', 'Converts to upper case.', '{name}.toUpperCase()  →  "ADA"']),
+  toLowerCase:      method(0, 0, (s) => strify(s).toLowerCase(),
+    [TEXT, '{text}.toLowerCase()', 'Converts to lower case.', '{name}.toLowerCase()  →  "ada"']),
+  trim:             method(0, 0, (s) => strify(s).trim(),
+    [TEXT, '{text}.trim()', 'Removes leading and trailing spaces.', '"  hi ".trim()  →  "hi"']),
+  length:           method(0, 0, (s) => strify(s).length,
+    [TEXT, '{text}.length()', 'Number of characters.', '{name}.length()  →  3']),
+  substring:        method(1, 2, (s, begin, end) => {
     const t = strify(s);
     const from = clamp(toIndex(begin, 0), 0, t.length);
     const to = end === undefined ? t.length : clamp(toIndex(end, t.length), 0, t.length);
     return from <= to ? t.slice(from, to) : '';
-  }, [TEXT, 'substring(text, begin, end?)',
+  }, [TEXT, '{text}.substring(begin, end?)',
     'Characters from position begin up to, but not including, end (default: to the end). Positions start at 0; out-of-range values are clamped, never an error.',
     '{code}.substring(0, 4)  →  "ABCD" for "ABCDEFG"']),
-  charAt:           def(2, 2, (s, i) => strify(s).charAt(toIndex(i, 0)),
-    [TEXT, 'charAt(text, index)', 'The single character at position index (0-based); empty if out of range.', '{code}.charAt(1)  →  "B" for "ABC"']),
-  indexOf:          def(2, 3, (s, t, from) => strify(s).indexOf(strify(t), from === undefined ? 0 : Math.max(0, toIndex(from, 0))),
-    [TEXT, 'indexOf(text, find, from?)', 'Position of the first occurrence of find at or after from (default 0), or -1 if absent.', '{code}.indexOf("-")  →  3 for "ABC-12"']),
-  contains:         def(2, 2, (s, t) => strify(s).includes(strify(t)),
-    [TEXT, 'contains(text, find)', 'true if find appears anywhere in text.', '{email}.contains("@")  →  true']),
-  startsWith:       def(2, 2, (s, t) => strify(s).startsWith(strify(t)),
-    [TEXT, 'startsWith(text, prefix)', 'true if text begins with prefix.', '{code}.startsWith("AB")']),
-  endsWith:         def(2, 2, (s, t) => strify(s).endsWith(strify(t)),
-    [TEXT, 'endsWith(text, suffix)', 'true if text ends with suffix.', '{file}.endsWith(".java")']),
-  equals:           def(2, 2, (a, b) => strify(a) === strify(b),
-    [TEXT, 'equals(a, b)', 'true if both have exactly the same text (case-sensitive). Same as a == b.', '{s}.equals("A") ? 1 : 0']),
-  equalsIgnoreCase: def(2, 2, (a, b) => strify(a).toLowerCase() === strify(b).toLowerCase(),
-    [TEXT, 'equalsIgnoreCase(a, b)', 'Like equals, ignoring upper/lower case.', '{s}.equalsIgnoreCase("yes")']),
-  isEmpty:          def(1, 1, (s) => strify(s) === '',
-    [TEXT, 'isEmpty(text)', 'true if text has no characters.', '{nick}.isEmpty() ? {name} : {nick}']),
-  isBlank:          def(1, 1, (s) => strify(s).trim() === '',
-    [TEXT, 'isBlank(text)', 'true if text is empty or only spaces.', '{nick}.isBlank()']),
+  charAt:           method(1, 1, (s, i) => strify(s).charAt(toIndex(i, 0)),
+    [TEXT, '{text}.charAt(index)', 'The single character at position index (0-based); empty if out of range.', '{code}.charAt(1)  →  "B" for "ABC"']),
+  indexOf:          method(1, 2, (s, t, from) => strify(s).indexOf(strify(t), from === undefined ? 0 : Math.max(0, toIndex(from, 0))),
+    [TEXT, '{text}.indexOf(find, from?)', 'Position of the first occurrence of find at or after from (default 0), or -1 if absent.', '{code}.indexOf("-")  →  3 for "ABC-12"']),
+  contains:         method(1, 1, (s, t) => strify(s).includes(strify(t)),
+    [TEXT, '{text}.contains(find)', 'true if find appears anywhere in text.', '{email}.contains("@")  →  true']),
+  startsWith:       method(1, 1, (s, t) => strify(s).startsWith(strify(t)),
+    [TEXT, '{text}.startsWith(prefix)', 'true if text begins with prefix.', '{code}.startsWith("AB")']),
+  endsWith:         method(1, 1, (s, t) => strify(s).endsWith(strify(t)),
+    [TEXT, '{text}.endsWith(suffix)', 'true if text ends with suffix.', '{file}.endsWith(".java")']),
+  equals:           method(1, 1, (a, b) => strify(a) === strify(b),
+    [TEXT, '{text}.equals(other)', 'true if both have exactly the same text (case-sensitive). Same as ==.', '{s}.equals("A") ? 1 : 0']),
+  equalsIgnoreCase: method(1, 1, (a, b) => strify(a).toLowerCase() === strify(b).toLowerCase(),
+    [TEXT, '{text}.equalsIgnoreCase(other)', 'Like equals, ignoring upper/lower case.', '{s}.equalsIgnoreCase("yes")']),
+  isEmpty:          method(0, 0, (s) => strify(s) === '',
+    [TEXT, '{text}.isEmpty()', 'true if text has no characters.', '{nick}.isEmpty() ? {name} : {nick}']),
+  isBlank:          method(0, 0, (s) => strify(s).trim() === '',
+    [TEXT, '{text}.isBlank()', 'true if text is empty or only spaces.', '{nick}.isBlank()']),
   // Replaces every occurrence of a literal substring (like Java's String.replace).
-  replace:          def(3, 3, (s, t, r) => (strify(t) === '' ? strify(s) : strify(s).split(strify(t)).join(strify(r))),
-    [TEXT, 'replace(text, find, with)', 'Replaces every occurrence of find with the replacement text (not a pattern).', '{phone}.replace("-", "")  →  "5551234"']),
-  // numeric
-  round:            def(1, 2, (v, places) => {
-    const f = 10 ** clamp(toIndex(places, 0), 0, 12);
-    return Math.round(Number(v) * f) / f;
-  }, [NUMBER, 'round(number, places?)', 'Rounds to places decimal places (default 0, a whole number).', 'round({price} * 1.15, 2)']),
-  abs:              def(1, 1, (v) => Math.abs(Number(v)),
-    [NUMBER, 'abs(number)', 'Absolute value (drops the minus sign).', 'abs({delta})']),
-  floor:            def(1, 1, (v) => Math.floor(Number(v)),
-    [NUMBER, 'floor(number)', 'Rounds down to a whole number.', 'floor(2.9)  →  2']),
-  ceil:             def(1, 1, (v) => Math.ceil(Number(v)),
-    [NUMBER, 'ceil(number)', 'Rounds up to a whole number.', 'ceil(2.1)  →  3']),
-  min:              def(2, Infinity, (...a) => Math.min(...a.map(Number)),
-    [NUMBER, 'min(a, b, ...)', 'The smallest of two or more numbers.', 'min({qty}, 10)']),
-  max:              def(2, Infinity, (...a) => Math.max(...a.map(Number)),
-    [NUMBER, 'max(a, b, ...)', 'The largest of two or more numbers.', 'max({qty}, 0)']),
-  // general
-  // First argument that isn't empty, else ''.
-  coalesce:         def(1, Infinity, (...a) => a.find((v) => strify(v) !== '') ?? '',
-    [GENERAL, 'coalesce(a, b, ...)', 'The first value that is not empty — handy for defaults.', 'coalesce({nick}, {name}, "(none)")']),
+  replace:          method(2, 2, (s, t, r) => (strify(t) === '' ? strify(s) : strify(s).split(strify(t)).join(strify(r))),
+    [TEXT, '{text}.replace(find, with)', 'Replaces every occurrence of find with the replacement text (not a pattern).', '{phone}.replace("-", "")  →  "5551234"']),
   // {v}.match(k1, r1, k2, r2, ..., [default]) — a lookup table, e.g. for
   // remapping enum literals. Returns the result paired with the first key equal
   // to v; otherwise the trailing default if one was given, else v unchanged.
-  match:            def(1, Infinity, (v, ...rest) => {
+  match:            method(1, Infinity, (v, ...rest) => {
     for (let i = 0; i + 1 < rest.length; i += 2) {
       if (strify(rest[i]) === strify(v)) return rest[i + 1];
     }
     return rest.length % 2 === 1 ? rest[rest.length - 1] : v;
-  }, [GENERAL, 'match(value, key1, result1, key2, result2, ..., default?)',
+  }, [GENERAL, '{value}.match(key1, result1, key2, result2, ..., default?)',
     'Lookup table: returns the result next to the first key equal to value. With a trailing default it is used when nothing matches; without one the value passes through unchanged. Good for remapping enum literals.',
     '{status}.match("A", "Active", "I", "Inactive", "Unknown")']),
+
+  // numeric — plain functions
+  round:            func(1, 2, (v, places) => {
+    const f = 10 ** clamp(toIndex(places, 0), 0, 12);
+    return Math.round(Number(v) * f) / f;
+  }, [NUMBER, 'round(number, places?)', 'Rounds to places decimal places (default 0, a whole number).', 'round({price} * 1.15, 2)']),
+  abs:              func(1, 1, (v) => Math.abs(Number(v)),
+    [NUMBER, 'abs(number)', 'Absolute value (drops the minus sign).', 'abs({delta})']),
+  floor:            func(1, 1, (v) => Math.floor(Number(v)),
+    [NUMBER, 'floor(number)', 'Rounds down to a whole number.', 'floor(2.9)  →  2']),
+  ceil:             func(1, 1, (v) => Math.ceil(Number(v)),
+    [NUMBER, 'ceil(number)', 'Rounds up to a whole number.', 'ceil(2.1)  →  3']),
+  min:              func(2, Infinity, (...a) => Math.min(...a.map(Number)),
+    [NUMBER, 'min(a, b, ...)', 'The smallest of two or more numbers.', 'min({qty}, 10)']),
+  max:              func(2, Infinity, (...a) => Math.max(...a.map(Number)),
+    [NUMBER, 'max(a, b, ...)', 'The largest of two or more numbers.', 'max({qty}, 0)']),
+  // First argument that isn't empty, else ''.
+  coalesce:         func(1, Infinity, (...a) => a.find((v) => strify(v) !== '') ?? '',
+    [GENERAL, 'coalesce(a, b, ...)', 'The first value that is not empty — handy for defaults.', 'coalesce({nick}, {name}, "(none)")']),
 };
 
-// Java-flavoured aliases for the names above.
-const ALIASES = { toUpperCase: 'upper', toLowerCase: 'lower', length: 'len' };
+// Names used by earlier versions (including the original function-call forms).
+// Not accepted any more, but the error says what to write instead.
+const RENAMED = { upper: 'toUpperCase', lower: 'toLowerCase', len: 'length' };
 
-const FUNCTION_LOOKUP = new Map(Object.entries(FUNCTIONS).map(([name, f]) => [name.toLowerCase(), f]));
-const ALIAS_LOOKUP = new Map(Object.entries(ALIASES).map(([alias, name]) => [alias.toLowerCase(), name.toLowerCase()]));
-const lookupFunction = (name) => {
-  const key = name.toLowerCase();
-  return FUNCTION_LOOKUP.get(ALIAS_LOOKUP.get(key) ?? key);
-};
+// Matched case-insensitively.
+const FUNCTION_LOOKUP = new Map(Object.entries(FUNCTIONS).map(([name, f]) => [name.toLowerCase(), { name, ...f }]));
+const lookupFunction = (name) => FUNCTION_LOOKUP.get(name.toLowerCase());
 
-// Reference data for the rule editor's popover — derived from the table above
-// so the documentation can't drift from what actually evaluates.
+// Reference data for the rule editor's panel — derived from the table above so
+// the documentation can't drift from what actually evaluates.
 export const FUNCTION_REFERENCE = Object.entries(FUNCTIONS).map(([name, f]) => {
   const [group, signature, description, example] = f.doc;
-  const aliases = Object.entries(ALIASES).filter(([, target]) => target === name).map(([alias]) => alias);
-  return { name, group, signature, description, example, aliases };
+  return { name, kind: f.kind, group, signature, description, example };
 });
 
-function describeArity(f, isMethod) {
-  // For the method form the receiver isn't something the user types in the parens.
-  const lo = f.min - (isMethod ? 1 : 0);
-  const hi = f.max === Infinity ? Infinity : f.max - (isMethod ? 1 : 0);
-  if (hi === Infinity) return `at least ${lo} argument${lo === 1 ? '' : 's'}`;
-  if (lo === hi) return `${lo} argument${lo === 1 ? '' : 's'}`;
-  return `${lo} to ${hi} arguments`;
+function describeArity(f) {
+  if (f.max === Infinity) return `at least ${f.min} argument${f.min === 1 ? '' : 's'}`;
+  if (f.min === f.max) return `${f.min} argument${f.min === 1 ? '' : 's'}`;
+  return `${f.min} to ${f.max} arguments`;
 }
 
-function callFunction(name, args, isMethod) {
+// `args` are the arguments as typed; for a method call `receiver` is the value
+// the method is called on.
+function callFunction(name, args, receiver, isMethod) {
   const f = lookupFunction(name);
-  if (!f) throw new Error(isMethod ? `Unknown method ".${name}()"` : `Unknown function "${name}"`);
-  if (args.length < f.min || args.length > f.max) {
-    throw new Error(`${name}() takes ${describeArity(f, isMethod)}`);
+  const renamed = RENAMED[name.toLowerCase()];
+  if (!f) {
+    if (renamed) {
+      const hint = isMethod ? `.${renamed}()` : `{text}.${renamed}()`;
+      throw new Error(`Unknown ${isMethod ? `method ".${name}()"` : `function "${name}"`} — did you mean ${hint}?`);
+    }
+    throw new Error(isMethod ? `Unknown method ".${name}()"` : `Unknown function "${name}"`);
   }
-  return f.run(...args);
+  if (f.kind === 'method' && !isMethod) {
+    throw new Error(`${f.name}() is a method — call it on a value, e.g. {text}.${f.name}(${args.length > 1 ? '…' : ''})`);
+  }
+  if (f.kind === 'function' && isMethod) {
+    throw new Error(`${f.name}() is a plain function — write ${f.name}(value${f.max > 1 ? ', …' : ''}), not value.${f.name}()`);
+  }
+  if (args.length < f.min || args.length > f.max) {
+    throw new Error(`${f.name}() takes ${describeArity(f)}`);
+  }
+  return isMethod ? f.run(receiver, ...args) : f.run(...args);
 }
 
 function resolveRef(scope, name, types) {
@@ -264,7 +277,7 @@ function tokenize(input) {
       tokens.push({ t: 'num', v: parseFloat(s.slice(i, j)) });
       i = j; continue;
     }
-    // A '.' that isn't part of a number starts a method call: {s}.upper()
+    // A '.' that isn't part of a number starts a method call: {s}.trim()
     if (c === '.') { tokens.push({ t: 'op', v: '.' }); i++; continue; }
     if (/[A-Za-z_]/.test(c)) {
       let j = i;
@@ -402,14 +415,14 @@ export function evalExpression(input, scope = {}, types = null) {
     return parsePostfix();
   }
 
-  // primary followed by any number of .method(args) calls: {s}.trim().upper()
+  // primary followed by any number of .method(args) calls: {s}.trim().toUpperCase()
   function parsePostfix() {
     let v = parsePrimary();
     while (isOp('.')) {
       next();
       const id = next();
       if (!id || id.t !== 'ident') throw new Error('Expected a method name after "."');
-      v = callFunction(id.v, [v, ...parseArgs(id.v)], true);
+      v = callFunction(id.v, parseArgs(id.v), v, true);
     }
     return v;
   }
@@ -452,7 +465,7 @@ export function evalExpression(input, scope = {}, types = null) {
           ? `Expected "(" after "${tk.v}"`
           : `Unknown name "${tk.v}" — attribute references need braces, e.g. {${tk.v}}`);
       }
-      return callFunction(tk.v, parseArgs(tk.v), false);
+      return callFunction(tk.v, parseArgs(tk.v), undefined, false);
     }
     throw new Error(`Unexpected token "${tk.v}"`);
   }

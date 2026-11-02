@@ -66,7 +66,7 @@ function ExpressionHelp({ srcAttrs }) {
         // Pulled left over the (empty) label column so the reference gets the card's full width.
         <div style={{ marginTop: 4, marginLeft: -124, maxHeight: 260, overflowY: 'auto', background: '#161b22', border: `1px solid ${BORDER}`, borderRadius: 6, padding: '8px 10px', color: TEXT }}>
           <div style={{ color: TEXT_DIM, marginBottom: 8 }}>
-            Any function can be written <code style={REF_MONO}>name(a, b)</code> or <code style={REF_MONO}>a.name(b)</code> — e.g. <code style={REF_MONO}>upper({'{'}name{'}'})</code> is the same as <code style={REF_MONO}>{'{'}name{'}'}.upper()</code>. A <code style={REF_MONO}>?</code> after a parameter means it is optional.
+            Text operations are Java-style methods called on a value, e.g. <code style={REF_MONO}>{'{'}name{'}'}.toUpperCase()</code>; number functions are called plainly, e.g. <code style={REF_MONO}>round({'{'}price{'}'}, 2)</code>. A <code style={REF_MONO}>?</code> after a parameter means it is optional.
           </div>
 
           <div style={{ fontWeight: 700, color: TEXT, margin: '6px 0 3px' }}>Operators</div>
@@ -79,11 +79,10 @@ function ExpressionHelp({ srcAttrs }) {
 
           {groups.map((g) => (
             <div key={g}>
-              <div style={{ fontWeight: 700, color: TEXT, margin: '10px 0 3px' }}>{g} functions</div>
+              <div style={{ fontWeight: 700, color: TEXT, margin: '10px 0 3px' }}>{g}</div>
               {FUNCTION_REFERENCE.filter((f) => f.group === g).map((f) => (
                 <div key={f.name} style={{ marginBottom: 6 }}>
                   <code style={{ ...REF_MONO, color: '#79c0ff' }}>{f.signature}</code>
-                  {f.aliases.length > 0 && <span style={{ color: TEXT_DIM }}>{'  '}also {f.aliases.map((a) => a + '()').join(', ')}</span>}
                   <div style={{ color: TEXT_DIM }}>{f.description}</div>
                   <code style={{ ...REF_MONO, color: '#e3b341' }}>{f.example}</code>
                 </div>
