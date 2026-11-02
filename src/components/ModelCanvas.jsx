@@ -33,6 +33,7 @@ export default function ModelCanvas() {
   const deleteLink        = useModelStore((s) => s.deleteLink);
   const updateLink        = useModelStore((s) => s.updateLink);
   const deleteClass       = useModelStore((s) => s.deleteClass);
+  const deleteEnumeration = useModelStore((s) => s.deleteEnumeration);
   const deleteObject      = useModelStore((s) => s.deleteObject);
   const selectedId        = useModelStore((s) => s.selectedId);
   const selectedType      = useModelStore((s) => s.selectedType);
@@ -92,10 +93,14 @@ export default function ModelCanvas() {
       if (mode === 'metamodel') deleteRelation(selectedId);
       else deleteLink(selectedId);
     } else if (selectedType === 'node') {
-      if (mode === 'metamodel') deleteClass(selectedId);
+      // An enumeration is a node too, but deleteClass only knows about classes —
+      // calling it on an enum id just dropped the canvas node, leaving the enum
+      // in the meta-model so it reappeared on the next canvas rebuild.
+      const isEnum = (metaModel.enumerations ?? []).some((e) => e.id === selectedId);
+      if (mode === 'metamodel') (isEnum ? deleteEnumeration : deleteClass)(selectedId);
       else deleteObject(selectedId);
     }
-  }, [selectedId, selectedType, mode, deleteRelation, deleteLink, deleteClass, deleteObject]);
+  }, [selectedId, selectedType, mode, metaModel, deleteRelation, deleteLink, deleteClass, deleteEnumeration, deleteObject]);
   useDeleteKeyHandler(selectedId, handleDelete);
 
   // Save viewport continuously (on interaction end to avoid thrashing)
