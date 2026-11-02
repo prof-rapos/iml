@@ -228,6 +228,27 @@ describe('runTransform — type + multiplicity coercion', () => {
     expect(result.instanceModels[0].objects[0].attributeValues.size).toBe('large');
   });
 
+  it('treats a BOOLEAN source attribute as 1/0 in arithmetic and negates it with !', () => {
+    const run = (value, expression, tgtType) => {
+      const source = srcModel({ attr: { id: 'x', name: 'x', type: 'BOOLEAN', lowerBound: 0, upperBound: 1 }, value });
+      const target = tgtModel({ id: 'r', name: 'r', type: tgtType, lowerBound: 0, upperBound: 1 });
+      const rules = [{
+        sourceClassId: 'S', targetClassId: 'T',
+        attributeMappings: [{ type: 'expression', targetAttrId: 'r', expression }],
+        relationMappings: [],
+      }];
+      const result = runTransform(source, target, rules);
+      expect(result.warnings).toEqual([]);
+      return result.instanceModels[0].objects[0].attributeValues.r;
+    };
+
+    expect(run('true',  '100 + {x}', 'INT')).toBe('101');
+    expect(run('false', '100 + {x}', 'INT')).toBe('100');
+    expect(run('true',  '100 * {x}', 'INT')).toBe('100');
+    expect(run('true',  '!{x}', 'BOOLEAN')).toBe('false');
+    expect(run('false', '!{x}', 'BOOLEAN')).toBe('true');
+  });
+
   it('falls back to an empty value for a malformed expression', () => {
     const source = srcModel({
       attr: { id: 'x', name: 'x', type: 'STRING', lowerBound: 0, upperBound: 1 },

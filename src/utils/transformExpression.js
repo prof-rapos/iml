@@ -22,6 +22,11 @@
 //   a comparison (e.g. a bare {flag} ? "on" : "off" — a BOOLEAN attribute's
 //   own "true"/"false" string reads naturally here without needing
 //   {flag} == "true").
+// - an optional third `types` argument (source attribute name → type, e.g.
+//   'BOOLEAN') lets a BOOLEAN reference resolve to a real boolean instead of
+//   the string "true"/"false", so 100 + {flag} is 101/100 (true counts as 1)
+//   while {label} + {flag} still concatenates. Without it every reference is
+//   a plain value, exactly as before.
 // - '!' negates its operand's truthy() value, rendering "true"/"false" — so
 //   !{flag} on a BOOLEAN attribute flips it and coerces back to a BOOLEAN target.
 // - a handful of single-argument functions (see FUNCTIONS below) can wrap
@@ -53,8 +58,14 @@ function strify(v) {
   return typeof v === 'number' ? formatNumber(v) : String(v ?? '');
 }
 
+// A boolean counts as 1/0 in arithmetic and numeric comparison, matching
+// convertSingle's BOOLEAN→INT/DOUBLE rule.
+function isNumericLike(v) {
+  return typeof v === 'boolean' || isNumericValue(v);
+}
+
 function add(a, b) {
-  if (isNumericValue(a) && isNumericValue(b)) return Number(a) + Number(b);
+  if (isNumericLike(a) && isNumericLike(b)) return Number(a) + Number(b);
   return strify(a) + strify(b);
 }
 
@@ -63,7 +74,10 @@ function add(a, b) {
 // {name} > "M" is meaningful, not just always-false).
 function compare(a, b, op) {
   let cmp;
-  if (isNumericValue(a) && isNumericValue(b)) {
+  // Two booleans (or a boolean and a number) compare numerically; boolean vs
+  // text falls through to the string compare, where strify(true) === "true".
+  const bothBool = typeof a === 'boolean' && typeof b === 'boolean';
+  if (!bothBool && isNumericLike(a) && isNumericLike(b)) {
     const na = Number(a), nb = Number(b);
     cmp = na < nb ? -1 : na > nb ? 1 : 0;
   } else {
@@ -107,9 +121,13 @@ const FUNCTIONS = {
   len:   (v) => strify(v).length,
 };
 
-function resolveRef(scope, name) {
+function resolveRef(scope, name, types) {
   const v = scope[name];
   if (v === undefined) return '';                       // unknown ref → empty
+  if (types[name] === 'BOOLEAN' && !Array.isArray(v)) {
+    // Same truth rule convertSingle uses for STRING→BOOLEAN; unset reads as false.
+    return typeof v === 'boolean' ? v : (String(v).trim() === 'true' || String(v).trim() === '1');
+  }
   if (Array.isArray(v)) return v.filter((x) => String(x).trim() !== '').join(' ');
   return v ?? '';
 }
@@ -162,7 +180,7 @@ function tokenize(input) {
 
 // Evaluate an expression against a scope. Returns a string (the rendered value).
 // Throws on malformed input — callers should catch and fall back.
-export function evalExpression(input, scope = {}) {
+export function evalExpression(input, scope = {}, types = {}) {
   const tokens = tokenize(input);
   let pos = 0;
   const peek = () => tokens[pos];
@@ -227,7 +245,7 @@ export function evalExpression(input, scope = {}) {
     }
     if (tk.t === 'num') { next(); return tk.v; }
     if (tk.t === 'str') { next(); return tk.v; }
-    if (tk.t === 'ref') { next(); return resolveRef(scope, tk.v); }
+    if (tk.t === 'ref') { next(); return resolveRef(scope, tk.v, types); }
     if (tk.t === 'ident') {
       next();
       const fn = FUNCTIONS[tk.v.toLowerCase()];

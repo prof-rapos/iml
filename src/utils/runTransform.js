@@ -119,12 +119,16 @@ export function runTransform(source, target, rules) {
               .map((name) => srcAttrs.find((a) => a.name === name))
               .filter((a) => a && a.upperBound !== 1);
 
+            // Attribute types let the evaluator treat a BOOLEAN reference as a
+            // real boolean (so 100 + {flag} adds 1) instead of the text "true".
+            const types = Object.fromEntries(srcAttrs.map((sa) => [sa.name, sa.type]));
+
             let rawResults;
             if (multiRefs.length === 0) {
               const scope = {};
               for (const sa of srcAttrs) scope[sa.name] = getAttrValue(srcObj, sa.id);
               try {
-                rawResults = [evalExpression(exprText, scope)];
+                rawResults = [evalExpression(exprText, scope, types)];
               } catch (err) {
                 const msg = `Expression "${exprText}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}": ${err.message}`;
                 console.warn(msg);
@@ -152,7 +156,7 @@ export function runTransform(source, target, rules) {
                   scope[sa.name] = (sa.upperBound !== 1 && Array.isArray(val)) ? val[i] : val;
                 }
                 try {
-                  rawResults.push(evalExpression(exprText, scope));
+                  rawResults.push(evalExpression(exprText, scope, types));
                 } catch (err) {
                   const msg = `Expression "${exprText}" failed for attribute "${tgtAttr?.name ?? m.targetAttrId}" on object "${srcObj.name}" (index ${i}): ${err.message}`;
                   console.warn(msg);

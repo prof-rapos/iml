@@ -139,6 +139,36 @@ describe('evalExpression — negation', () => {
   });
 });
 
+describe('evalExpression — typed BOOLEAN references', () => {
+  const types = { x: 'BOOLEAN', label: 'STRING' };
+
+  it('counts a BOOLEAN reference as 1/0 in arithmetic', () => {
+    expect(evalExpression('100 + {x}', { x: 'true' }, types)).toBe('101');
+    expect(evalExpression('100 + {x}', { x: 'false' }, types)).toBe('100');
+    expect(evalExpression('{x} + 1', { x: 'true' }, types)).toBe('2');
+    expect(evalExpression('100 - {x}', { x: 'true' }, types)).toBe('99');
+    expect(evalExpression('100 * {x}', { x: 'true' }, types)).toBe('100');
+  });
+
+  it('still concatenates when the other operand is text', () => {
+    expect(evalExpression('{label} + {x}', { label: 'on:', x: 'true' }, types)).toBe('on:true');
+  });
+
+  it('does not convert a STRING attribute that merely holds the text "true"', () => {
+    expect(evalExpression('100 + {label}', { label: 'true' }, types)).toBe('100true');
+  });
+
+  it('compares BOOLEAN references sensibly and treats an unset one as false', () => {
+    expect(evalExpression('{x} == "true"', { x: 'true' }, types)).toBe('true');
+    expect(evalExpression('{x} ? "on" : "off"', { x: '' }, types)).toBe('off');
+    expect(evalExpression('!{x}', { x: '' }, types)).toBe('true');
+  });
+
+  it('is unchanged without types (plain string values)', () => {
+    expect(evalExpression('100 + {x}', { x: 'true' })).toBe('100true');
+  });
+});
+
 describe('evalExpression — functions', () => {
   it('uppercases and lowercases', () => {
     expect(evalExpression('upper({firstName})', scope)).toBe('ADA');
