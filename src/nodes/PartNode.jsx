@@ -1,10 +1,7 @@
-import { useMemo } from 'react';
-import { Handle, Position } from '@xyflow/react';
+import { useEffect, useMemo } from 'react';
+import { Handle, Position, useUpdateNodeInternals } from '@xyflow/react';
 import { useModelStore, getProtocolById } from '../store/modelStore';
-import { useCapsuleStructureStore } from '../store/capsuleStructureStore';
-
-const HEADER_HEIGHT = 33;
-const ROW_HEIGHT     = 22;
+import { useCapsuleStructureStore, PART_HEADER_HEIGHT as HEADER_HEIGHT, PART_ROW_HEIGHT as ROW_HEIGHT } from '../store/capsuleStructureStore';
 
 // Stable references for "nothing yet" fallbacks — a fresh [] or {} literal on
 // every selector call breaks React's snapshot-stability check and causes an
@@ -40,6 +37,7 @@ export default function PartNode({ id, data, selected }) {
     [cls, metaModel],
   );
   const portRows = data?.portRows ?? EMPTY_ROWS;
+  const updateNodeInternals = useUpdateNodeInternals();
 
   const thisPos = nodes.find((n) => n.id === id)?.position;
 
@@ -63,12 +61,18 @@ export default function PartNode({ id, data, selected }) {
     return rowFor(port, i) % 2 === 0 ? 'left' : 'right';
   };
 
-  if (!obj || !cls) return null;
-
   // Compute each port's side/row once per render and reuse for both the
   // label row and its Handle, instead of recomputing (each an O(connectors +
   // nodes) scan) twice per port.
   const portLayout = ports.map((port, i) => ({ port, side: sideFor(port, i), row: rowFor(port, i) }));
+
+  // A port's side/row can change without the box itself resizing (a partner
+  // moved, a connector was added), and React Flow only re-measures handle
+  // positions on a resize — tell it, or wires keep attaching to the old spot.
+  const layoutSignature = portLayout.map(({ port, side, row }) => `${port.id}:${side}:${row}`).join('|');
+  useEffect(() => { updateNodeInternals(id); }, [id, layoutSignature, updateNodeInternals]);
+
+  if (!obj || !cls) return null;
 
   return (
     <div

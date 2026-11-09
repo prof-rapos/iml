@@ -1386,6 +1386,14 @@ export const useModelStore = create((set, get) => ({
     // dirty via the module-level subscribe handler.
     suppressDirty = true;
 
+    // Layouts must be in place BEFORE the model is swapped in below: other
+    // stores (capsuleStructureStore) rebuild their node positions the instant
+    // metaModel/instanceModels change, so setting layouts afterwards left them
+    // built from the PREVIOUS model's layouts — and nothing rebuilt them again,
+    // so an imported file's composite-structure positions were silently lost.
+    // A file with no layouts resets them rather than inheriting stale ones.
+    set({ layouts: data.layouts ?? {} });
+
     // Backfill enumerations / behaviours / protocols for older models.
     set({ metaModel: { ...data.metaModel, enumerations: data.metaModel.enumerations ?? [], behaviours: data.metaModel.behaviours ?? {}, protocols: data.metaModel.protocols ?? [] } });
 
@@ -1420,7 +1428,6 @@ export const useModelStore = create((set, get) => ({
       set({ instanceModels: [normalizeIM(data.instanceModel)], currentIMIndex: 0 });
     }
 
-    if (data.layouts) set({ layouts: data.layouts });
     set({ nodes: [], edges: [], selectedId: null, conformanceResults: [], dirty: false });
     suppressDirty = false;
     get().log('Model loaded.');

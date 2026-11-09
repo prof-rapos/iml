@@ -8,43 +8,68 @@ const wireablePorts = (obj, metaModel) => {
   return (cls?.ports ?? []).filter((p) => !getProtocolById(p.protocolId, metaModel)?.system);
 };
 
-// Assigns each object's wireable ports a vertical "row" slot, defaulting to
-// its position in the class's port list, but swapping a connector's two
-// endpoints onto the same row whenever they'd otherwise differ. That's what
-// makes a reciprocal pair of connectors between the same two parts render as
-// flat, parallel lines instead of crossing in an X. Pure + exported for unit
-// testing; only fixes the common pairwise case — not a general crossing-free
-// layout solver for parts wired to many others.
-export function computePortRows(metaModel, im) {
-  const rows  = {}; // { [objectId]: { [portId]: rowIndex } }
-  const order = {}; // { [objectId]: [portId at row 0, row 1, ...] }
+// Box geometry, shared with PartNode (which draws it) so a part's port rows
+// and its box height can never disagree.
+export const PART_HEADER_HEIGHT = 33;
+export const PART_ROW_HEIGHT = 22;
 
+// Assigns each part's wireable ports a vertical "row" slot — row 0..n-1, one
+// per port, so a port can never land outside its box. Rows are ordered to keep
+// wires from crossing: a part's connected ports are sorted by where their
+// partner part sits vertically (the standard barycentre heuristic), so a wire
+// to a part higher up leaves from a higher row. Ports wired to the same
+// partner break ties by connector order, which is the same at both ends — so
+// a reciprocal pair of connectors between two parts renders as flat, parallel
+// lines instead of an X. Unconnected ports sit below the connected ones, in
+// the class's own port order.
+//
+// `positions` ({ [objectId]: {x, y} }) is the parts' current canvas
+// positions; without it every partner counts as the same height and only the
+// connector-order rule applies. Pure + exported for unit testing; a
+// heuristic, not a guaranteed crossing-free layout for densely wired parts.
+export function computePortRows(metaModel, im, positions = {}) {
+  const portsOf = {}; // { [objectId]: wireable ports in class order }
   for (const obj of im?.objects ?? []) {
     const ports = wireablePorts(obj, metaModel);
-    if (ports.length === 0) continue;
-    order[obj.id] = ports.map((p) => p.id);
-    rows[obj.id]  = {};
-    ports.forEach((p, i) => { rows[obj.id][p.id] = i; });
+    if (ports.length > 0) portsOf[obj.id] = ports;
   }
 
-  for (const c of im?.connectors ?? []) {
-    const srcRows = rows[c.sourceObjectId];
-    const tgtRows = rows[c.targetObjectId];
-    if (!srcRows || !tgtRows) continue;
-    const srcRow = srcRows[c.sourcePortId];
-    const tgtRow = tgtRows[c.targetPortId];
-    if (srcRow === undefined || tgtRow === undefined || srcRow === tgtRow) continue;
+  const centerY = (objectId) => {
+    const p = positions[objectId];
+    if (!p) return 0;
+    const rowCount = Math.max(portsOf[objectId]?.length ?? 1, 1);
+    return p.y + (PART_HEADER_HEIGHT + rowCount * PART_ROW_HEIGHT) / 2;
+  };
 
-    // Move the target port onto the source's row, swapping with whichever
-    // port currently occupies that row so every port keeps a unique slot.
-    const tgtOrder = order[c.targetObjectId];
-    const displacedPortId = tgtOrder[srcRow];
-    tgtOrder[srcRow] = c.targetPortId;
-    tgtOrder[tgtRow] = displacedPortId;
-    tgtRows[c.targetPortId]  = srcRow;
-    tgtRows[displacedPortId] = tgtRow;
+  // { [objectId]: { [portId]: [{ partnerId, order }] } }, order = the
+  // connector's index, identical from either end.
+  const links = {};
+  const addLink = (objectId, portId, partnerId, order) => {
+    ((links[objectId] ??= {})[portId] ??= []).push({ partnerId, order });
+  };
+  (im?.connectors ?? []).forEach((c, order) => {
+    addLink(c.sourceObjectId, c.sourcePortId, c.targetObjectId, order);
+    addLink(c.targetObjectId, c.targetPortId, c.sourceObjectId, order);
+  });
+
+  const rows = {};
+  for (const [objectId, ports] of Object.entries(portsOf)) {
+    const keyed = ports.map((port, index) => {
+      const ls = links[objectId]?.[port.id];
+      if (!ls) return { port, index, connected: false };
+      const y = ls.reduce((sum, l) => sum + centerY(l.partnerId), 0) / ls.length;
+      return { port, index, connected: true, y, partnerId: ls[0].partnerId, order: Math.min(...ls.map((l) => l.order)) };
+    });
+    keyed.sort((x, y) => {
+      if (x.connected !== y.connected) return x.connected ? -1 : 1;
+      if (!x.connected) return x.index - y.index;
+      return (x.y - y.y)
+        || (x.partnerId < y.partnerId ? -1 : x.partnerId > y.partnerId ? 1 : 0)
+        || (x.order - y.order)
+        || (x.index - y.index);
+    });
+    rows[objectId] = Object.fromEntries(keyed.map((k, row) => [k.port.id, row]));
   }
-
   return rows;
 }
 
@@ -75,13 +100,14 @@ export const useCapsuleStructureStore = create((set, get) => ({
     const imSaved = ms.layouts[`im-${im.id}`] ?? {};
     const pos = (id, i) => csSaved[id] ?? imSaved[id] ?? { x: 80 + (i % 4) * 240, y: 80 + Math.floor(i / 4) * 220 };
 
-    const portRows = computePortRows(ms.metaModel, im);
+    const positions = Object.fromEntries(parts.map((obj, i) => [obj.id, pos(obj.id, i)]));
+    const portRows = computePortRows(ms.metaModel, im, positions);
 
     set({
-      nodes: parts.map((obj, i) => ({
+      nodes: parts.map((obj) => ({
         id: obj.id,
         type: 'partNode',
-        position: pos(obj.id, i),
+        position: positions[obj.id],
         data: { objectId: obj.id, portRows: portRows[obj.id] ?? {} },
       })),
       edges: (im.connectors ?? []).map((c) => {
@@ -111,6 +137,12 @@ export const useCapsuleStructureStore = create((set, get) => ({
           const posMap = {};
           for (const c of done) posMap[c.id] = c.position;
           ms.setPartPositions(im.id, posMap);
+
+          // Parts moved, so which partner is above/below which may have
+          // changed — re-order every part's port rows to match.
+          const positions = Object.fromEntries(nodes.map((n) => [n.id, n.position]));
+          const rows = computePortRows(ms.metaModel, im, positions);
+          patch.nodes = nodes.map((n) => ({ ...n, data: { ...n.data, portRows: rows[n.id] ?? {} } }));
         }
       }
 
