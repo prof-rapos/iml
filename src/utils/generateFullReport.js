@@ -6,6 +6,7 @@ import { hasStateMachine, generateJavaCode } from './javaCodeGen';
 import { buildSET } from './symbolicExecution';
 import { generateAllTestsFiles } from './mbtCodeGen';
 import { PdfWriter } from './pdfWriter';
+import { summarizeProtocols } from './protocolSummary';
 
 // Spins up a throwaway React root — deliberately OUTSIDE the main app tree
 // (not mounted anywhere under <App/>), so ReportRenderHost's own mounted
@@ -42,6 +43,36 @@ function embedSourceFiles(w, files) {
     w.subheading(f.path);
     w.codeBlock(f.content.split('\n'));
   });
+}
+
+// One row per message across every user-defined protocol, then a short list of
+// which capsule ports use each protocol. Text only — needs no diagram capture.
+function writeProtocolsTable(w, metaModel) {
+  const protocols = summarizeProtocols(metaModel);
+  if (protocols.length === 0) {
+    w.line('(no protocols defined)', { color: '#666666' });
+    return;
+  }
+
+  const rows = protocols.flatMap((p) =>
+    p.messages.length === 0
+      ? [[p.name, '(no messages)', '', '']]
+      : p.messages.map((m) => [p.name, m.name, m.direction, m.params.join(', ') || '-'])
+  );
+  w.table([
+    { header: 'Protocol', width: 2 },
+    { header: 'Message', width: 2 },
+    { header: 'Direction', width: 1 },
+    { header: 'Parameters', width: 3 },
+  ], rows);
+  w.line('Direction is from the base role\'s point of view: "out" is sent by the base role, "in" is received by it. A conjugated role sees the reverse.', { size: 8, color: '#666666' });
+
+  w.spacer(10);
+  w.subheading('Where each protocol is used');
+  for (const p of protocols) {
+    const uses = p.usedBy.map((u) => `${u.capsule}.${u.port} (${u.conjugated ? 'conjugated' : 'base'})`);
+    w.line(`${p.name}: ${uses.length ? uses.join(', ') : '(not used by any port)'}`, { indent: 10 });
+  }
 }
 
 // Builds and downloads the full meta-model report — every section the
@@ -83,6 +114,12 @@ export async function generateFullReport({ metaModel, instanceModels, userName, 
       w.heading('Meta-Model');
       const { dataUrl, width, height } = await hostRef.current.captureMetaModel();
       w.image(dataUrl, width, height);
+    }
+
+    if (has('protocols')) {
+      w.newPage();
+      w.heading('Protocols & Messages');
+      writeProtocolsTable(w, metaModel);
     }
 
     if (has('instances')) {

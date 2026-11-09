@@ -2,6 +2,7 @@
 // MBT) so the section list only needs updating in one place.
 export const REPORT_SECTIONS = [
   { key: 'metamodel', label: 'Meta-Model' },
+  { key: 'protocols', label: 'Protocols & Messages' },
   { key: 'instances', label: 'Instance Models' },
   { key: 'structure', label: 'Composite Structure' },
   { key: 'statemachines', label: 'State Machines' },

@@ -97,6 +97,50 @@ export class PdfWriter {
     this.y += h;
   }
 
+  // A plain bordered table. `columns` is [{ header, width }] where width is a
+  // relative weight; `rows` is an array of cell-text arrays. Cells wrap, a row
+  // is never split across a page, and the header row repeats on each new page.
+  table(columns, rows, { size = 9 } = {}) {
+    const doc = this.doc;
+    const pad = 4;
+    const lineH = size * 1.3;
+    const totalWeight = columns.reduce((sum, c) => sum + c.width, 0);
+    const widths = columns.map((c) => (this.contentWidth * c.width) / totalWeight);
+
+    const drawRow = (cells, header) => {
+      doc.setFont('helvetica', header ? 'bold' : 'normal');
+      doc.setFontSize(size);
+      const wrapped = cells.map((text, i) =>
+        doc.splitTextToSize(sanitizeForPdfFont(String(text ?? '')), widths[i] - pad * 2));
+      const rowH = Math.max(...wrapped.map((l) => l.length)) * lineH + pad * 2;
+      if (this.y + rowH > this.pageHeight - this.margin) {
+        this.newPage();
+        if (!header) drawRow(columns.map((c) => c.header), true);
+        doc.setFont('helvetica', header ? 'bold' : 'normal');
+        doc.setFontSize(size);
+      }
+      let x = this.margin;
+      doc.setDrawColor('#bbbbbb');
+      doc.setTextColor('#000000');
+      wrapped.forEach((lines, i) => {
+        if (header) {
+          doc.setFillColor('#e8e8e8');
+          doc.rect(x, this.y, widths[i], rowH, 'FD');
+        } else {
+          doc.rect(x, this.y, widths[i], rowH);
+        }
+        lines.forEach((ln, j) => doc.text(ln, x + pad, this.y + pad + size + j * lineH - 2));
+        x += widths[i];
+      });
+      this.y += rowH;
+    };
+
+    drawRow(columns.map((c) => c.header), true);
+    rows.forEach((cells) => drawRow(cells, false));
+    doc.setFont('helvetica', 'normal');
+    this.y += 8;
+  }
+
   hr() {
     this.ensureSpace(10);
     this.doc.setDrawColor('#cccccc');

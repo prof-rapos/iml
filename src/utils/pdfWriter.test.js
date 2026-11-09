@@ -42,3 +42,34 @@ describe('PdfWriter.codeBlock', () => {
     expect(texts.join('')).toBe('1int x = 1;');
   });
 });
+
+describe('PdfWriter.table', () => {
+  const columns = [{ header: 'Name', width: 1 }, { header: 'Detail', width: 2 }];
+
+  it('renders the header and every cell', () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const w = new PdfWriter(doc);
+    w.table(columns, [['alpha', 'first'], ['beta', 'second']]);
+    const rendered = extractTextOps(doc).join('|');
+    for (const text of ['Name', 'Detail', 'alpha', 'first', 'beta', 'second']) {
+      expect(rendered).toContain(text);
+    }
+  });
+
+  it('breaks across pages and repeats the header on each new page', () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const w = new PdfWriter(doc);
+    w.table(columns, Array.from({ length: 120 }, (_, i) => [`row${i}`, 'x']));
+    expect(doc.getNumberOfPages()).toBeGreaterThan(1);
+    const headerCount = extractTextOps(doc).filter((t) => t === 'Name').length;
+    expect(headerCount).toBe(doc.getNumberOfPages());
+  });
+
+  it('advances the cursor so following content lands below the table', () => {
+    const doc = new jsPDF({ unit: 'pt', format: 'letter' });
+    const w = new PdfWriter(doc);
+    const before = w.y;
+    w.table(columns, [['a', 'b']]);
+    expect(w.y).toBeGreaterThan(before);
+  });
+});
