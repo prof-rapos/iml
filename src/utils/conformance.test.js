@@ -352,6 +352,34 @@ describe('validateConformance — behavioural (action-code port sends)', () => {
     expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
   });
 
+  // Regression: `Math.random()` (and any static call on a class) was flagged
+  // "sends through Math, which isn't a port" — same call shape as a port send.
+  it('does not flag static calls on a class (Math.random, Integer.parseInt, ...) or this/super calls', () => {
+    const mm = baseCls({
+      C: {
+        states: [{
+          id: 's1', kind: 'simple', name: 'Open',
+          entry: 'int r = (int) (Math.random() * 10) + Integer.parseInt("1");\nCollections.shuffle(list);\nthis.helper();\nops.ping();',
+          exit: '',
+        }],
+        transitions: [],
+      },
+    });
+    expect(validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1')).toEqual([]);
+  });
+
+  it('still flags a stale lowercase port send next to a static call', () => {
+    const mm = baseCls({
+      C: {
+        states: [{ id: 's1', kind: 'simple', name: 'Open', entry: 'int r = (int) Math.random();\noldOps.ping();', exit: '' }],
+        transitions: [],
+      },
+    });
+    const errors = validateConformance(mm, { objects: [], links: [] }).filter((e) => e.id === 's1');
+    expect(errors).toHaveLength(1);
+    expect(errors[0].msg).toMatch(/oldOps/);
+  });
+
   it('still flags a genuine stale port send even when local variables are present', () => {
     const mm = baseCls({
       C: {

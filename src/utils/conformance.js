@@ -193,6 +193,14 @@ export function validateConformance(metaModel, instanceModel) {
           // reference — a real port send is always exactly one dot deep.
           if (stripped[m.index - 1] === '.') continue;
           const validSigs = sendableSignals.get(portRef);
+          // Static call on a class — `Math.random()`, `Integer.parseInt(s)`,
+          // `Collections.shuffle(l)`, `Color.valueOf("R")` — has the same
+          // "ident.ident(" shape as a port send. Rather than whitelist the JDK
+          // (never complete), lean on Java's naming convention: an uppercase-
+          // initial name that isn't an actual port here is a class. Checked
+          // after the port lookup so a (unconventionally) capitalised real
+          // port is still validated. Likewise `this.`/`super.` calls.
+          if (!validSigs && (/^[A-Z]/.test(portRef) || portRef === 'this' || portRef === 'super')) continue;
           if (!validSigs) {
             errors.push({ kind, id, msg: `"${cls.name}": ${label} sends through "${portRef}", which isn't a port on this class — likely stale after a rename or delete` });
           } else if (!validSigs.has(sigRef)) {
