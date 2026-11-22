@@ -529,3 +529,61 @@ describe('generateJavaCode — a state machine on a portless class is not silent
     expect(src).toContain('private void dispatch(');
   });
 });
+
+describe('generateJavaCode — a subclass state machine can use inherited attributes', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Fleet',
+    classes: [
+      { id: 'Veh', name: 'Vehicle', isAbstract: false,
+        attributes: [{ id: 'aSpeed', name: 'speed', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 }] },
+      { id: 'Trk', name: 'Truck', isAbstract: false,
+        attributes: [{ id: 'aLoad', name: 'load', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 }],
+        ports: [{ id: 'pLog', name: 'log', protocolId: 'sys-log', conjugated: false }] },
+      { id: 'Whl', name: 'Wheel', isAbstract: false,
+        attributes: [{ id: 'aSize', name: 'size', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 }] },
+    ],
+    relations: [{ id: 'r1', kind: 'INHERITANCE', source: 'Trk', target: 'Veh', name: '' }],
+    enumerations: [], protocols: [],
+    behaviours: {
+      Trk: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          // reads speed, inherited from Vehicle
+          { id: 'sIdle', kind: 'simple', name: 'Idle', entry: 'load = speed;', exit: '' },
+        ],
+        transitions: [{ id: 'tInit', source: 'sInit', target: 'sIdle', trigger: '', guard: '', effect: '' }],
+      },
+    },
+  };
+  const files = generateJavaCode(metaModel, [], 'all');
+
+  it('makes the parent\'s fields protected so the subclass\'s action code compiles', () => {
+    expect(fileFor(files, 'Vehicle.java')).toContain('protected int speed');
+  });
+
+  it('keeps every other field private', () => {
+    expect(fileFor(files, 'Truck.java')).toContain('private int load');
+    expect(fileFor(files, 'Wheel.java')).toContain('private int size');
+  });
+});
+
+describe('generateJavaCode — an inheritance loop in a hand-edited file', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Loop', enumerations: [], protocols: [], behaviours: {},
+    classes: [
+      { id: 'C', name: 'C', isAbstract: false, attributes: [{ id: 'c1', name: 'x', type: 'INT', visibility: 'PUBLIC', lowerBound: 1, upperBound: 1 }] },
+      { id: 'A', name: 'A', isAbstract: false, attributes: [] },
+      { id: 'B', name: 'B', isAbstract: false, attributes: [] },
+    ],
+    relations: [
+      { id: 'r1', kind: 'INHERITANCE', source: 'A', target: 'B', name: '' },
+      { id: 'r2', kind: 'INHERITANCE', source: 'B', target: 'A', name: '' },
+    ],
+  };
+
+  it('finishes instead of hanging on the protected-field check', () => {
+    // only checks that it returns or throws; what the loop does elsewhere is out of scope
+    const run = () => { try { generateJavaCode(metaModel, [], 'all'); } catch { /* not this test's concern */ } };
+    expect(run).not.toThrow();
+  });
+});
