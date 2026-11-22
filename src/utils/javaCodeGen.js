@@ -151,6 +151,20 @@ function getParentClass(classId, metaModel) {
   return rel ? (metaModel.classes.find(c => c.id === rel.target) ?? null) : null;
 }
 
+// protected only when a subclass's state machine can reach the field, since action code is pasted verbatim
+function attributeFieldModifier(cls, metaModel) {
+  const extendsCls = (c) => {
+    const seen = new Set([c.id]);  // a hand-edited inheritance loop mustn't hang the walk
+    for (let p = getParentClass(c.id, metaModel); p && !seen.has(p.id); p = getParentClass(p.id, metaModel)) {
+      if (p.id === cls.id) return true;
+      seen.add(p.id);
+    }
+    return false;
+  };
+  const used = metaModel.classes.some((c) => extendsCls(c) && hasStateMachine(c, metaModel));
+  return used ? 'protected' : 'private';
+}
+
 // ── Relation helpers ──────────────────────────────────────────────────────────
 
 export function isMultiRelation(rel) {
@@ -733,18 +747,19 @@ function generateClassFile(cls, metaModel, pkg, scope = 'structural') {
 
   // ── Own attribute fields ──────────────────────────────────────────
   if (ownAttrs.length > 0) {
+    const access = attributeFieldModifier(cls, metaModel);
     lines.push('    // Attributes');
     for (const attr of ownAttrs) {
       const field = safeId(attr.name);
       lines.push(`    ${boundsComment(attr)}`);
       if (attr.upperBound !== 1) {
-        lines.push(`    private ArrayList<${boxedTypeForAttr(attr, metaModel)}> ${field} = new ArrayList<>();`);
+        lines.push(`    ${access} ArrayList<${boxedTypeForAttr(attr, metaModel)}> ${field} = new ArrayList<>();`);
       } else if (hasMetaDefault(attr)) {
-        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field} = ${javaLiteralForAttr(attr.defaultValue, attr, metaModel)};`);
+        lines.push(`    ${access} ${javaTypeForAttr(attr, metaModel)} ${field} = ${javaLiteralForAttr(attr.defaultValue, attr, metaModel)};`);
       } else if (attr.lowerBound > 0) {
-        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field} = ${defaultValueForAttr(attr, metaModel)};`);
+        lines.push(`    ${access} ${javaTypeForAttr(attr, metaModel)} ${field} = ${defaultValueForAttr(attr, metaModel)};`);
       } else {
-        lines.push(`    private ${javaTypeForAttr(attr, metaModel)} ${field};`);
+        lines.push(`    ${access} ${javaTypeForAttr(attr, metaModel)} ${field};`);
       }
     }
     lines.push('');
