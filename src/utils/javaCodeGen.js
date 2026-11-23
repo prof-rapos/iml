@@ -151,8 +151,9 @@ function getParentClass(classId, metaModel) {
   return rel ? (metaModel.classes.find(c => c.id === rel.target) ?? null) : null;
 }
 
-// protected only when a subclass's state machine can reach the field, since action code is pasted verbatim
-function attributeFieldModifier(cls, metaModel) {
+// Attribute, relation and port fields are protected only when a subclass's state machine can reach
+// them, since action code is pasted verbatim into that subclass; every other field stays private.
+function inheritedFieldModifier(cls, metaModel) {
   const extendsCls = (c) => {
     const seen = new Set([c.id]);  // a hand-edited inheritance loop mustn't hang the walk
     for (let p = getParentClass(c.id, metaModel); p && !seen.has(p.id); p = getParentClass(p.id, metaModel)) {
@@ -469,6 +470,7 @@ public class LogPort {
 // object (for receiving, exposed via get<Port>Receiver() so a peer's
 // connector wiring can target it).
 function generateCapsulePorts(cls, metaModel, dispatchable) {
+  const access = inheritedFieldModifier(cls, metaModel);
   const fieldLines      = [];
   const ctorAssignLines = [];
   const accessorLines   = [];
@@ -491,13 +493,13 @@ function generateCapsulePorts(cls, metaModel, dispatchable) {
       // a blank final field. It's only ever null there — those overloads
       // aren't the ones behavioural/all main() uses for a class with a
       // Timing port anyway.
-      fieldLines.push(`    private TimingPort ${field};`);
+      fieldLines.push(`    ${access} TimingPort ${field};`);
       ctorAssignLines.push(`        this.${field} = new TimingPort(scheduler, ${onTimeout});`);
     } else if (proto.id === 'sys-log') {
-      fieldLines.push(`    private final LogPort ${field} = new LogPort();`);
+      fieldLines.push(`    ${access} final LogPort ${field} = new LogPort();`);
     } else {
       const iface = toClassName(proto.name) + 'Receiver';
-      fieldLines.push(`    private ${iface} ${field};`);
+      fieldLines.push(`    ${access} ${iface} ${field};`);
       accessorLines.push(`    public void connect${cap}(${iface} peer) { this.${field} = peer; }`);
 
       const wanted   = port.conjugated ? 'out' : 'in';
@@ -745,9 +747,10 @@ function generateClassFile(cls, metaModel, pkg, scope = 'structural') {
   lines.push(`${modifier} ${cls.name}${extendsStr} {`);
   lines.push('');
 
+  const access = inheritedFieldModifier(cls, metaModel);
+
   // ── Own attribute fields ──────────────────────────────────────────
   if (ownAttrs.length > 0) {
-    const access = attributeFieldModifier(cls, metaModel);
     lines.push('    // Attributes');
     for (const attr of ownAttrs) {
       const field = safeId(attr.name);
@@ -773,9 +776,9 @@ function generateClassFile(cls, metaModel, pkg, scope = 'structural') {
       if (!targetCls) continue;
       const field = getRelationFieldName(rel, targetCls);
       if (isMultiRelation(rel)) {
-        lines.push(`    private ArrayList<${targetCls.name}> ${field} = new ArrayList<>();`);
+        lines.push(`    ${access} ArrayList<${targetCls.name}> ${field} = new ArrayList<>();`);
       } else {
-        lines.push(`    private ${targetCls.name} ${field} = null;`);
+        lines.push(`    ${access} ${targetCls.name} ${field} = null;`);
       }
     }
     lines.push('');

@@ -567,6 +567,46 @@ describe('generateJavaCode — a subclass state machine can use inherited attrib
   });
 });
 
+describe('generateJavaCode — a subclass state machine can use inherited ports and relations', () => {
+  const metaModel = {
+    kind: 'metamodel', name: 'Fleet2',
+    classes: [
+      { id: 'Veh', name: 'Vehicle', isAbstract: false, attributes: [],
+        ports: [{ id: 'pLog', name: 'log', protocolId: 'sys-log', conjugated: false }] },
+      { id: 'Trk', name: 'Truck', isAbstract: false, attributes: [] },
+      { id: 'Whl', name: 'Wheel', isAbstract: false, attributes: [],
+        ports: [{ id: 'pLog2', name: 'log', protocolId: 'sys-log', conjugated: false }] },
+    ],
+    relations: [
+      { id: 'r1', kind: 'INHERITANCE', source: 'Trk', target: 'Veh', name: '' },
+      { id: 'r2', kind: 'ASSOCIATION', source: 'Veh', target: 'Whl', name: 'wheel', targetMultiplicity: '1' },
+    ],
+    enumerations: [], protocols: [],
+    behaviours: {
+      Trk: {
+        states: [
+          { id: 'sInit', kind: 'initial', name: '', entry: '', exit: '' },
+          { id: 'sIdle', kind: 'simple', name: 'Idle', entry: 'log.log("hi");', exit: '' },
+        ],
+        transitions: [{ id: 'tInit', source: 'sInit', target: 'sIdle', trigger: '', guard: '', effect: '' }],
+      },
+    },
+  };
+  const files = generateJavaCode(metaModel, [], 'all');
+
+  it('makes the parent\'s port fields protected', () => {
+    expect(fileFor(files, 'Vehicle.java')).toContain('protected final LogPort log');
+  });
+
+  it('makes relation fields on the parent protected', () => {
+    expect(fileFor(files, 'Vehicle.java')).toContain('protected Wheel wheel');
+  });
+
+  it('keeps ports private when no subclass has a state machine', () => {
+    expect(fileFor(files, 'Wheel.java')).toContain('private final LogPort log');
+  });
+});
+
 describe('generateJavaCode — an inheritance loop in a hand-edited file', () => {
   const metaModel = {
     kind: 'metamodel', name: 'Loop', enumerations: [], protocols: [], behaviours: {},
